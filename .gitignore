@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*_env/
+venv/
+
+# ROS2 colcon
+build/
+install/
+log/
+
+# Isaac Sim / Omniverse caches
+.cache/
+*.usd
+*.usda
+*.usdc
+*.usdz
+
+# 3D reconstruction / mesh / model artifacts (버전 관리는 별도 저장소·저장소 링크로)
+*.ply
+*.pcd
+*.obj
+*.mtl
+*.glb
+*.gltf
+*.pth
+*.ckpt
+*.onnx
+
+# 데이터셋 / 로그 / 기록물
+data/
+datasets/
+rosbag2_*/
+*.bag
+*.mp4
+*.avi
+
+# OS / editor
+.DS_Store
+.vscode/
+*.swp
