@@ -1,0 +1,13 @@
+# 설치: pip install pre-commit && pre-commit install   (server207: $CD1/envs/tools_env 에 설치됨)
+# 수동 전체 검사: pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # 5MB 넘는 파일 커밋 차단 — .gitignore 가 놓친 새 형식 대비 (GitHub: 50MB 경고, 100MB 거부)
+      - id: check-added-large-files
+        args: ["--maxkb=5120"]
+      # SSH·TLS 개인키 커밋 차단 (public 레포)
+      - id: detect-private-key
+      # 머지 충돌 표식이 남은 채 커밋되는 것 차단
+      - id: check-merge-conflict
