@@ -1,42 +1,79 @@
+# 한 줄에 패턴 하나. 줄 끝 주석은 패턴의 일부로 읽히므로 쓰지 않는다.
+# 루트 기준 경로는 앞에 / 를 붙인다 (server207 에서는 이 레포가 곧 $CD1).
+
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
-*_env/
 venv/
+*_env/
+/envs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
 
-# ROS2 colcon
+# ROS 2 colcon
 build/
 install/
 log/
 
-# Isaac Sim / Omniverse caches
+# Isaac Sim / Omniverse
+# .usda(텍스트 레이어: Proxy 씬·로봇·센서 설정)는 추적한다. 바이너리만 무시.
 .cache/
+.thumbs/
 *.usd
-*.usda
 *.usdc
 *.usdz
 
-# 3D reconstruction / mesh / model artifacts (버전 관리는 별도 저장소·저장소 링크로)
+# 3D 복원 / 메쉬 (버전 관리는 MANIFEST.md 로)
 *.ply
 *.pcd
 *.obj
 *.mtl
 *.glb
 *.gltf
+*.stl
+*.fbx
+*.blend
+*.blend1
+
+# 센서 / SLAM
+*.bag
+*.mcap
+*.db3
+rosbag2_*/
+rtabmap*.db
+
+# 학습 / 모델
 *.pth
+*.pt
 *.ckpt
 *.onnx
+*.safetensors
+*.h5
+*.hdf5
+wandb/
+runs/
+outputs/
+lightning_logs/
 
-# 데이터셋 / 로그 / 기록물
-data/
-datasets/
-rosbag2_*/
-*.bag
+# 데이터 / 로그 / 기록물 (루트 기준 — 하위 패키지의 data/ 설정 폴더는 무시하지 않는다)
+/data/
+/datasets/
+/logs/
+*.log
 *.mp4
 *.avi
+
+# 비밀정보 (public 레포)
+.env
+*.key
+*.pem
 
 # OS / editor
 .DS_Store
 .vscode/
+.idea/
 *.swp
