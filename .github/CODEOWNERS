@@ -8,9 +8,5 @@
 # /sim/                        @D_정동현
 # /e2e/                        @E_서진석
 # /eval/                       @D_정동현 @E_서진석
-# /ros2_ws/src/fd_sensor/      @A_정동기
-# /ros2_ws/src/fd_slam/        @B_오윤성
-# /ros2_ws/src/fd_sim_bridge/  @D_정동현
-# /ros2_ws/src/fd_inference/   @D_정동현 @E_서진석
-# /ros2_ws/src/fd_interfaces/  @A_정동기 @B_오윤성 @C_이진우 @D_정동현 @E_서진석
+# /ros2_ws/                    (공용 — 패키지가 생기면 패키지별로 담당 추가)
 # /docs/interfaces/            @D_정동현

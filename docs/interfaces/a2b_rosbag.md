@@ -14,7 +14,7 @@
 | 토픽 목록 | | RGB · Depth · IMU · camera_info · tf_static |
 | 해상도 · fps | | RGB / Depth 각각 |
 | depth 정렬 | | aligned_depth_to_color 여부 |
-| TF 트리 · frame_id | | `fd_interfaces` 규약과 일치 |
+| TF 트리 · frame_id | | 팀 공용 frame_id 규약과 일치 ([README](README.md) 마지막 줄) |
 | 시간 동기 | | 하드웨어 동기 / 소프트웨어 |
 | 촬영 조건 메타데이터 | | 시간대 · 날씨 · 구역 (실외 depth 품질 리스크) |
 
