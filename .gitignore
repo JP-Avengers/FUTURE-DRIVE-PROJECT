@@ -64,6 +64,7 @@ lightning_logs/
 /datasets/
 /logs/
 *.log
+*.etli
 *.mp4
 *.avi
 
