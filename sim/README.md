@@ -25,4 +25,10 @@ server207 · Isaac Sim 6.0.1 (pip, Python 3.12) · GPU 0 고정 — [`docs/serve
 
 ## 실행 방법
 
-(작성 예정 — 명령 한 줄이라도 동작하는 것부터 적어 주세요)
+**헤드리스 기동 검증** (server207, 레포 루트 = `$CD1`에서):
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/check_headless.py   # "OK" 후 종료 코드 0
+```
+
+GPU 0 고정은 스크립트 안의 `active_gpu=0`·`multi_gpu=False`로 합니다. **`CUDA_VISIBLE_DEVICES`는 걸지 마세요** — 종료 시 abort 가 납니다(9.27 실측).
