@@ -39,4 +39,13 @@ setsid nohup sim/run_streaming.sh > logs/streaming.log 2>&1 < /dev/null & echo $
 kill $(cat logs/streaming.pid)     # 종료 — 공용 서버이니 작업이 끝나면 반드시
 ```
 
+**ROS 2 Bridge 검증** (헤드리스로 `/clock` 발행 → 호스트에서 수신):
+
+```bash
+source /opt/ros/jazzy/setup.bash        # 반드시 Isaac Sim 기동 **전에** — 안 하면 내장 라이브러리로 넘어가 Bridge 실패
+export ROS_DOMAIN_ID=42 RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/check_ros2_bridge.py 60
+# 다른 터미널: ros2 topic echo /clock rosgraph_msgs/msg/Clock --once
+```
+
 GPU 0 고정은 스크립트 안의 `active_gpu=0`·`multi_gpu=False`로 합니다. **`CUDA_VISIBLE_DEVICES`는 걸지 마세요** — 종료 시 abort 가 납니다(9.27 실측).
