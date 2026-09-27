@@ -39,6 +39,8 @@ setsid nohup sim/run_streaming.sh > logs/streaming.log 2>&1 < /dev/null & echo $
 kill $(cat logs/streaming.pid)     # 종료 — 공용 서버이니 작업이 끝나면 반드시
 ```
 
+스트리밍 중에는 NvStreamer 트레이스 로그(`*.etli`)가 약 3분마다 쌓입니다(시간당 ~140MB). 스크립트가 `logs/etli/` 에서 실행하므로 그 폴더에 모이고, git 은 무시합니다. 가끔 비워 주세요: `du -sh logs/etli`
+
 **ROS 2 Bridge 검증** (헤드리스로 `/clock` 발행 → 호스트에서 수신):
 
 ```bash
