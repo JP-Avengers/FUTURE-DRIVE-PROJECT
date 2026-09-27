@@ -15,15 +15,6 @@
 - **받는 것**: B 의 포인트클라우드 · [`b2c_map.md`](../docs/interfaces/b2c_map.md)
 - **넘기는 것**: USD → D · [`docs/interfaces/c2d_usd.md`](../docs/interfaces/c2d_usd.md) (**드래프트 USD 중간 납기 포함**)
 
-## 구조
-
-```
-recon/
-├── pointcloud/       정제 · 다운샘플
-├── mesh/             Open3D 메쉬화 · 경량화
-└── usd_export/       Collider 생성 · USD 변환 · 규격 검사
-```
-
 ## 환경
 
 공용 노트북 · Python (open3d 등 — `requirements.txt` 로 고정 예정).

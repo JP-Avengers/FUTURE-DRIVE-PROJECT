@@ -17,19 +17,9 @@
 - **받는 것**: D 의 교사 데이터 · [`d2e_teacher.md`](../docs/interfaces/d2e_teacher.md)
 - **넘기는 것**: 모델 · forward pass → D · [`docs/interfaces/e2d_model.md`](../docs/interfaces/e2d_model.md)
 
-## 구조
-
-```
-e2e/
-├── dataset/          교사 로그 → 학습용 HDF5 변환 코드 (데이터 자체는 X)
-├── models/           모델 정의
-├── train/            학습 스크립트
-└── configs/          학습 설정 — 어떤 설정이 어떤 체크포인트를 만들었는지
-```
-
 ## 환경
 
-PyTorch (`requirements.txt` 로 고정 예정). 추론 노드는 [`ros2_ws/src/fd_inference`](../ros2_ws/src/fd_inference).
+PyTorch (`requirements.txt` 로 고정 예정). 추론 노드는 [`ros2_ws/src/`](../ros2_ws/src)에 만듭니다.
 
 > 가중치(`*.pt` `*.ckpt` …)·데이터셋은 커밋하지 않습니다 — [`MANIFEST.md`](../MANIFEST.md) 에 기록.
 

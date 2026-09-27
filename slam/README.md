@@ -15,17 +15,9 @@
 - **받는 것**: A 의 rosbag2 · [`a2b_rosbag.md`](../docs/interfaces/a2b_rosbag.md)
 - **넘기는 것**: 포인트클라우드 · 궤적 → C · [`docs/interfaces/b2c_map.md`](../docs/interfaces/b2c_map.md)
 
-## 구조
-
-```
-slam/
-├── config/           RTAB-Map 파라미터 (기준선 v0.1 → 튜닝본)
-└── evaluation/       궤적 검증 · 맵 품질 지표
-```
-
 ## 환경
 
-공용 노트북 · ROS 2 Jazzy · rtabmap_ros. ROS 패키지는 [`ros2_ws/src/fd_slam`](../ros2_ws/src/fd_slam).
+공용 노트북 · ROS 2 Jazzy · rtabmap_ros. ROS 패키지는 [`ros2_ws/src/`](../ros2_ws/src)에 만듭니다.
 
 > `rtabmap*.db` 는 커밋하지 않습니다 — [`MANIFEST.md`](../MANIFEST.md) 에 기록.
 

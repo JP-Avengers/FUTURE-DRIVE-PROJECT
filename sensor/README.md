@@ -15,18 +15,9 @@
 - **받는 것**: —
 - **넘기는 것**: rosbag2(MCAP) → B · 규약: [`docs/interfaces/a2b_rosbag.md`](../docs/interfaces/a2b_rosbag.md)
 
-## 구조
-
-```
-sensor/
-├── calibration/      내부·외부 파라미터, 결과 yaml (작음 → 추적)
-├── recording/        rosbag2 녹화 스크립트 · 토픽 목록
-└── qc/               depth 품질 · 동기 · 누락 프레임 점검
-```
-
 ## 환경
 
-공용 노트북 · ROS 2 Jazzy · librealsense2. ROS 패키지는 [`ros2_ws/src/fd_sensor`](../ros2_ws/src/fd_sensor).
+공용 노트북 · ROS 2 Jazzy · librealsense2. ROS 패키지는 [`ros2_ws/src/`](../ros2_ws/src)에 만듭니다.
 
 > rosbag 원본은 커밋하지 않습니다 — server207 `$CD1/data/` 로 옮기고 [`MANIFEST.md`](../MANIFEST.md) 에 기록.
 
