@@ -6,16 +6,29 @@
 Digital Twin 기반 자율주행 알고리즘 개발 및 시뮬레이션 검증
 
 실제 캠퍼스 보행로 일부를 촬영해 Visual SLAM·3D Reconstruction으로 Digital Twin을 구축하고,
-NVIDIA Isaac Sim으로 옮겨 ROS2 기반 자율주행(Nav2 / 카메라 기반 E2E 모델)을 시뮬레이션으로 검증합니다.
+NVIDIA Isaac Sim으로 옮겨 ROS2 기반 자율주행(카메라 기반 E2E 모델, Nav2 미사용)을 시뮬레이션으로 검증합니다.
 
-## 팀 구성 (2+1+2)
-| 담당 | 역할 |
-|---|---|
-| A | 센서와 SLAM |
-| B | 3D 복원 (Point Cloud → Open3D Mesh) |
-| C | 공통 실행 환경 (Isaac Sim / ROS2 Bridge) |
-| D | 교사 주행 · 데이터 · 평가 |
-| E | E2E 모델과 추론 |
+## 팀 구성
+| 담당 | 이름 | 역할 | 폴더 |
+|---|---|---|---|
+| A | 정동기 | 센서 / 실데이터 | [`sensor/`](sensor/) |
+| B | 오윤성 | Visual SLAM | [`slam/`](slam/) |
+| C | 이진우 | Mesh / USD | [`recon/`](recon/) |
+| D | 정동현 | Isaac Sim / **PM** | [`sim/`](sim/) |
+| E | 서진석 | E2E / 평가 | [`e2e/`](e2e/) |
+| D·E | | 평가 | [`eval/`](eval/) |
+
+파이프라인: A → B → C → D → E, E의 모델은 다시 D의 평가로 돌아옵니다. 파트 사이 인계 규약은 [`docs/interfaces/`](docs/interfaces/)에 있습니다.
+
+## 폴더 구조
+```
+sensor/  slam/  recon/  sim/  e2e/  eval/   파트별 코드·설정 (각 폴더 README 참고)
+ros2_ws/src/                               ROS 2 패키지 (전부 여기)
+docs/interfaces/                           파트 간 인계 규약
+docs/                                      환경·서버 문서
+scripts/                                   공용 도구
+MANIFEST.md                                대용량 산출물 버전 목록
+```
 
 ## 공식 일정
 - 2026.09.21 계획 및 요구분석 발표
@@ -27,5 +40,6 @@ NVIDIA Isaac Sim으로 옮겨 ROS2 기반 자율주행(Nav2 / 카메라 기반 E
 
 ## 저장소 규칙
 - 코드는 이 저장소에서 Git으로 관리합니다.
-- 대용량 원본 데이터, 3D Mesh, 학습된 모델 가중치는 이 저장소에 커밋하지 않고 별도 저장 위치와 버전 목록을 공유합니다 (`.gitignore` 참고).
+- 대용량 원본 데이터, 3D Mesh, 학습된 모델 가중치는 이 저장소에 커밋하지 않고 별도 저장 위치와 버전 목록을 공유합니다 (`.gitignore` 참고). 버전 목록은 [`MANIFEST.md`](MANIFEST.md)입니다.
+- 커밋 전 훅: `pre-commit install` (5MB 초과 파일·개인키 차단).
 - 새 기능은 각자 브랜치에서 작업하고, 실행되는 공통 버전(main)을 유지합니다.
