@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>fd_sim_warmup</name>
+  <version>0.0.0</version>
+  <description>워밍업 — Isaac Sim 샘플 씬(carter_warehouse_navigation, Nova Carter)을 3D LiDAR 로 장애물 회피 주행. 첫 폐루프 예행연습</description>
+  <maintainer email="jdhyeon280812@gmail.com">donghyeon</maintainer>
+  <license>TODO: License declaration</license>
+
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>sensor_msgs_py</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

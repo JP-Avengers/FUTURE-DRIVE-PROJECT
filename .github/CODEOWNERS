@@ -9,4 +9,5 @@
 # /e2e/                        @E_서진석
 # /eval/                       @D_정동현 @E_서진석
 # /ros2_ws/                    (공용 — 패키지가 생기면 패키지별로 담당 추가)
+# /ros2_ws/src/fd_sim_warmup/  @D_정동현
 # /docs/interfaces/            @D_정동현
