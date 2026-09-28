@@ -16,4 +16,4 @@
 - [ ] 대용량 산출물은 커밋 대신 `MANIFEST.md` 에 기록
 - [ ] 인계 규약(`docs/interfaces/`)을 바꿨다면 받는 쪽 동의
 - [ ] 접속 정보 · 토큰 없음
-- [ ] 합칠 때 **Squash 금지** (Create a merge commit / Rebase and merge)
+- [ ] 합칠 때 **Squash 금지** (Create a merge commit / Rebase and merge) — PR 사용 여부는 각자 판단, 쓸 때만 해당
