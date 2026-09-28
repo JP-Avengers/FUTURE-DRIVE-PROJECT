@@ -1,0 +1,14 @@
+# recon/ 환경 — Python 3.12 (공용 노트북 ~/o3d_env)
+# 새로 만들 때: python3 -m venv ~/o3d_env && ~/o3d_env/bin/pip install -r recon/requirements.txt
+open3d==0.19.0
+usd-core==26.8
+numpy==2.5.3
+scipy==1.18.1
+trimesh==5.1.0
+pandas==3.0.5
+PyYAML==6.0.3
+matplotlib==3.11.2
+
+# 노트북에서 결과 확인용 (o3d.visualization.draw_plotly)
+ipykernel==7.3.0
+plotly==7.1.0
