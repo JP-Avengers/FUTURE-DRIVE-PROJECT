@@ -11,3 +11,11 @@ repos:
       - id: detect-private-key
       # 머지 충돌 표식이 남은 채 커밋되는 것 차단
       - id: check-merge-conflict
+  - repo: local
+    hooks:
+      # sim/ 은 Isaac Sim(numpy 2.x) 안에서 도는 코드 — apt cv_bridge(numpy 1.x 빌드)는 색 변환 시 세그폴트 (sim/README.md)
+      - id: no-cv-bridge-in-sim
+        name: "sim/ 에서 cv_bridge import 금지 (Isaac Sim 세그폴트) — ros2_ws/src 노드로 옮기세요"
+        language: pygrep
+        entry: '^\s*(from|import)\s+cv_bridge\b|import_module\(\s*[\x27"]cv_bridge|__import__\(\s*[\x27"]cv_bridge'
+        files: ^sim/.*\.py$

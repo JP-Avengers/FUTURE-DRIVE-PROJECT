@@ -41,5 +41,5 @@ MANIFEST.md                                대용량 산출물 버전 목록
 ## 저장소 규칙
 - 코드는 이 저장소에서 Git으로 관리합니다.
 - 대용량 원본 데이터, 3D Mesh, 학습된 모델 가중치는 이 저장소에 커밋하지 않고 별도 저장 위치와 버전 목록을 공유합니다 (`.gitignore` 참고). 버전 목록은 [`MANIFEST.md`](MANIFEST.md)입니다.
-- 커밋 전 훅: `pre-commit install` (5MB 초과 파일·개인키 차단).
+- 커밋 전 훅: `pre-commit install` (5MB 초과 파일·개인키·충돌 표식 차단, `sim/` 의 `cv_bridge` import 차단).
 - 새 기능은 각자 브랜치에서 작업하고, 실행되는 공통 버전(main)을 유지합니다.
