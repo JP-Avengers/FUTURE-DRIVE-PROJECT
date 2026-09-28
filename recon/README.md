@@ -17,10 +17,25 @@
 
 ## 환경
 
-공용 노트북 · Python (open3d 등 — `requirements.txt` 로 고정 예정).
+공용 노트북 · Python 3.12 venv `~/o3d_env` — 버전은 [`requirements.txt`](requirements.txt) 로 고정.
+
+```bash
+python3 -m venv ~/o3d_env && ~/o3d_env/bin/pip install -r recon/requirements.txt
+```
 
 > 메쉬·USD 바이너리(`*.ply` `*.obj` `*.usdc` …)는 커밋하지 않습니다 — [`MANIFEST.md`](../MANIFEST.md) 에 기록.
 
 ## 실행 방법
 
-(작성 예정 — 명령 한 줄이라도 동작하는 것부터 적어 주세요)
+레포 루트에서. 출력은 레포 밖(`--out`, 기본 `~/jinwoo/out`)에 쓴다.
+
+```bash
+# 1) 샘플 점군(Open3D PLYPointCloud)으로 전체 리허설: 정제 → Poisson → 경량화 → Collider → OBJ  (약 4초)
+~/o3d_env/bin/python recon/rehearsal/rehearsal.py --out ~/jinwoo/out
+# 2) OBJ → USD (/World/VisualMesh + /World/ColliderMesh, Z-up · m)
+~/o3d_env/bin/python recon/rehearsal/to_usd.py --out ~/jinwoo/out
+```
+
+## 알려진 한계
+
+- `rehearsal.py` 의 Collider 는 점군 **전체의 convex hull 하나**라 실내 샘플 검증용이다. 실제 주차장 씬에서는 로봇이 볼록 덩어리 안에 갇히므로, 지형은 삼각형 메쉬 충돌·장애물은 convex decomposition 으로 교체 예정 ([`c2d_usd.md`](../docs/interfaces/c2d_usd.md) Collider 방식과 함께 D 와 합의).
