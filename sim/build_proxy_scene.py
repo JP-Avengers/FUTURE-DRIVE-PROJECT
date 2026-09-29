@@ -26,6 +26,9 @@ OUT = os.path.join(HERE, "scenes", "proxy")
 GENERATED = "sim/build_proxy_scene.py 가 만든 레이어 — 손으로 고치지 말고 params.yaml 을 고쳐 다시 만들 것"
 # USD 는 앞쪽 레이어가 강하다. sensors 가 robot(에셋) 값을 덮어써야 하므로 이 순서를 지킨다.
 SUBLAYERS = ["sensors.usda", "ros.usda", "robot.usda", "env_proxy.usda", "background.usda", "world.usda"]
+# 시간 단위 — NVIDIA 샘플 씬(carter_warehouse_navigation.usd)과 같은 60. 쓰지 않으면 USD 기본값 24 로 열려
+# 타임라인(24 Hz)과 물리(60 Hz)가 어긋나고, 차동 제어기가 deltaTime 0 스텝을 건너뛴다(9.29: 경고 1,559회, odom 84 Hz).
+TIME_CODES_PER_SECOND = 60
 
 LOOKS = {  # 이름: (색 RGB, 거칠기, 금속성). 텍스처는 도메인 랜덤화 단계에서
     "asphalt": ((0.18, 0.18, 0.19), 0.9, 0.0),
@@ -327,6 +330,7 @@ def build_root(P):
     layer.pseudoRoot.SetInfo("upAxis", "Z")
     layer.pseudoRoot.SetInfo("metersPerUnit", 1.0)
     layer.defaultPrim = "World"
+    layer.timeCodesPerSecond = TIME_CODES_PER_SECOND
     layer.subLayerPaths = ["./" + s for s in SUBLAYERS]
     stamp(layer, P)
     layer.Save()

@@ -16,6 +16,7 @@
         @./background.usda@,
         @./world.usda@
     ]
+    timeCodesPerSecond = 60
     upAxis = "Z"
 )
 
