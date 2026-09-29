@@ -15,5 +15,6 @@ A sensor ──a2b──▶ B slam ──b2c──▶ C recon ──c2d──▶
 | [c2d_usd.md](c2d_usd.md) | C → D | 초안 |
 | [d2e_teacher.md](d2e_teacher.md) | D → E | 초안 |
 | [e2d_model.md](e2d_model.md) | E → D | 초안 |
+| [topics.md](topics.md) | 공용 — 토픽 · frame_id · 좌표계 · 단위 · 파일 형식 | 초안 |
 
-**토픽 이름 · frame_id 는 파트마다 따로 정하지 말고 한 곳에 모읍니다** — 공용 규약 문서나 공용 ROS 패키지를 만들 때 이 줄을 그 위치로 고치세요.
+**토픽 이름 · frame_id · 좌표계 · 단위는 [`topics.md`](topics.md) 한 곳에 모읍니다.** 파트마다 따로 정하지 마세요.

@@ -5,7 +5,7 @@
 ## 과제명
 Digital Twin 기반 자율주행 알고리즘 개발 및 시뮬레이션 검증
 
-실제 캠퍼스 보행로 일부를 촬영해 Visual SLAM·3D Reconstruction으로 Digital Twin을 구축하고,
+교내 실외 주차장 일부 구역(IT대학 1호관 남측, 약 119 m 폐루프)을 촬영해 Visual SLAM·3D Reconstruction으로 Digital Twin을 구축하고,
 NVIDIA Isaac Sim으로 옮겨 ROS2 기반 자율주행(카메라 기반 E2E 모델, Nav2 미사용)을 시뮬레이션으로 검증합니다.
 
 ## 팀 구성
