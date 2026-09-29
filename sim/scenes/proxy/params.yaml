@@ -1,0 +1,60 @@
+# Proxy 씬 치수·배치 변수 — 이 파일만 고치고 sim/build_proxy_scene.py 로 다시 만든다.
+# 좌표: 원점 = 루프 남서 꼭짓점 노면, +X 동 · +Y 북 · +Z 위 (ENU). 단위 m · deg.
+# v0 값은 수행계획서 그림 1(네이버 지도 캡처)을 축척 막대로 잰 추정치(±1~2 m).
+# A 의 기준 치수 실측표가 오면 바꾸고 version 을 올린다.
+version: v0
+
+loop:                      # 시계 방향. 그림 1 누적 거리 0 · 26.0 · 70.1 · 94.9 · 119.1 m
+  - {name: SW,   x: 0.00,  y: 0.00}    # 출발·도착
+  - {name: NW,   x: -3.29, y: 25.81}
+  - {name: NE,   x: 40.65, y: 25.12}
+  - {name: BEND, x: 22.92, y: 7.79}    # 남동 변이 꺾이는 점
+
+road:
+  width: 6.0               # 주차장법 시행규칙 제6조 직각주차 차로 최소치
+
+ground: {x_min: -45.0, x_max: 75.0, y_min: -50.0, y_max: 60.0}
+
+island:                    # 루프 안쪽의 주차 구역 (그림 1 회색)
+  curb_height: 0.15
+  rows: 2                  # 북쪽 변과 나란히 등을 맞댄 두 줄
+
+stalls:
+  width: 2.5               # 제3조 일반형 최소치
+  depth: 5.0
+  line_width: 0.12
+  line_height: 0.01
+  corner_margin: 7.0       # 꼭짓점 앞뒤는 비움 (회전 공간)
+  outer_edges: [SW-NW, NW-NE, NE-BEND]   # 바깥쪽에 주차 줄이 있는 변
+
+cars:
+  size: [4.5, 1.8, 1.5]    # 길이 · 폭 · 높이
+  fill: 0.5
+  seed: 7                  # 고정 — 다시 만들어도 같은 배치
+  colors:
+    - [0.78, 0.78, 0.80]
+    - [0.12, 0.12, 0.13]
+    - [0.55, 0.07, 0.07]
+    - [0.12, 0.22, 0.45]
+    - [0.92, 0.92, 0.92]
+
+buildings:                 # 방위별 경관 (수행계획서 2.1). 높이는 추정 — 실측표 층수로 교체
+  - {name: N_IT1Hall,  x: [-44.0, 33.0], y: [37.0, 57.0],   h: 18.0, look: wall_white}
+  - {name: E_AnimalLab, x: [52.0, 72.0], y: [5.0, 30.0],    h: 12.0, look: glass}
+  - {name: SE_Brick,   x: [30.0, 70.0],  y: [-45.0, -15.0], h: 15.0, look: brick}
+
+slopes:
+  west:  {x_from: -11.5, x_to: -40.0, y: [-20.0, 40.0], deg: 8.0, look: grass}    # 서쪽 경사 잔디밭
+  south: {y_from: -15.0, y_to: -45.0, x: [-3.0, 3.0],   deg: 5.0, look: asphalt}  # 남쪽 오르막 출구
+
+lights:
+  dome_intensity: 1000.0   # 기본은 흐린 날 — 돔 비중을 크게
+  sun_intensity: 1500.0
+  sun_elevation_deg: 35.0
+  sun_azimuth_deg: 200.0   # 북 = 0, 시계 방향
+
+robot:
+  asset: https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Samples/ROS2/Robots/Nova_Carter_ROS.usd
+  name: Nova_Carter_ROS    # 평가 스크립트가 순간이동할 prim = /World/Nova_Carter_ROS
+  start: {x: -0.3, y: 2.0, yaw_deg: 97.3}   # straight 시나리오 시작점 (서쪽 변, 북쪽으로)
+  chase_cam: {back: 3.5, up: 1.8, ahead: 4.0, down: 1.2}   # 운전자용 3인칭 — 기록에는 안 씀

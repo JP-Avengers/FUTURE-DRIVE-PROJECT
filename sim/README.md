@@ -53,3 +53,19 @@ OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/check_ros2_bridge
 ```
 
 GPU 0 고정은 스크립트 안의 `active_gpu=0`·`multi_gpu=False`로 합니다. **`CUDA_VISIBLE_DEVICES`는 걸지 마세요** — 종료 시 abort 가 납니다(9.27 실측).
+
+## Proxy 씬
+
+수행계획서 그림 1의 루프(IT대학 1호관 남측, 약 119 m)를 박스와 평면으로 흉내 낸 대역 씬입니다. 캠퍼스 Digital Twin 이 나오는 11.16 까지 씁니다.
+
+```bash
+$CD1/envs/isaacsim_env/bin/python sim/build_proxy_scene.py      # params.yaml → scenes/proxy/*.usda (몇 초, Isaac Sim 불필요)
+# 헤드리스로 열어 로봇·토픽 확인 — 위 Bridge 검증처럼 시스템 ROS 를 먼저 source 한 셸에서
+OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/check_proxy_scene.py 25   # 끝에 "OK"
+```
+
+- **치수는 `scenes/proxy/params.yaml` 만 고칩니다.** `proxy_parking`(루트)·`world`·`env_proxy`·`background`·`robot` 레이어는 생성물이라 손으로 고치지 않습니다. `sensors`·`ros` 는 GUI 로 고치는 레이어라 스크립트가 덮어쓰지 않습니다.
+- 캠퍼스 씬으로 바꿀 때는 `env_proxy` 자리만 C 의 USD 로 바뀌고, 나머지 레이어는 그대로 씁니다.
+- 좌표: 원점 = 루프 남서 꼭짓점 노면, +X 동 · +Y 북 · +Z 위(ENU), m.
+- v0 치수는 그림 1 지도를 축척으로 잰 추정치(±1~2 m)입니다. A 의 기준 치수 실측표가 오면 바꿉니다.
+- 로봇은 NVIDIA 에셋 서버의 `Isaac/Samples/ROS2/Robots/Nova_Carter_ROS.usd`(2026-06-03 수정본)를 참조합니다. 인터넷 연결이 필요합니다.

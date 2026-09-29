@@ -1,0 +1,208 @@
+#usda 1.0
+(
+    customLayerData = {
+        string generated_by = "sim/build_proxy_scene.py"
+        string params = "sim/scenes/proxy/params.yaml"
+        string proxy_version = "v0"
+    }
+    doc = "sim/build_proxy_scene.py 가 만든 레이어 — 손으로 고치지 말고 params.yaml 을 고쳐 다시 만들 것"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def PhysicsScene "PhysicsScene"
+    {
+        vector3f physics:gravityDirection = (0, 0, -1)
+        float physics:gravityMagnitude = 9.81
+    }
+
+    def Xform "Lights"
+    {
+        def DomeLight "Dome"
+        {
+            float inputs:intensity = 1000
+        }
+
+        def DistantLight "Sun"
+        {
+            float inputs:angle = 1
+            float inputs:intensity = 1500
+            matrix4d xformOp:transform = ( (0.9396926207859084, -0.3420201433256687, -2.7755575615628914e-17, 0), (0.19617469496901105, 0.5389855446957562, 0.8191520442889919, 0), (-0.2801664995932355, -0.7697511313200573, 0.573576436351046, 0), (-0.2801664995932355, -0.7697511313200572, 0.5735764363510462, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+        }
+    }
+
+    def Scope "Looks"
+    {
+        def Material "asphalt"
+        {
+            token outputs:surface.connect = </World/Looks/asphalt/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.18, 0.18, 0.19)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.9
+                token outputs:surface
+            }
+        }
+
+        def Material "line_white"
+        {
+            token outputs:surface.connect = </World/Looks/line_white/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.92, 0.92, 0.9)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.7
+                token outputs:surface
+            }
+        }
+
+        def Material "island"
+        {
+            token outputs:surface.connect = </World/Looks/island/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.5, 0.5, 0.48)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.9
+                token outputs:surface
+            }
+        }
+
+        def Material "wall_white"
+        {
+            token outputs:surface.connect = </World/Looks/wall_white/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.85, 0.85, 0.82)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+
+        def Material "glass"
+        {
+            token outputs:surface.connect = </World/Looks/glass/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.32, 0.46, 0.56)
+                float inputs:metallic = 0.4
+                float inputs:roughness = 0.15
+                token outputs:surface
+            }
+        }
+
+        def Material "brick"
+        {
+            token outputs:surface.connect = </World/Looks/brick/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.55, 0.27, 0.2)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.9
+                token outputs:surface
+            }
+        }
+
+        def Material "grass"
+        {
+            token outputs:surface.connect = </World/Looks/grass/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.24, 0.38, 0.17)
+                float inputs:metallic = 0
+                float inputs:roughness = 1
+                token outputs:surface
+            }
+        }
+
+        def Material "car_0"
+        {
+            token outputs:surface.connect = </World/Looks/car_0/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.78, 0.78, 0.8)
+                float inputs:metallic = 0.3
+                float inputs:roughness = 0.35
+                token outputs:surface
+            }
+        }
+
+        def Material "car_1"
+        {
+            token outputs:surface.connect = </World/Looks/car_1/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.12, 0.12, 0.13)
+                float inputs:metallic = 0.3
+                float inputs:roughness = 0.35
+                token outputs:surface
+            }
+        }
+
+        def Material "car_2"
+        {
+            token outputs:surface.connect = </World/Looks/car_2/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.55, 0.07, 0.07)
+                float inputs:metallic = 0.3
+                float inputs:roughness = 0.35
+                token outputs:surface
+            }
+        }
+
+        def Material "car_3"
+        {
+            token outputs:surface.connect = </World/Looks/car_3/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.12, 0.22, 0.45)
+                float inputs:metallic = 0.3
+                float inputs:roughness = 0.35
+                token outputs:surface
+            }
+        }
+
+        def Material "car_4"
+        {
+            token outputs:surface.connect = </World/Looks/car_4/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.92, 0.92, 0.92)
+                float inputs:metallic = 0.3
+                float inputs:roughness = 0.35
+                token outputs:surface
+            }
+        }
+    }
+}
+
