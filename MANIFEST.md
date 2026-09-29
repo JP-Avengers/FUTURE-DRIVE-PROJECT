@@ -24,6 +24,7 @@ du -sh data/usd/proxy_v0.1
 
 | 날짜 | 구분 | 이름 | 버전 | 경로 (`$CD1` 기준) | 크기 | sha256 (12) | 출처 | 담당 | 비고 |
 |---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | |
+| 9.29 | `teacher` | `proxy_sample` | v0.1 | `data/teacher/proxy_sample_v0.1/` | 366M | 0ea2043fa2ea | `Proxy 씬 params v0 · 레포 9d4939f` | D | `E 기록기 개발용 형식 샘플 — 스크립트 주행(사람 조작 아님), /route_command 는 0 고정 더미, --use-sim-time` |
+| 9.29 | `teacher` | `warehouse_sample` | v0.1 | `data/teacher/warehouse_sample_v0.1/` | 1.3G | 87710e6a407f | `Isaac 6.0 carter_warehouse_navigation.usd(NVIDIA 샘플) · lidar_wander` | D | `X-Mobility 오프라인 추론 시험용 — 교사 데이터 아님, Hawk 왼쪽 1920×1200 원본` |
 
 **구분** — `usd` 씬·메쉬 · `teacher` 교사 주행 원본 로그 · `dataset` 학습용 HDF5 · `checkpoint` 모델 가중치 · `eval` 평가 결과 · `raw` 센서 원본(rosbag)
