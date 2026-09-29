@@ -27,17 +27,19 @@
 
 | 토픽 | 타입 | 누가 | frame_id | 주기 | 값 |
 | --- | --- | --- | --- | --- | --- |
-| `/front_stereo_camera/left/image_raw` | `sensor_msgs/Image` | 시뮬 | `front_stereo_camera_left_optical` | 목표 20 Hz · 최소 10 Hz | **640×480** `rgb8` (수행계획서 2.3) |
-| `/front_stereo_camera/left/camera_info` | `sensor_msgs/CameraInfo` | 시뮬 | 같음 | 영상과 같음 | `plumb_bob` |
+| `/front_camera/image_raw` | `sensor_msgs/Image` | 시뮬 | `front_camera_optical` | 목표 20 Hz · 최소 10 Hz (실측 약 14 Hz) | **640×480** `rgb8` (수행계획서 2.3) |
+| `/front_camera/camera_info` | `sensor_msgs/CameraInfo` | 시뮬 | 같음 | 영상과 같음 | `plumb_bob` |
 | `/chassis/odom` | `nav_msgs/Odometry` | 시뮬 | `odom` → `base_link` | 약 55 Hz | **현재 속도** = `twist.twist.linear.x`(v) · `twist.twist.angular.z`(ω) |
 | `/chassis/imu` | `sensor_msgs/Imu` | 시뮬 | `chassis_imu` | 약 55 Hz | |
 | `/tf` | `tf2_msgs/TFMessage` | 시뮬 | `odom` → `base_link` → 센서 | | |
-| `/clock` | `rosgraph_msgs/Clock` | 시뮬 | — | 시뮬 스텝마다 | 10.1 추가 예정 |
+| `/clock` | `rosgraph_msgs/Clock` | 시뮬 | — | 시뮬 스텝마다 (실측 약 74 Hz) | |
 | `/cmd_vel` | `geometry_msgs/Twist` | 교사 리그 **또는** 추론 노드 — **발행자는 항상 1개** | — | 10 Hz 이상 | `linear.x` = v (m/s) · `angular.z` = ω (rad/s). 나머지 성분은 0 |
 | `/route_command` | `std_msgs/UInt8` | 교사 리그 · 평가 스크립트 | — | 10 Hz | **0 직진 · 1 좌회전 · 2 우회전** — 제안, E 확정 |
 | `/front_3d_lidar/lidar_points` | `sensor_msgs/PointCloud2` | 시뮬 | `front_3d_lidar` | 약 6.5 Hz | 수집·평가 설정에서는 끔 |
 
-- **주기는 9.29 서버 헤드리스 실측(실제 시간 기준)입니다.** 카메라는 아직 에셋 기본 해상도 1920×1200이고, 640×480으로 바꾼 뒤 다시 잽니다.
+- **주기는 9.29 서버 헤드리스 실측(실제 시간 기준)입니다.** 이때 RTF(시뮬 시간 ÷ 실제 시간)는 0.90이었습니다. 사람이 모는 모니터 모드에서는 다시 잽니다.
+- **E2E 카메라는 전용 핀홀 카메라입니다.** Hawk 왼쪽 렌즈 자리(바닥에서 약 0.35 m), 수평 화각 90°(Hawk 와 같음), 4:3. 에셋의 Hawk 스테레오는 어안 투영·16:10 이라 640×480 으로 줄이면 왜곡되고 눌려서 쓰지 않고, 렌더도 끕니다(9.29 화면 비교). 이 카메라의 frame 은 `/tf` 에 없습니다 — 필요해지면 추가합니다.
+- **확인 필요 — `/chassis/odom` 축 방향**: 9.29 직진 시험에서 물리 엔진 기준으로는 북쪽으로 8.8 m 갔는데, odom 은 (+8.79, +2.33) m 로 나왔습니다. odom 좌표가 시작 자세 기준인지, 평가 스크립트에서 `map` 으로 바꿀 때 어떻게 계산할지 확인한 뒤 적습니다.
 - **속도 상한 제안**: 0 ≤ v ≤ 0.8 m/s, |ω| ≤ 1.0 rad/s. 교사 리그 실행 파일에 고정합니다(수행계획서 2.3 "속도 상한은 실행 파일 하나로 고정"). 0.8 m/s 는 Nova Carter 공식 Nav2 설정의 최대 속도와 같습니다.
 - **발행자 1개 규칙**: 새 노드를 띄우기 전에 `ros2 topic info /cmd_vel` 의 `Publisher count` 가 0 인지 봅니다.
 - 교사 데이터 기록(10 fps)은 영상과 `/cmd_vel` 의 (v, ω)를 시뮬 시간으로 맞춰 샘플링합니다 — 기록 방식은 E 가 [`d2e_teacher.md`](d2e_teacher.md)에 정합니다.
@@ -59,3 +61,4 @@
 | 날짜 | 변경 | 동의 |
 | --- | --- | --- |
 | 9.29 | 초안 — Proxy 씬 실측 frame_id · 주기 반영 | |
+| 9.29 | E2E 카메라를 전용 핀홀 `/front_camera/*` 로 변경, `/clock` 추가, 실측 주기·RTF | |
