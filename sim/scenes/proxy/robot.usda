@@ -20,12 +20,15 @@ def Xform "World"
         double3 xformOp:translate = (-0.3, 2, 0)
         token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
 
-        def Camera "ChaseCam"
+        over "chassis_link"
         {
-            float2 clippingRange = (0.1, 500)
-            float focalLength = 18
-            matrix4d xformOp:transform = ( (0, -1, 0, 0), (0.1579905011066728, 0, 0.9874406319167051, 0), (-0.9874406319167051, 0, 0.1579905011066728, 0), (-3.4999999999999996, -0, 1.7999999999999998, 1) )
-            token[] xformOpOrder = ["xformOp:transform"]
+            def Camera "ChaseCam"
+            {
+                float2 clippingRange = (0.1, 500)
+                float focalLength = 18
+                matrix4d xformOp:transform = ( (0, -1, 0, 0), (0.1579905011066728, 0, 0.9874406319167051, 0), (-0.9874406319167051, 0, 0.1579905011066728, 0), (-3.4999999999999996, -0, 1.7999999999999998, 1) )
+                token[] xformOpOrder = ["xformOp:transform"]
+            }
         }
     }
 }

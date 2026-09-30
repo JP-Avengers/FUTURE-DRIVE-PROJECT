@@ -323,7 +323,9 @@ def build_robot(P):
     Sdf.AttributeSpec(robot, "xformOpOrder", Sdf.ValueTypeNames.TokenArray).default = \
         ["xformOp:translate", "xformOp:rotateZ"]
     c = R["chase_cam"]  # 로봇 기준 좌표(+X 앞)
-    cam = Sdf.PrimSpec(robot, "ChaseCam", Sdf.SpecifierDef, "Camera")
+    # 물리로 움직이는 것은 chassis_link 다. 루트 Xform 아래에 두면 카메라가 출발점에 남는다(9.30 확인) → chassis_link 아래에
+    chassis = Sdf.PrimSpec(robot, "chassis_link", Sdf.SpecifierOver)
+    cam = Sdf.PrimSpec(chassis, "ChaseCam", Sdf.SpecifierDef, "Camera")
     Sdf.AttributeSpec(cam, "xformOp:transform", Sdf.ValueTypeNames.Matrix4d).default = \
         look_at_matrix((-c["back"], 0.0, c["up"]), (c["ahead"], 0.0, c["up"] - c["down"]))
     Sdf.AttributeSpec(cam, "xformOpOrder", Sdf.ValueTypeNames.TokenArray).default = ["xformOp:transform"]
