@@ -71,3 +71,20 @@ OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/check_proxy_scene
 - 좌표: 원점 = 루프 남서 꼭짓점 노면, +X 동 · +Y 북 · +Z 위(ENU), m.
 - v0 치수는 그림 1 지도를 축척으로 잰 추정치(±1~2 m)입니다. A 의 기준 치수 실측표가 오면 바꿉니다.
 - 로봇은 NVIDIA 에셋 서버의 `Isaac/Samples/ROS2/Robots/Nova_Carter_ROS.usd`(2026-06-03 수정본)를 참조합니다. 인터넷 연결이 필요합니다.
+
+### 실행 — `sim/run_proxy.sh`
+
+세 모드가 같은 설정으로 뜹니다 — GPU 0 고정, 시스템 Jazzy 먼저 source, `ROS_DOMAIN_ID=42`, 3D LiDAR 끔, 씬 열고 Play. LiDAR 끄기는 세션 레이어에만 쓰므로 GUI 에서 저장해도 씬 파일에는 남지 않습니다. GPU 에 계산 프로세스가 하나라도 있으면 띄우지 않습니다(공용 서버).
+
+| 모드 | 어디서 | 명령 |
+| --- | --- | --- |
+| 모니터 — 1차 수집 | 서버 앞 데스크톱 세션의 터미널. 모니터는 GPU 1 의 DP 포트에 꽂고, 로그인은 "사용자 전환"으로(다른 사람 세션을 로그아웃하지 말 것) | `sim/run_proxy.sh monitor` |
+| 스트리밍 | ssh → `tmux new -s fd_proxy` 안에서 | `sim/run_proxy.sh stream` |
+| 헤드리스 | ssh → `tmux new -s fd_proxy` 안에서 | `sim/run_proxy.sh headless [초]` — 초를 안 주면 `Ctrl+C` 까지 |
+| 점검 | 씬이 Play 된 뒤 다른 터미널 | `sim/run_proxy.sh check [초]` — 토픽 · `/cmd_vel` · RTF · 주기를 재서 항목별 OK/NG |
+| 키보드 조작 | 다른 터미널 | `sim/run_proxy.sh teleop` — `/cmd_vel` 발행자가 0 일 때만 뜸 |
+
+- **끄기**: 띄운 터미널에서 `Ctrl+C`(tmux 밖에서는 `tmux send-keys -t fd_proxy C-c`). 끝에 `[Error]` 줄 수와 GPU 상태를 찍습니다. 로그는 `logs/run_proxy/<모드>_<시각>.log`.
+- **모니터 · 스트리밍 화면**: 뷰포트가 로봇 뒤 3인칭 카메라(`ChaseCam`)로 바뀝니다 — 운전자용이고 기록에는 안 씁니다. 창의 Stop → Play 로 출발점에 돌아갑니다.
+- **환경변수**: `FD_LIDAR=1` LiDAR 켬(점검도 같은 값으로) · `FD_DOMAIN=43` 시험용 도메인 · `FD_VIEW_RES=1280x720` 뷰포트 해상도(모니터 · 스트리밍 — RTF 가 낮을 때 줄임).
+- `run_streaming.sh` 는 씬 없이 빈 앱을 스트리밍할 때 씁니다.
