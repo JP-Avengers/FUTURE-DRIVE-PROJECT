@@ -15,7 +15,7 @@ def Xform "World"
     def Xform "Env"
     {
         def Cube "Ground" (
-            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsCollisionAPI"]
+            prepend apiSchemas = ["MaterialBindingAPI"]
         )
         {
             rel material:binding = </World/Looks/asphalt>
@@ -23,6 +23,16 @@ def Xform "World"
             float3 xformOp:scale = (120, 110, 0.2)
             double3 xformOp:translate = (15, 5, -0.1)
             uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        }
+
+        def Plane "GroundPlane" (
+            prepend apiSchemas = ["PhysicsCollisionAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double length = 110
+            uniform token purpose = "guide"
+            double width = 120
         }
 
         def Mesh "Island" (

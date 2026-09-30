@@ -5,8 +5,8 @@ Isaac Sim 을 띄우지 않고 pxr 만 쓴다(몇 초). 레포 루트(= $CD1)에
 
 만드는 레이어(실행할 때마다 새로 씀 — 손으로 고치지 말 것):
     proxy_parking.usda  루트. 아래를 subLayers 로 묶는다. 이 파일을 연다
-    world.usda          물리 장면 · 조명 · 재질(/World/Looks)
-    env_proxy.usda      노면 · 중앙 섬 · 주차칸 선 · 주차 차량   ← 캠퍼스 씬에서는 이 레이어만 바뀜
+    world.usda          물리 장면(PhysX 설정은 NVIDIA 샘플과 같게) · 조명 · 재질(/World/Looks)
+    env_proxy.usda      노면(화면용 상자 + 충돌용 무한 평면) · 중앙 섬 · 주차칸 선 · 주차 차량   ← 캠퍼스 씬에서는 이 레이어만 바뀜
     background.usda     방위별 건물 박스 · 경사면 (캠퍼스 씬과 공용)
     robot.usda          Nova_Carter_ROS.usd 참조 · 시작 자세 · 운전자용 3인칭 카메라
 GUI 로 고치는 레이어(sensors.usda · ros.usda)는 없을 때 빈 틀만 만들고 덮어쓰지 않는다.
@@ -29,6 +29,15 @@ SUBLAYERS = ["sensors.usda", "ros.usda", "robot.usda", "env_proxy.usda", "backgr
 # 시간 단위 — NVIDIA 샘플 씬(carter_warehouse_navigation.usd)과 같은 60. 쓰지 않으면 USD 기본값 24 로 열려
 # 타임라인(24 Hz)과 물리(60 Hz)가 어긋나고, 차동 제어기가 deltaTime 0 스텝을 건너뛴다(9.29: 경고 1,559회, odom 84 Hz).
 TIME_CODES_PER_SECOND = 60
+# PhysX 장면 설정 — NVIDIA 샘플 씬과 같게. 비워 두면 기본값(GPU 물리)으로 돌아 직진 출발 때 로봇이 회차마다
+# 다르게 흔들렸다(9.30: 빈 바닥에서도 56~79 %, 이 설정으로 0 %). pxr 만으로는 PhysxSchema 를 못 불러서 속성을 직접 쓴다.
+PHYSX_SCENE = {  # 이름: (값, 타입, uniform 여부)
+    "physxScene:solverType": ("TGS", Sdf.ValueTypeNames.Token, True),
+    "physxScene:enableGPUDynamics": (False, Sdf.ValueTypeNames.Bool, False),
+    "physxScene:enableStabilization": (True, Sdf.ValueTypeNames.Bool, False),
+    "physxScene:enableCCD": (True, Sdf.ValueTypeNames.Bool, False),
+    "physxScene:broadphaseType": ("MBP", Sdf.ValueTypeNames.Token, True),
+}
 
 LOOKS = {  # 이름: (색 RGB, 거칠기, 금속성). 텍스처는 도메인 랜덤화 단계에서
     "asphalt": ((0.18, 0.18, 0.19), 0.9, 0.0),
@@ -135,6 +144,11 @@ def build_world(P):
     scene = UsdPhysics.Scene.Define(st, "/World/PhysicsScene")
     scene.CreateGravityDirectionAttr(Gf.Vec3f(0, 0, -1))
     scene.CreateGravityMagnitudeAttr(9.81)
+    prim = scene.GetPrim()
+    prim.AddAppliedSchema("PhysxSceneAPI")
+    for name, (value, vtype, uniform) in PHYSX_SCENE.items():
+        prim.CreateAttribute(name, vtype, custom=False,
+                             variability=Sdf.VariabilityUniform if uniform else Sdf.VariabilityVarying).Set(value)
 
     L = P["lights"]
     UsdGeom.Xform.Define(st, "/World/Lights")
@@ -188,8 +202,16 @@ def build_env(P):
     rng = random.Random(P["cars"]["seed"])
     stats = {"slots": 0, "cars": 0, "lines": 0}
     g = P["ground"]
+    # 노면 상자는 화면용이고 충돌은 무한 평면이 맡는다. 큰 상자를 충돌체로 쓰면 로봇이 상자 중심에서 멀 때
+    # 직진 출발이 흔들렸다(9.30: 중심에서 15 m 넘게 떨어지면 8~61 %, 평면으로 바꾸면 0 %).
     box(st, "/World/Env/Ground", ((g["x_min"] + g["x_max"]) / 2, (g["y_min"] + g["y_max"]) / 2, -0.1),
-        (g["x_max"] - g["x_min"], g["y_max"] - g["y_min"], 0.2), "asphalt")
+        (g["x_max"] - g["x_min"], g["y_max"] - g["y_min"], 0.2), "asphalt", collide=False)
+    plane = UsdGeom.Plane.Define(st, "/World/Env/GroundPlane")  # z = 0 노면 — 물리에서는 무한 평면
+    plane.CreateAxisAttr(UsdGeom.Tokens.z)
+    plane.CreateWidthAttr(g["x_max"] - g["x_min"])
+    plane.CreateLengthAttr(g["y_max"] - g["y_min"])
+    plane.CreatePurposeAttr(UsdGeom.Tokens.guide)  # 렌더에는 안 보임
+    UsdPhysics.CollisionAPI.Apply(plane.GetPrim())
 
     loop = [(v["x"], v["y"]) for v in P["loop"]]
     names = [v["name"] for v in P["loop"]]

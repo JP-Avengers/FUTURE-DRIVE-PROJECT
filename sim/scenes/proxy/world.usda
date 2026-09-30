@@ -12,10 +12,17 @@
 
 def Xform "World"
 {
-    def PhysicsScene "PhysicsScene"
+    def PhysicsScene "PhysicsScene" (
+        prepend apiSchemas = ["PhysxSceneAPI"]
+    )
     {
         vector3f physics:gravityDirection = (0, 0, -1)
         float physics:gravityMagnitude = 9.81
+        uniform token physxScene:broadphaseType = "MBP"
+        bool physxScene:enableCCD = 1
+        bool physxScene:enableGPUDynamics = 0
+        bool physxScene:enableStabilization = 1
+        uniform token physxScene:solverType = "TGS"
     }
 
     def Xform "Lights"
