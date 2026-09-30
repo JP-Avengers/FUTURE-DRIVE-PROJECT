@@ -1,0 +1,22 @@
+# 루프 경로 파일 초안 (평가 시나리오 형식 초안과 같은 스타일) — 확정 전, E와 합의 필요
+# 근거: logs/loop_drive/cw_v05 (합격 run — 완주, 최대 이탈 0.44 m). 회전 끝은 실측(pure pursuit v0.5, lookahead 2.0).
+name: loop_cw
+version: v0-draft             # 확정 전 — E와 합의
+scene: proxy_parking
+direction: cw
+start: {x: -0.3, y: 2.0, yaw_deg: 97.3, s: 2.0}
+length_m: 118.97
+ref_path: [[0.0, 0.0], [-3.29, 25.81], [40.65, 25.12], [22.92, 7.79], [0.0, 0.0]]   # 닫힌 중심선
+vertices:
+  - {name: NW,   s: 26.02, turn_deg: -98.2}    # 회전 끝 s 28.0 (꼭짓점 뒤 1.5 m)
+  - {name: NE,   s: 69.96, turn_deg: -134.8}   # 회전 끝 s 72.0 (꼭짓점 뒤 1.7 m) — 가장 급함
+  - {name: BEND, s: 94.76, turn_deg: -25.6}    # 회전 끝 s 95.0 (꼭짓점 뒤 0.2 m)
+  - {name: SW,   s: 118.97, turn_deg: -101.5}  # 회전 끝 s 121.03 = 다음 바퀴 s 2.06 (꼭짓점 뒤 2.1 m)
+commands:                     # /route_command 제안 값: 0 직진 · 1 좌회전 · 2 우회전 (topics.md)
+  - {from_s: 0.0,   to_s: 21.0,   cmd: straight}   # 시작(s 2.0)은 이미 정렬됨. 바퀴를 이어 돌 때는 s 0~2.5 가 SW 회전 끝(right)
+  - {from_s: 21.0,  to_s: 28.0,   cmd: right}      # NW: 꼭짓점 앞 5 m ~ 회전 끝
+  - {from_s: 28.0,  to_s: 65.0,   cmd: straight}
+  - {from_s: 65.0,  to_s: 72.0,   cmd: right}      # NE
+  - {from_s: 72.0,  to_s: 114.0,  cmd: straight}   # BEND 포함: 26° 꺾임 — 우회전(CCW는 좌회전)으로 할지 E와 확정. 측정한 회전 끝 s 95.0 (BEND 앞 5 m = 89.8)
+  - {from_s: 114.0, to_s: 118.97, cmd: right}      # SW: 꼭짓점 앞 5 m ~ 끝(바퀴 이음 뒤 s 2.5 까지 이어짐)
+source: "logs/loop_drive/cw_v05 — pure pursuit v 0.5, lookahead 2.0, 회전 끝 = 꼭짓점 뒤 heading 오차 < 10° 첫 지점(0.5 m 올림)"
