@@ -1,7 +1,7 @@
 """Proxy 씬을 열고 Play — sim/run_proxy.sh 가 부른다(직접 부를 일은 없음).
 
-- monitor · stream: Kit 앱(`isaacsim.exp.full` / `.streaming`)의 `--exec` 로 앱 안에서 돈다. 씬을 비동기로 열고,
-  뷰포트를 3인칭 카메라(ChaseCam)로 바꾼 뒤 Play. 창의 Stop → Play 로 출발점에 돌아간다.
+- stream: 스트리밍 앱(`isaacsim.exp.full.streaming`)의 `--exec` 로 앱 안에서 돈다. 씬을 비동기로 열고,
+  뷰포트를 3인칭 카메라(ChaseCam)로 바꾼 뒤 Play. 화면의 Stop → Play 로 출발점에 돌아간다.
 - headless: `envs/isaacsim_env/bin/python` 으로 돈다. SimulationApp 으로 열고 Play, FD_DURATION 초(0 이면 Ctrl+C 까지).
   Ctrl+C 는 Kit 가 받아 바로 끝낸다(종료 코드 0, 9.30) — PROXY_STOPPED 는 FD_DURATION 이 끝났을 때만 찍힌다.
 - 공통: FD_LIDAR=1 이 아니면 3D LiDAR 렌더를 끈다(규격서 "수집·평가 설정에서는 끔"). 바꾸는 것은 세션 레이어뿐이라

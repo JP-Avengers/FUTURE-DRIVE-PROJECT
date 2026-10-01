@@ -74,17 +74,17 @@ OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/check_proxy_scene
 
 ### 실행 — `sim/run_proxy.sh`
 
-세 모드가 같은 설정으로 뜹니다 — GPU 0 고정, 시스템 Jazzy 먼저 source, `ROS_DOMAIN_ID=42`, 3D LiDAR 끔, 씬 열고 Play. LiDAR 끄기는 세션 레이어에만 쓰므로 GUI 에서 저장해도 씬 파일에는 남지 않습니다. GPU 에 계산 프로세스가 하나라도 있으면 띄우지 않습니다(공용 서버).
+스트리밍 · 헤드리스가 같은 설정으로 뜹니다 — GPU 0 고정, 시스템 Jazzy 먼저 source, `ROS_DOMAIN_ID=42`, 3D LiDAR 끔, 씬 열고 Play. LiDAR 끄기는 세션 레이어에만 쓰므로 GUI 에서 저장해도 씬 파일에는 남지 않습니다. GPU 에 계산 프로세스가 하나라도 있으면 띄우지 않습니다(공용 서버).
 
 | 모드 | 어디서 | 명령 |
 | --- | --- | --- |
-| 모니터 — 1차 수집 | 서버 앞 데스크톱 세션의 터미널. 모니터는 GPU 1 의 DP 포트에 꽂고, 로그인은 "사용자 전환"으로(다른 사람 세션을 로그아웃하지 말 것) | `sim/run_proxy.sh monitor` |
-| 스트리밍 | ssh → `tmux new -s fd_proxy` 안에서 | `sim/run_proxy.sh stream` |
+| 스트리밍 — 1차 수집 | ssh → `tmux new -s fd_proxy` 안에서. 화면은 Mac 의 스트리밍 클라이언트(Server 칸에 서버 Tailscale IP) | `sim/run_proxy.sh stream` |
 | 헤드리스 | ssh → `tmux new -s fd_proxy` 안에서 | `sim/run_proxy.sh headless [초]` — 초를 안 주면 `Ctrl+C` 까지 |
 | 점검 | 씬이 Play 된 뒤 다른 터미널 | `sim/run_proxy.sh check [초]` — 토픽 · `/cmd_vel` · RTF · 주기를 재서 항목별 OK/NG |
 | 키보드 조작 | 다른 터미널 | `sim/run_proxy.sh teleop` — `/cmd_vel` 발행자가 0 일 때만 뜸 |
 
 - **끄기**: 띄운 터미널에서 `Ctrl+C`(tmux 밖에서는 `tmux send-keys -t fd_proxy C-c`). 끝에 `[Error]` 줄 수와 GPU 상태를 찍습니다. 로그는 `logs/run_proxy/<모드>_<시각>.log`.
-- **모니터 · 스트리밍 화면**: 뷰포트가 로봇 뒤 3인칭 카메라(`ChaseCam`)로 바뀝니다 — 운전자용이고 기록에는 안 씁니다. 창의 Stop → Play 로 출발점에 돌아갑니다.
-- **환경변수**: `FD_LIDAR=1` LiDAR 켬(점검도 같은 값으로) · `FD_DOMAIN=43` 시험용 도메인 · `FD_VIEW_RES=1280x720` 뷰포트 해상도(모니터 · 스트리밍 — RTF 가 낮을 때 줄임).
+- **스트리밍 화면**: 뷰포트가 로봇 뒤 3인칭 카메라(`ChaseCam`)로 바뀝니다 — 운전자용이고 기록에는 안 씁니다. 화면의 Stop → Play 로 출발점에 돌아갑니다. 조작 키는 `teleop` 을 띄운 ssh 터미널에 눌러야 합니다 — 스트리밍 화면을 클릭하면 키가 Isaac Sim 으로 갑니다.
+- **서버 앞 모니터로는 띄우지 않습니다**(10.1 확인). 데스크톱 화면이 GPU 1 에만 나오는데 렌더를 GPU 0 에 고정하면 창을 못 그립니다(`createSwapchain failed`). `sim/run_proxy.sh monitor` 는 안내만 찍고 끝납니다.
+- **환경변수**: `FD_LIDAR=1` LiDAR 켬(점검도 같은 값으로) · `FD_DOMAIN=43` 시험용 도메인 · `FD_VIEW_RES=1280x720` 뷰포트 해상도(스트리밍 — RTF 가 낮을 때 줄임).
 - `run_streaming.sh` 는 씬 없이 빈 앱을 스트리밍할 때 씁니다.

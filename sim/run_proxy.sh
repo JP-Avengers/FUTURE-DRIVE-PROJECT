@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Proxy 씬 실행 — 세 모드가 같은 설정으로 뜬다: GPU 0 고정 · 시스템 Jazzy 먼저 source · ROS_DOMAIN_ID=42 ·
+# Proxy 씬 실행 — 같은 설정으로 뜬다: GPU 0 고정 · 시스템 Jazzy 먼저 source · ROS_DOMAIN_ID=42 ·
 # 3D LiDAR 끔(규격서 "수집·평가 설정에서는 끔") · 씬 열고 Play. 씬 파일은 바꾸지 않는다(세션 레이어만).
 #
-#   sim/run_proxy.sh monitor         서버 앞 모니터 — 데스크톱 세션의 터미널에서 (창 앱 isaacsim.exp.full)
-#   sim/run_proxy.sh stream [IP]     원격 스트리밍 — tmux 안에서 (기본 IP = 서버 Tailscale)
+#   sim/run_proxy.sh stream [IP]     스트리밍 — 1차 수집. tmux 안에서, 화면은 Mac 의 스트리밍 클라이언트(기본 IP = 서버 Tailscale)
 #   sim/run_proxy.sh headless [초]   헤드리스 — tmux 안에서 (초를 안 주면 Ctrl+C 까지)
 #   sim/run_proxy.sh check [초]      점검 — 씬이 Play 된 뒤 다른 터미널에서 (토픽 · /cmd_vel · RTF · 주기, 기본 10초)
 #   sim/run_proxy.sh teleop          키보드 조작 — /cmd_vel 발행자가 0 일 때만 teleop_twist_keyboard 를 띄운다
+#   sim/run_proxy.sh monitor         이 서버에서는 못 씀(10.1) — 화면이 GPU 1 에만 나와 GPU 0 렌더 창을 못 그린다
 #
 # 끄기: 띄운 터미널에서 Ctrl+C (tmux 는 tmux send-keys -t <세션> C-c). 끝에 [Error] 줄 수와 GPU 상태를 찍는다.
-# 환경변수: FD_LIDAR=1 LiDAR 켬 · FD_DOMAIN=43 시험용 도메인 · FD_VIEW_RES=1280x720 뷰포트 해상도(monitor · stream)
+# 환경변수: FD_LIDAR=1 LiDAR 켬 · FD_DOMAIN=43 시험용 도메인 · FD_VIEW_RES=1280x720 뷰포트 해상도(stream)
 # 로그: logs/run_proxy/<모드>_<월일_시분초>.log
 set -euo pipefail
 CD1=${CD1:-$HOME/Capstone_Design_1}
 MODE=${1:-}
 shift || true
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 # ROS 2 Bridge 는 Isaac Sim 기동 전에 시스템 Jazzy 를 같은 셸에서 source 해야 잡힌다(9.27).
 # setup.bash 가 미정의 변수를 참조하므로 source 동안만 -u 를 끈다
@@ -36,7 +36,13 @@ case $MODE in
     if [ "${pub:-0}" != "0" ]; then echo "/cmd_vel 발행자가 이미 ${pub}개 — 발행자는 항상 1개(규격서). 먼저 그쪽을 끄세요"; exit 3; fi
     # speed · turn 은 시작값. 키 q/z(둘 다) · w/x(속도) · e/c(회전)로 10 %씩 바뀐다 — 상한(v 0.8 · ω 1.0)을 넘기지 말 것
     exec ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p speed:=0.5 -p turn:=0.5 ;;
-  monitor|stream|headless) ;;
+  monitor)
+    # 10.1 확인: 데스크톱 화면은 GPU 1 에만 나오는데(xorg.conf), 렌더를 GPU 0 에 고정한 창은 화면에 못 그린다
+    # (createSwapchain failed → [Error] 700여 줄). GPU 1 렌더 · xorg 변경은 공용 서버 규칙상 하지 않는다. 예전 실행 방법은 918ca13
+    echo "monitor 모드는 이 서버에서 쓸 수 없습니다 — 화면은 GPU 1 에만 나오는데 렌더는 GPU 0 고정이라 창을 못 그립니다(10.1 확인)."
+    echo "대신: tmux 안에서 sim/run_proxy.sh stream → Mac 의 스트리밍 클라이언트로 보고, 다른 ssh 터미널에서 sim/run_proxy.sh teleop"
+    exit 2 ;;
+  stream|headless) ;;
   *) usage ;;
 esac
 
@@ -49,9 +55,6 @@ ISAAC=$CD1/envs/isaacsim_env/bin
 KIT_GPU=(--/renderer/activeGpu=0 --/renderer/multiGpu/enabled=false --/physics/cudaDevice=0)
 RUNDIR=$CD1
 case $MODE in
-  monitor)
-    if [ -z "${DISPLAY:-}" ]; then echo "DISPLAY 없음 — 서버 앞 데스크톱 세션의 터미널에서 실행하세요"; exit 2; fi
-    CMD=("$ISAAC/isaacsim" isaacsim.exp.full "${KIT_GPU[@]}" --exec "$CD1/sim/proxy_play.py") ;;
   stream)
     IP=${1:-$(tailscale ip -4 | head -1)}
     # 포트: TCP 49100(시그널링) · UDP 47998(미디어). 스트림에 인증이 없으니 공개망에 열지 말 것
