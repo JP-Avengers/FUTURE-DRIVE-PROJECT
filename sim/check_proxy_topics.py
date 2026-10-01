@@ -115,7 +115,7 @@ def main():
                      if r else "—", bool(r)))
     c = rec["clock"]
     rtf = (c.sim[-1] - c.sim[0]) / (c.wall[-1] - c.wall[0]) if len(c.sim) > 2 and c.wall[-1] > c.wall[0] else None
-    rows.append(("RTF (시뮬 ÷ 실제)", f"{rtf:.2f} — 모니터 모드 기준 {RTF_MIN} 이상" if rtf is not None else "—",
+    rows.append(("RTF (시뮬 ÷ 실제)", f"{rtf:.2f} — 사람이 몰 때 기준 {RTF_MIN} 이상" if rtf is not None else "—",
                  rtf is not None and rtf >= RTF_MIN))
     n_lidar = len(rec["lidar"].sim)
     rows.append(("3D LiDAR", f"{'켬' if want_lidar else '끔'}이 기대값 — 메시지 {n_lidar}개", (n_lidar > 0) == want_lidar))
