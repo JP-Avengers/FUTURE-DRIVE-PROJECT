@@ -57,4 +57,4 @@ robot:
   asset: https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Samples/ROS2/Robots/Nova_Carter_ROS.usd
   name: Nova_Carter_ROS    # 평가 스크립트가 순간이동할 prim = /World/Nova_Carter_ROS
   start: {x: -0.3, y: 2.0, yaw_deg: 97.3}   # straight 시나리오 시작점 (서쪽 변, 북쪽으로)
-  chase_cam: {back: 3.5, up: 1.8, ahead: 4.0, down: 1.2}   # 운전자용 3인칭 — 기록에는 안 씀
+  chase_cam: {back: 4.5, up: 2.4, ahead: 4.0, down: 2.2}   # 운전자용 3인칭 — 기록에는 안 씀. 10.1 구도 D(로봇 전체 · 주변 넓게)
