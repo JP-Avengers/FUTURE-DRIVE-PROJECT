@@ -22,6 +22,8 @@ tsdf:
   voxel: 0.01                          # m
   sdf_trunc_voxels: 4                  # sdf_trunc = voxel × 이 값
   depth_trunc: 2.0                     # m. 3.0 이면 95% 오차가 9~25 cm 로 커짐 (10.2 Lounge 실험)
+  far_depth_trunc: 3.0                 # 원거리 볼륨 (바깥 구역용). 0 이면 끔
+  far_voxel: 0.02                      # 원거리는 배경이라 거칠게 — 메모리·시간 절약
 
 cleanup:
   min_cluster_tris: 500                # 이보다 작은 떠다니는 조각 삭제
@@ -41,6 +43,15 @@ fill:                                  # 좌표 맞춘 뒤, 경량화 전에 구
 decimate:
   visual_tris: 200000                  # 시각용 (주차장 목표 500,000 이하)
   collider_tris: 20000                 # 충돌용 — 정적 배경이라 삼각형 메쉬 그대로 (approximation none)
+
+zones:                                 # 주행 구역(근거리) 밖 처리 — 없애면 근거리 메쉬만
+  near_cell_m: 0.1                     # 근거리 지도 범위 격자
+  far_tris: 80000                      # 바깥 구역(원거리 중 근거리 지도 밖) 시각용 삼각형 — 충돌에는 안 넣음
+  ground_cell_m: 0.25                  # 바닥 충돌 평면 격자
+  ground_margin_m: 1.0                 # 바닥 충돌 평면을 전체 지도보다 넓히는 거리
+  backdrop_height_m: 2.6               # 테두리 배경 벽 높이 (보이기만). 0 이면 끔. 실외는 수 m
+  backdrop_color: mean                 # mean = 옆을 향한 면들의 평균 색 | [r, g, b] (0~1)
+  boundary_height_m: 2.0               # 테두리 경계벽 (안 보이고 충돌만). 0 이면 끔
 
 visibility:                            # check_visibility.py — 주행 통로에서 보이는 구멍
   path_step: 10                        # 카메라 경로 N 개마다 한 지점

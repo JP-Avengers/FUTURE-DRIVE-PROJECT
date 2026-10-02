@@ -5,7 +5,7 @@ import numpy as np
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, Vt
 
 
-def add_mesh(stage, path, mesh, with_color=True):
+def add_mesh(stage, path, mesh, with_color=True, double_sided=False):
     """삼각형 메쉬를 UsdGeom.Mesh 로. 법선·범위를 함께 쓰고, 색은 정점 색(displayColor)으로."""
     v = np.asarray(mesh.vertices, dtype=np.float32)
     f = np.asarray(mesh.triangles, dtype=np.int32)
@@ -16,6 +16,8 @@ def add_mesh(stage, path, mesh, with_color=True):
     prim.CreateExtentAttr(Vt.Vec3fArray([Gf.Vec3f(*map(float, v.min(0))), Gf.Vec3f(*map(float, v.max(0)))]))
     # USD 기본값은 catmullClark — 렌더러가 삼각형을 곡면으로 다시 쪼갠다. 스캔 메쉬는 그대로 그려야 함
     prim.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
+    if double_sided:
+        prim.CreateDoubleSidedAttr(True)
     if not mesh.has_vertex_normals():
         mesh.compute_vertex_normals()
     prim.CreateNormalsAttr(Vt.Vec3fArray.FromNumpy(np.asarray(mesh.vertex_normals, dtype=np.float32)))
@@ -34,8 +36,12 @@ def _new_stage():
     return stage
 
 
-def write_scene(usd_dir, name, visual, collider, info=None):
-    """<name>_mesh.usdc (/<Name>/Visual, /<Name>/Collision) + <name>_scene.usda (/World/<Name> 가 payload 로 참조)."""
+def write_scene(usd_dir, name, visuals, colliders, info=None):
+    """<name>_mesh.usdc + <name>_scene.usda (/World/<Name> 가 메쉬 파일을 payload 로 참조).
+
+    visuals   : {"Visual": 메쉬, "VisualFar": …, "Backdrop": …}  — 보이는 부분 (정점 색)
+    colliders : {"Collision": 메쉬, "Boundary": …}               — 안 보이고 충돌만 (삼각형 메쉬 그대로)
+    부분마다 prim 을 따로 둬서 D 가 배경·바깥 구역만 끄고 켤 수 있다."""
     os.makedirs(usd_dir, exist_ok=True)
     prim_name = name[:1].upper() + name[1:]
     mesh_path = os.path.join(usd_dir, f"{name}_mesh.usdc")
@@ -43,12 +49,14 @@ def write_scene(usd_dir, name, visual, collider, info=None):
 
     st = _new_stage()
     st.SetDefaultPrim(UsdGeom.Xform.Define(st, f"/{prim_name}").GetPrim())
-    add_mesh(st, f"/{prim_name}/Visual", visual)
-    col = add_mesh(st, f"/{prim_name}/Collision", collider, with_color=False)
-    col.CreateVisibilityAttr(UsdGeom.Tokens.invisible)
-    UsdPhysics.CollisionAPI.Apply(col.GetPrim())
-    # 정적 배경 → PhysX 삼각형 메쉬 충돌. 볼록 분해는 움직이는 물체에만 필요
-    UsdPhysics.MeshCollisionAPI.Apply(col.GetPrim()).CreateApproximationAttr(UsdPhysics.Tokens.none)
+    for part, mesh in visuals.items():
+        add_mesh(st, f"/{prim_name}/{part}", mesh, double_sided=(part == "Backdrop"))
+    for part, mesh in colliders.items():
+        col = add_mesh(st, f"/{prim_name}/{part}", mesh, with_color=False)
+        col.CreateVisibilityAttr(UsdGeom.Tokens.invisible)
+        UsdPhysics.CollisionAPI.Apply(col.GetPrim())
+        # 정적 배경 → PhysX 삼각형 메쉬 충돌. 볼록 분해는 움직이는 물체에만 필요
+        UsdPhysics.MeshCollisionAPI.Apply(col.GetPrim()).CreateApproximationAttr(UsdPhysics.Tokens.none)
     st.GetRootLayer().Export(mesh_path)
 
     sc = _new_stage()

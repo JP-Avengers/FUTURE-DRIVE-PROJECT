@@ -32,9 +32,9 @@ Windows 에서는 `py -3.12 -m venv ~/o3d_env` 로 만들고, 아래 명령의 `
 ```
 recon/configs/<이름>.yaml         설정 (입력 형식, voxel, 깊이 한계, 목표 삼각형 수 …)
 recon/pipeline/io_rgbd.py         입력 읽기: open3d_lounge(시험용) · tum(B 인계)
-recon/pipeline/tsdf.py            RGB-D 프레임 + pose → TSDF → mesh_raw.ply
-recon/pipeline/build_usd.py       정리 → 바닥 평면으로 Z-up·원점 → 구멍 메우기 → 경량화 → 충돌 메쉬 → USD → 검증
-recon/pipeline/mesh_utils.py      공용: 지도 범위(footprint), 작은 구멍 메우기, 바닥 채우기
+recon/pipeline/tsdf.py            RGB-D 프레임 + pose → TSDF → mesh_raw.ply (근거리) + mesh_far_raw.ply (원거리, 배경용)
+recon/pipeline/build_usd.py       정리 → 바닥 평면으로 Z-up·원점 → 구멍 메우기 → 경량화 → 충돌 메쉬 → 구역(바깥·배경·경계) → USD → 검증
+recon/pipeline/mesh_utils.py      공용: 지도 범위(footprint)와 평면·벽, 작은 구멍 메우기, 바닥 채우기
 recon/pipeline/usd_utils.py       USD 쓰기·검증 (씬 .usda + 메쉬 .usdc payload)
 recon/pipeline/check_visibility.py  주행 통로에서 보이는 구멍 점검 (가상 카메라 광선) → 다시 찍을 곳 목록
 ```
@@ -50,10 +50,22 @@ OUT=~/recon_out/lounge        # 결과를 둘 폴더 — 원하는 곳으로
 ~/o3d_env/bin/python recon/pipeline/check_visibility.py --config recon/configs/lounge.yaml --out $OUT   # 약 15초 (선택)
 ```
 
-`build_usd.py` 가 `[1/7]`~`[7/7]` 진행을 찍고, 마지막 줄이 **`검증 통과`** 면 성공 (문제가 있으면 목록을 찍고 종료 코드 1).
+`build_usd.py` 가 `[1/8]`~`[8/8]` 진행을 찍고, 마지막 줄이 **`검증 통과`** 면 성공 (문제가 있으면 목록을 찍고 종료 코드 1).
 
 - **B 데이터**: config 를 복사해 `input.format: tum` 과 경로·intrinsics 를 채운다 (`lounge.yaml` 주석 참고). pose 는 **카메라 광학 좌표계 → map** 이어야 한다 (`rtabmap-export --poses_camera`)
 - **구멍 메우기** (config `fill:`): ① 작은 구멍 — 테두리를 평평한 면으로 이음 (새 면 방향은 주변 면에 맞춤) ② 바닥 — 지도 범위 안에서 기존 바닥 면이 덮지 않는 5 cm 칸을 z=0 평면 조각으로 (기존 바닥보다 2 mm 낮게, 색은 가까운 바닥 색)
+- **구역** (config `zones:`, 없애면 근거리만): 정확한 근거리 데이터는 주행 구역에, 원거리 데이터는 그 바깥 배경에만 쓴다.
+
+  | USD prim (`/World/<이름>/…`) | 내용 | 보임 | 충돌 |
+  | --- | --- | --- | --- |
+  | `Visual` | 근거리 메쉬 (깊이 `depth_trunc`, 구멍 메우기 포함) | O | |
+  | `VisualFar` | 원거리 메쉬 중 근거리 지도 밖 부분 — 잡음이 있어 충돌에는 안 넣음 | O | |
+  | `GroundFar` | 근거리 지도 밖 바닥 평면 (가까운 바닥 색) — 바깥 구역 바닥 구멍 가림 | O | |
+  | `Backdrop` | 전체 지도 + `ground_margin_m` 테두리의 배경 벽 (단색) | O | |
+  | `Collision` | 근거리 충돌 메쉬 + 전체 바닥 평면 | | O |
+  | `Boundary` | 같은 테두리의 경계벽 — 로봇이 지도 밖으로 못 나감 | | O |
+
+  부분마다 prim 이 따로라 Isaac Sim 에서 `VisualFar`·`Backdrop` 만 끄고 켜는 비교가 가능하다.
 - **충돌**: 정적 배경이라 삼각형 메쉬 그대로 (`MeshCollisionAPI approximation = none`). 볼록 분해는 움직이는 물체에만 필요
 - **파라미터 실험**: config 를 레포 밖으로 복사해 값을 바꾸고 `--out` 을 다른 폴더로 → 두 `report.json` 비교
 
@@ -63,9 +75,10 @@ OUT=~/recon_out/lounge        # 결과를 둘 폴더 — 원하는 곳으로
 |---|---|---|
 | `report.json` | **단계별 수치**: TSDF 프레임 수·시간, 지운 조각 수, 방 범위(m)·바닥 정점 비율, 시각용 오차, 충돌 메쉬 바닥 오차, USD 검증 결과 | 텍스트 편집기 |
 | `usd/<이름>_scene.usda` | D 에게 넘기는 씬 (Z-up · m, 메쉬 파일을 payload 로) | 텍스트 편집기 |
-| `usd/<이름>_mesh.usdc` | 시각용(`Visual`, 정점 색) + 충돌용(`Collision`, 안 보임) 메쉬 | Blender → Import → USD, Isaac Sim |
-| `visual.ply` · `collider.ply` | USD 에 들어간 메쉬와 같은 것 | 아래 뷰어, CloudCompare, MeshLab |
-| `mesh_raw.ply` | 정리·좌표 변환 전 TSDF 원본 | 〃 |
+| `usd/<이름>_mesh.usdc` | 부분별 메쉬 prim (아래 구역 표) | Blender → Import → USD, Isaac Sim |
+| `visual.ply` · `collider.ply` | 보이는 부분 전부 · 충돌 메쉬(근거리 + 바닥 평면) — USD 와 같은 것 | 아래 뷰어, CloudCompare, MeshLab |
+| `mesh_raw.ply` · `mesh_far_raw.ply` | 정리·좌표 변환 전 TSDF 원본 (근거리 · 원거리) | 〃 |
+| `visual_far.ply` · `backdrop.ply` · `boundary.ply` | 바깥 구역 · 배경 벽 · 경계벽 (아래 구역 설명) | 〃 |
 | `floor_patch.ply` | 바닥 채우기로 넣은 평면 조각 (의자·테이블 밑 등 바닥이 빈 곳) | 〃 |
 | `transform.json` | `mesh_raw` → 씬 좌표 4×4 변환 (c2d_usd.md 변경 이력용) | 텍스트 편집기 |
 | `tsdf_meta.json` | TSDF 설정·프레임 수·시간·대략적인 위쪽 방향 | 텍스트 편집기 |
@@ -115,3 +128,4 @@ OUT=~/recon_out/rehearsal     # 결과를 둘 폴더 — 원하는 곳으로
 - `rehearsal.py` 의 Collider 는 점군 **전체의 convex hull 하나**라 실내 샘플 검증용이다. 실제 씬에서는 로봇이 볼록 덩어리 안에 갇힌다 → `pipeline/` 은 삼각형 메쉬 충돌로 바꿈. Collider 방식은 [`c2d_usd.md`](../docs/interfaces/c2d_usd.md) 에서 D 와 합의 필요.
 - `pipeline/` 의 원점은 아직 바닥 x·y 최솟값 모서리다. 주차장은 ENU 방향 + 루프 남서 꼭짓점 원점(c2d_usd.md)으로 맞추는 단계가 더 필요하다.
 - 겉모습은 정점 색(displayColor)이라 경량화하면 색 해상도도 같이 떨어진다. 텍스처 방식은 D·E 와 논의.
+- `Backdrop` 은 단색 벽이다. 실외에서 어떻게 보일지(단색 · 사진 · 단순한 건물 상자, 거리·높이)는 E 의 카메라 입력에 영향을 주므로 D·E 와 정한다.
