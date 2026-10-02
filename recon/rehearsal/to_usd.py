@@ -8,7 +8,7 @@ import numpy as np
 import open3d as o3d
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--out", default="~/jinwoo/out", help="rehearsal.py 출력 폴더 (USD 도 여기에 씀)")
+parser.add_argument("--out", default="~/recon_out/rehearsal", help="rehearsal.py 출력 폴더 (USD 도 여기에 씀)")
 args = parser.parse_args()
 
 out_dir = os.path.expanduser(args.out)

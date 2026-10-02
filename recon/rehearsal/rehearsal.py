@@ -7,7 +7,7 @@ import open3d as o3d
 import numpy as np
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--out", default="~/jinwoo/out", help="OBJ 출력 폴더 (레포 밖)")
+parser.add_argument("--out", default="~/recon_out/rehearsal", help="OBJ 출력 폴더 (레포 밖)")
 args = parser.parse_args()
 
 out_dir = os.path.expanduser(args.out)

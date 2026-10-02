@@ -1,0 +1,37 @@
+# Open3D 샘플 Lounge 로 파이프라인 시험. 실제 주차장은 이 파일을 복사해 input 만 바꾼다.
+#   python recon/pipeline/tsdf.py      --config recon/configs/lounge.yaml
+#   python recon/pipeline/build_usd.py --config recon/configs/lounge.yaml
+
+name: lounge
+out: ~/recon_out/lounge               # 레포 밖 (--out 으로 바꿀 수 있음). 메쉬·USD 는 커밋하지 않음
+
+input:
+  format: open3d_lounge                # open3d_lounge | tum
+  depth_scale: 1000.0                  # 깊이 PNG 값 / depth_scale = m (mm PNG → 1000)
+  # tum 형식 예 (B 인계 데이터):
+  # format: tum
+  # root: ~/recon_data/b_map_v0.1
+  # rgb_list: rgb.txt                  # 시각 파일경로
+  # depth_list: depth.txt
+  # poses: poses_camera.txt            # 시각 tx ty tz qx qy qz qw — 카메라 광학 좌표계 → map
+  # max_dt: 0.02                       # 컬러·깊이·pose 시각 짝짓기 허용 오차 (초)
+  # intrinsics: {width: 640, height: 480, fx: 0, fy: 0, cx: 0, cy: 0}
+
+tsdf:
+  frame_step: 5                        # N 장마다 하나
+  voxel: 0.01                          # m
+  sdf_trunc_voxels: 4                  # sdf_trunc = voxel × 이 값
+  depth_trunc: 2.0                     # m. 3.0 이면 95% 오차가 9~25 cm 로 커짐 (10.2 Lounge 실험)
+
+cleanup:
+  min_cluster_tris: 500                # 이보다 작은 떠다니는 조각 삭제
+
+orient:
+  up_hint: camera                      # camera = 카메라 화면 아래 방향 평균의 반대 | [0, 0, 1] 처럼 직접
+  max_tilt_deg: 20                     # up_hint 에서 이 각도 안의 면만 바닥 후보
+  origin: min_corner                   # min_corner = x·y 최솟값 모서리 | keep = 회전·바닥 높이만
+  crop_below_floor: 0.05               # 바닥보다 이만큼(m) 아래는 잡음으로 잘라냄
+
+decimate:
+  visual_tris: 200000                  # 시각용 (주차장 목표 500,000 이하)
+  collider_tris: 20000                 # 충돌용 — 정적 배경이라 삼각형 메쉬 그대로 (approximation none)
