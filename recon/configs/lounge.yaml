@@ -32,6 +32,12 @@ orient:
   origin: min_corner                   # min_corner = x·y 최솟값 모서리 | keep = 회전·바닥 높이만
   crop_below_floor: 0.05               # 바닥보다 이만큼(m) 아래는 잡음으로 잘라냄
 
+fill:                                  # 좌표 맞춘 뒤, 경량화 전에 구멍 메우기
+  small_hole_size_m: 0.3               # 작은 구멍 자동 메우기 (구멍을 감싸는 구의 반지름 m). 0 이면 끔
+  floor_patch: true                    # 지도 범위 안에서 바닥이 빈 칸을 z=0 평면 조각으로 채움
+  floor_cell_m: 0.05                   # 바닥 채우기 칸 크기
+  floor_band_m: 0.03                   # |z| 가 이 안이고 위를 향한 면 = 기존 바닥
+
 decimate:
   visual_tris: 200000                  # 시각용 (주차장 목표 500,000 이하)
   collider_tris: 20000                 # 충돌용 — 정적 배경이라 삼각형 메쉬 그대로 (approximation none)

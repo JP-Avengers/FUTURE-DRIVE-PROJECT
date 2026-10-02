@@ -17,9 +17,9 @@ import argparse, csv, json, os, time
 import numpy as np
 import open3d as o3d
 import yaml
-from scipy import ndimage
 
 import io_rgbd
+from mesh_utils import Footprint
 
 NAMES = ["ok", "backface", "down", "side", "up"]
 
@@ -67,27 +67,6 @@ def classify(scene, K, P, W, H, horizon):
     cls[~hit & (np.abs(du[:, 2]) <= horizon)] = 3
     cls[~hit & (du[:, 2] > horizon)] = 4
     return cls, o, d, t
-
-
-class Footprint:
-    """메쉬가 덮는 범위 (위에서 본 cell 크기 격자). 바닥 구멍이 지도 안인지 가장자리 밖인지 가르는 데 씀."""
-
-    def __init__(self, mesh, cell=0.1):
-        xy = np.asarray(mesh.vertices)[:, :2]
-        self.cell, self.lo = cell, xy.min(0) - cell
-        idx = np.floor((xy - self.lo) / cell).astype(int)
-        grid = np.zeros(idx.max(0) + 3, bool)
-        grid[idx[:, 0], idx[:, 1]] = True
-        # 빈칸 정리: 정점 사이 틈은 닫고(closing), 사방이 메쉬로 둘러싸인 빈 곳(방 안의 큰 바닥 구멍)은 안으로 채움
-        grid = ndimage.binary_closing(grid, iterations=2)
-        self.grid = ndimage.binary_fill_holes(grid)
-
-    def inside(self, xy):
-        idx = np.floor((xy - self.lo) / self.cell).astype(int)
-        ok = (idx >= 0).all(1) & (idx < self.grid.shape).all(1)
-        res = np.zeros(len(xy), bool)
-        res[ok] = self.grid[idx[ok, 0], idx[ok, 1]]
-        return res
 
 
 def hole_map(path_xy, pts, fp, out_png):

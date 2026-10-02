@@ -33,7 +33,8 @@ Windows 에서는 `py -3.12 -m venv ~/o3d_env` 로 만들고, 아래 명령의 `
 recon/configs/<이름>.yaml         설정 (입력 형식, voxel, 깊이 한계, 목표 삼각형 수 …)
 recon/pipeline/io_rgbd.py         입력 읽기: open3d_lounge(시험용) · tum(B 인계)
 recon/pipeline/tsdf.py            RGB-D 프레임 + pose → TSDF → mesh_raw.ply
-recon/pipeline/build_usd.py       정리 → 바닥 평면으로 Z-up·원점 → 경량화 → 충돌 메쉬 → USD → 검증
+recon/pipeline/build_usd.py       정리 → 바닥 평면으로 Z-up·원점 → 구멍 메우기 → 경량화 → 충돌 메쉬 → USD → 검증
+recon/pipeline/mesh_utils.py      공용: 지도 범위(footprint), 작은 구멍 메우기, 바닥 채우기
 recon/pipeline/usd_utils.py       USD 쓰기·검증 (씬 .usda + 메쉬 .usdc payload)
 recon/pipeline/check_visibility.py  주행 통로에서 보이는 구멍 점검 (가상 카메라 광선) → 다시 찍을 곳 목록
 ```
@@ -49,9 +50,10 @@ OUT=~/recon_out/lounge        # 결과를 둘 폴더 — 원하는 곳으로
 ~/o3d_env/bin/python recon/pipeline/check_visibility.py --config recon/configs/lounge.yaml --out $OUT   # 약 15초 (선택)
 ```
 
-`build_usd.py` 가 `[1/6]`~`[6/6]` 진행을 찍고, 마지막 줄이 **`검증 통과`** 면 성공 (문제가 있으면 목록을 찍고 종료 코드 1).
+`build_usd.py` 가 `[1/7]`~`[7/7]` 진행을 찍고, 마지막 줄이 **`검증 통과`** 면 성공 (문제가 있으면 목록을 찍고 종료 코드 1).
 
 - **B 데이터**: config 를 복사해 `input.format: tum` 과 경로·intrinsics 를 채운다 (`lounge.yaml` 주석 참고). pose 는 **카메라 광학 좌표계 → map** 이어야 한다 (`rtabmap-export --poses_camera`)
+- **구멍 메우기** (config `fill:`): ① 작은 구멍 — 테두리를 평평한 면으로 이음 (새 면 방향은 주변 면에 맞춤) ② 바닥 — 지도 범위 안에서 기존 바닥 면이 덮지 않는 5 cm 칸을 z=0 평면 조각으로 (기존 바닥보다 2 mm 낮게, 색은 가까운 바닥 색)
 - **충돌**: 정적 배경이라 삼각형 메쉬 그대로 (`MeshCollisionAPI approximation = none`). 볼록 분해는 움직이는 물체에만 필요
 - **파라미터 실험**: config 를 레포 밖으로 복사해 값을 바꾸고 `--out` 을 다른 폴더로 → 두 `report.json` 비교
 
@@ -64,6 +66,7 @@ OUT=~/recon_out/lounge        # 결과를 둘 폴더 — 원하는 곳으로
 | `usd/<이름>_mesh.usdc` | 시각용(`Visual`, 정점 색) + 충돌용(`Collision`, 안 보임) 메쉬 | Blender → Import → USD, Isaac Sim |
 | `visual.ply` · `collider.ply` | USD 에 들어간 메쉬와 같은 것 | 아래 뷰어, CloudCompare, MeshLab |
 | `mesh_raw.ply` | 정리·좌표 변환 전 TSDF 원본 | 〃 |
+| `floor_patch.ply` | 바닥 채우기로 넣은 평면 조각 (의자·테이블 밑 등 바닥이 빈 곳) | 〃 |
 | `transform.json` | `mesh_raw` → 씬 좌표 4×4 변환 (c2d_usd.md 변경 이력용) | 텍스트 편집기 |
 | `tsdf_meta.json` | TSDF 설정·프레임 수·시간·대략적인 위쪽 방향 | 텍스트 편집기 |
 | `visibility/summary.json` | 통로에서 보이는 구멍 비율 (`holes_visible_pct`), 분류별 비율, 바닥 구멍 중 지도 안/가장자리 너머 | 텍스트 편집기 |

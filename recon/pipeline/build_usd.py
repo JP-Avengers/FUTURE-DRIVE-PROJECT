@@ -1,4 +1,4 @@
-"""TSDF 메쉬 → 정리 → Z-up·원점 → 경량화 → 충돌 메쉬 → USD → 검증.
+"""TSDF 메쉬 → 정리 → Z-up·원점 → 구멍 메우기 → 경량화 → 충돌 메쉬 → USD → 검증.
 
     python recon/pipeline/build_usd.py --config recon/configs/lounge.yaml
 
@@ -13,6 +13,7 @@ import open3d as o3d
 import yaml
 
 import usd_utils
+from mesh_utils import fill_small_holes, floor_patch
 
 
 def cleanup(mesh, min_tris):
@@ -105,23 +106,35 @@ def main():
 
     raw = o3d.io.read_triangle_mesh(os.path.join(out, "mesh_raw.ply"))
     raw.compute_vertex_normals()
-    print(f"[1/6] 불러오기: 삼각형 {len(raw.triangles):,}")
+    print(f"[1/7] 불러오기: 삼각형 {len(raw.triangles):,}")
 
     clean, report["cleanup"] = cleanup(raw, cfg["cleanup"]["min_cluster_tris"])
-    print(f"[2/6] 정리: 조각 {report['cleanup']['small_clusters']:,}개 · 삼각형 {report['cleanup']['removed_tris']:,}개 삭제")
+    print(f"[2/7] 정리: 조각 {report['cleanup']['small_clusters']:,}개 · 삼각형 {report['cleanup']['removed_tris']:,}개 삭제")
 
     hint = cfg["orient"]["up_hint"]
     up = np.array(meta["up_hint_camera"] if hint == "camera" else hint, dtype=float)
     scene, T, report["orient"] = orient(clean, up / np.linalg.norm(up), cfg["orient"])
     json.dump(dict(source="mesh_raw.ply", T_input_to_scene=T.tolist(), orient=cfg["orient"]),
               open(os.path.join(out, "transform.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    print(f"[3/6] Z-up: 범위 {report['orient']['extent_m']} m | 바닥 정점 {report['orient']['floor_vertex_pct']}%")
+    print(f"[3/7] Z-up: 범위 {report['orient']['extent_m']} m | 바닥 정점 {report['orient']['floor_vertex_pct']}%")
+
+    f = cfg.get("fill", {})
+    report["fill"] = {}
+    if f.get("small_hole_size_m", 0) > 0:
+        scene, report["fill"]["small_hole_tris_added"] = fill_small_holes(scene, f["small_hole_size_m"])
+    if f.get("floor_patch", False):
+        patch, report["fill"]["floor_cells"] = floor_patch(scene, f["floor_cell_m"], f["floor_band_m"])
+        report["fill"]["floor_area_m2"] = round(report["fill"]["floor_cells"] * f["floor_cell_m"] ** 2, 2)
+        scene = scene + patch
+        o3d.io.write_triangle_mesh(os.path.join(out, "floor_patch.ply"), patch)
+    print(f"[4/7] 구멍 메우기: 작은 구멍 삼각형 +{report['fill'].get('small_hole_tris_added', 0):,}"
+          f" | 바닥 채움 {report['fill'].get('floor_area_m2', 0)} m²")
 
     d = cfg["decimate"]
     visual = scene.simplify_quadric_decimation(target_number_of_triangles=d["visual_tris"])
     visual.compute_vertex_normals()
     report["visual"] = dict(triangles=len(visual.triangles), **surface_error(visual, scene))
-    print(f"[4/6] 시각용: 삼각형 {len(visual.triangles):,} | 오차 중앙 {report['visual']['median_cm']} cm · 95% {report['visual']['p95_cm']} cm")
+    print(f"[5/7] 시각용: 삼각형 {len(visual.triangles):,} | 오차 중앙 {report['visual']['median_cm']} cm · 95% {report['visual']['p95_cm']} cm")
 
     collider = visual.simplify_quadric_decimation(target_number_of_triangles=d["collider_tris"])
     collider.vertex_colors = o3d.utility.Vector3dVector()
@@ -133,7 +146,7 @@ def main():
                               median_cm=round(100 * float(np.median(dist)), 2), p95_cm=round(100 * float(np.percentile(dist, 95)), 2),
                               floor_p95_cm=round(100 * float(np.percentile(dist[floor], 95)), 2),
                               floor_max_cm=round(100 * float(dist[floor].max()), 2))
-    print(f"[5/6] 충돌용: 삼각형 {len(collider.triangles):,} | 바닥 오차 95% {report['collider']['floor_p95_cm']} cm · 최대 {report['collider']['floor_max_cm']} cm")
+    print(f"[6/7] 충돌용: 삼각형 {len(collider.triangles):,} | 바닥 오차 95% {report['collider']['floor_p95_cm']} cm · 최대 {report['collider']['floor_max_cm']} cm")
 
     o3d.io.write_triangle_mesh(os.path.join(out, "visual.ply"), visual)
     o3d.io.write_triangle_mesh(os.path.join(out, "collider.ply"), collider)
@@ -146,7 +159,7 @@ def main():
                          prims=summary, problems=problems)
     report["seconds"] = round(time.time() - t0, 1)
     json.dump(report, open(os.path.join(out, "report.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    print(f"[6/6] USD: {scene_usd} (+ 메쉬 {report['usd']['mesh_mb']} MB) | 검증 {'통과' if not problems else '문제 ' + str(problems)}")
+    print(f"[7/7] USD: {scene_usd} (+ 메쉬 {report['usd']['mesh_mb']} MB) | 검증 {'통과' if not problems else '문제 ' + str(problems)}")
     print(f"완료 {report['seconds']}s → {os.path.join(out, 'report.json')}")
     if problems:
         raise SystemExit(1)
