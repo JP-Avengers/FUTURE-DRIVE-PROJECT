@@ -35,3 +35,13 @@ orient:
 decimate:
   visual_tris: 200000                  # 시각용 (주차장 목표 500,000 이하)
   collider_tris: 20000                 # 충돌용 — 정적 배경이라 삼각형 메쉬 그대로 (approximation none)
+
+visibility:                            # check_visibility.py — 주행 통로에서 보이는 구멍
+  path_step: 10                        # 카메라 경로 N 개마다 한 지점
+  offsets_m: [-0.5, 0.0, 0.5]          # 경로에서 좌우로 옮기기 (로봇이 경로를 벗어나는 경우)
+  yaws_deg: [-60, 0, 60]               # 고개 돌리기
+  min_clearance_m: 0.2                 # 면에서 이만큼 떨어진 위치만 (벽·가구 속 제외)
+  ray_width: 160                       # 광선 해상도 (가로). 세로는 카메라 비율대로
+  horizon_deg: 11.5                    # 빠져나간 광선이 수평 ±이 각도면 side, 더 아래면 down, 위면 up
+  list_cell_m: 0.25                    # 다시 찍을 곳 목록의 칸 크기
+  list_top: 30

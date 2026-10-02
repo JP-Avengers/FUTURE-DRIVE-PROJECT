@@ -35,6 +35,7 @@ recon/pipeline/io_rgbd.py         입력 읽기: open3d_lounge(시험용) · tum
 recon/pipeline/tsdf.py            RGB-D 프레임 + pose → TSDF → mesh_raw.ply
 recon/pipeline/build_usd.py       정리 → 바닥 평면으로 Z-up·원점 → 경량화 → 충돌 메쉬 → USD → 검증
 recon/pipeline/usd_utils.py       USD 쓰기·검증 (씬 .usda + 메쉬 .usdc payload)
+recon/pipeline/check_visibility.py  주행 통로에서 보이는 구멍 점검 (가상 카메라 광선) → 다시 찍을 곳 목록
 ```
 
 ### 실행
@@ -45,6 +46,7 @@ recon/pipeline/usd_utils.py       USD 쓰기·검증 (씬 .usda + 메쉬 .usdc p
 OUT=~/recon_out/lounge        # 결과를 둘 폴더 — 원하는 곳으로
 ~/o3d_env/bin/python recon/pipeline/tsdf.py      --config recon/configs/lounge.yaml --out $OUT   # 약 20초
 ~/o3d_env/bin/python recon/pipeline/build_usd.py --config recon/configs/lounge.yaml --out $OUT   # 약 30초
+~/o3d_env/bin/python recon/pipeline/check_visibility.py --config recon/configs/lounge.yaml --out $OUT   # 약 15초 (선택)
 ```
 
 `build_usd.py` 가 `[1/6]`~`[6/6]` 진행을 찍고, 마지막 줄이 **`검증 통과`** 면 성공 (문제가 있으면 목록을 찍고 종료 코드 1).
@@ -64,6 +66,12 @@ OUT=~/recon_out/lounge        # 결과를 둘 폴더 — 원하는 곳으로
 | `mesh_raw.ply` | 정리·좌표 변환 전 TSDF 원본 | 〃 |
 | `transform.json` | `mesh_raw` → 씬 좌표 4×4 변환 (c2d_usd.md 변경 이력용) | 텍스트 편집기 |
 | `tsdf_meta.json` | TSDF 설정·프레임 수·시간·대략적인 위쪽 방향 | 텍스트 편집기 |
+| `visibility/summary.json` | 통로에서 보이는 구멍 비율 (`holes_visible_pct`), 분류별 비율, 바닥 구멍 중 지도 안/가장자리 너머 | 텍스트 편집기 |
+| `visibility/holes_list.csv` | **다시 찍을 곳 후보**: 구멍 위치(25 cm 칸)와 그 구멍이 보인 가상 카메라 수 | 엑셀, 텍스트 편집기 |
+| `visibility/hole_map.png` | 위에서 본 구멍 지도 (바닥 · 물체, 초록 = 메쉬 범위, 파랑 = 경로) | 이미지 뷰어 |
+| `visibility/holes_seen.ply` | 구멍이 보인 지점 (주황 = 바닥, 빨강 = 물체) — `visual.ply` 와 겹쳐 보기 | 아래 뷰어 |
+
+**`check_visibility.py` 광선 분류** — 경로에서 좌우로 옮기고 고개를 돌린 가상 카메라에서 픽셀마다 광선을 쏴서: 면 앞쪽에 맞음 = 정상 · 면 **뒤쪽**에 맞음 = 물체 구멍 · **아래로** 빠짐 = 바닥 구멍 · **옆으로** 빠짐 = 벽 구멍/먼 배경 없음 · **위로** 빠짐 = 실외면 하늘(정상). 바닥 구멍은 메쉬 범위 안(진짜 구멍)과 가장자리 너머(촬영 범위 밖)로 나눈다. 설정은 config 의 `visibility:`.
 
 메쉬를 축(빨강 X · 초록 Y · 파랑 Z, 0.5 m)과 함께 창으로 보기 — 파랑이 위, 원점이 바닥 모서리면 정상:
 
