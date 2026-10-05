@@ -5,11 +5,11 @@
 #   sim/run_proxy.sh stream [IP]     스트리밍 — 1차 수집. tmux 안에서, 화면은 Mac 의 스트리밍 클라이언트(기본 IP = 서버 Tailscale)
 #   sim/run_proxy.sh headless [초]   헤드리스 — tmux 안에서 (초를 안 주면 Ctrl+C 까지)
 #   sim/run_proxy.sh check [초]      점검 — 씬이 Play 된 뒤 다른 터미널에서 (토픽 · /cmd_vel · RTF · 주기, 기본 10초)
-#   sim/run_proxy.sh teleop          키보드 조작 — /cmd_vel 발행자가 0 일 때만 teleop_twist_keyboard 를 띄운다
+#   sim/run_proxy.sh teleop [옵션]   키보드 조작(가감속 램프) — /cmd_vel 발행자가 0 일 때만 sim/teleop_ramp.py 를 띄운다
 #   sim/run_proxy.sh monitor         이 서버에서는 못 씀(10.1) — 화면이 GPU 1 에만 나와 GPU 0 렌더 창을 못 그린다
 #
 # 끄기: 띄운 터미널에서 Ctrl+C (tmux 는 tmux send-keys -t <세션> C-c). 끝에 [Error] 줄 수와 GPU 상태를 찍는다.
-# 환경변수: FD_LIDAR=1 LiDAR 켬 · FD_DOMAIN=43 시험용 도메인 · FD_VIEW_RES=1280x720 뷰포트 해상도(stream)
+# 환경변수: FD_LIDAR=1 LiDAR 켬 · FD_DOMAIN=43 시험용 도메인 · FD_VIEW_RES=1280x720 뷰포트 해상도(stream) · FD_TELEOP=stock 예전 조작(teleop)
 # 로그: logs/run_proxy/<모드>_<월일_시분초>.log
 set -euo pipefail
 CD1=${CD1:-$HOME/Capstone_Design_1}
@@ -34,6 +34,9 @@ case $MODE in
     info=$(ros2 topic info /cmd_vel --no-daemon --spin-time 3 2>&1) || { echo "/cmd_vel 이 없음 — 씬이 Play 중인지, 도메인($ROS_DOMAIN_ID)이 같은지 확인"; exit 3; }
     pub=$(echo "$info" | sed -n 's/^Publisher count: *//p')
     if [ "${pub:-0}" != "0" ]; then echo "/cmd_vel 발행자가 이미 ${pub}개 — 발행자는 항상 1개(규격서). 먼저 그쪽을 끄세요"; exit 3; fi
+    # 기본은 가감속 램프 조작(sim/teleop_ramp.py, 10.5 결정) — 키는 목표만 정하고 /cmd_vel 은 램프를 거쳐 연속으로 바뀌어 (v, ω) 라벨이 계단이 되지 않는다.
+    # 인자는 그대로 넘긴다(예: sim/run_proxy.sh teleop --v-max 0.5). FD_TELEOP=stock 이면 예전 teleop_twist_keyboard
+    if [ "${FD_TELEOP:-ramp}" != "stock" ]; then exec /usr/bin/python3 "$CD1/sim/teleop_ramp.py" "$@"; fi
     # speed · turn 은 시작값. 키 q/z(둘 다) · w/x(속도) · e/c(회전)로 10 %씩 바뀐다 — 상한(v 0.8 · ω 1.0)을 넘기지 말 것
     exec ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p speed:=0.5 -p turn:=0.5 ;;
   monitor)

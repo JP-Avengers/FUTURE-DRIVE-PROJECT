@@ -81,7 +81,7 @@ OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/check_proxy_scene
 | 스트리밍 — 1차 수집 | ssh → `tmux new -s fd_proxy` 안에서. 화면은 Mac 의 스트리밍 클라이언트(Server 칸에 서버 Tailscale IP) | `sim/run_proxy.sh stream` |
 | 헤드리스 | ssh → `tmux new -s fd_proxy` 안에서 | `sim/run_proxy.sh headless [초]` — 초를 안 주면 `Ctrl+C` 까지 |
 | 점검 | 씬이 Play 된 뒤 다른 터미널 | `sim/run_proxy.sh check [초]` — 토픽 · `/cmd_vel` · RTF · 주기를 재서 항목별 OK/NG |
-| 키보드 조작 | 다른 터미널 | `sim/run_proxy.sh teleop` — `/cmd_vel` 발행자가 0 일 때만 뜸 |
+| 키보드 조작 | 다른 터미널 | `sim/run_proxy.sh teleop [옵션]` — 가감속 램프(`sim/teleop_ramp.py`, 키는 실행하면 나오는 안내문). `/cmd_vel` 발행자가 0 일 때만 뜸. `FD_TELEOP=stock` 이면 예전 teleop_twist_keyboard |
 
 - **끄기**: 띄운 터미널에서 `Ctrl+C`(tmux 밖에서는 `tmux send-keys -t fd_proxy C-c`). 끝에 `[Error]` 줄 수와 GPU 상태를 찍습니다. 로그는 `logs/run_proxy/<모드>_<시각>.log`. 스트리밍 클라이언트를 붙인 채 끄면 끝에 `NVST_R_BUSY` `[Error]` 가 몇 줄 찍힙니다(10.1) — 씬 오류는 아니지만, 클라이언트에서 먼저 Disconnect 하고 끕니다.
 - **스트리밍 화면**: 뷰포트가 로봇 뒤 3인칭 카메라(`ChaseCam`)로 바뀝니다 — 운전자용이고 기록에는 안 씁니다. 화면의 Stop → Play 로 출발점에 돌아갑니다. 이때 시뮬 시간(`/clock`)과 odom 도 0 에서 다시 시작하니, 녹화는 Stop 전에 끊고 Play 뒤 새로 시작합니다(10.1). 조작 키는 `teleop` 을 띄운 ssh 터미널에 눌러야 합니다 — 스트리밍 화면을 클릭하면 키가 Isaac Sim 으로 갑니다.
