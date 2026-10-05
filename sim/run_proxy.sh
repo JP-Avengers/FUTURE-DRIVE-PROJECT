@@ -31,12 +31,13 @@ case $MODE in
   check)
     exec /usr/bin/python3 "$CD1/sim/check_proxy_topics.py" "${1:-10}" ;;
   teleop)
+    # 기본은 가감속 램프 조작(sim/teleop_ramp.py, 10.5 결정) — 키는 목표만 정하고 /cmd_vel 은 램프를 거쳐 연속으로 바뀌어 (v, ω) 라벨이 계단이 되지 않는다.
+    # 인자는 그대로 넘긴다(예: sim/run_proxy.sh teleop --v-max 0.5). FD_TELEOP=stock 이면 예전 teleop_twist_keyboard
+    # 램프 노드는 /cmd_vel 발행자를 스스로 확인하므로 아래 점검(약 3 s)을 건너뛴다 — 점검하는 동안 누른 키는 버려졌다(10.5 확인)
+    if [ "${FD_TELEOP:-ramp}" != "stock" ]; then exec /usr/bin/python3 "$CD1/sim/teleop_ramp.py" "$@"; fi
     info=$(ros2 topic info /cmd_vel --no-daemon --spin-time 3 2>&1) || { echo "/cmd_vel 이 없음 — 씬이 Play 중인지, 도메인($ROS_DOMAIN_ID)이 같은지 확인"; exit 3; }
     pub=$(echo "$info" | sed -n 's/^Publisher count: *//p')
     if [ "${pub:-0}" != "0" ]; then echo "/cmd_vel 발행자가 이미 ${pub}개 — 발행자는 항상 1개(규격서). 먼저 그쪽을 끄세요"; exit 3; fi
-    # 기본은 가감속 램프 조작(sim/teleop_ramp.py, 10.5 결정) — 키는 목표만 정하고 /cmd_vel 은 램프를 거쳐 연속으로 바뀌어 (v, ω) 라벨이 계단이 되지 않는다.
-    # 인자는 그대로 넘긴다(예: sim/run_proxy.sh teleop --v-max 0.5). FD_TELEOP=stock 이면 예전 teleop_twist_keyboard
-    if [ "${FD_TELEOP:-ramp}" != "stock" ]; then exec /usr/bin/python3 "$CD1/sim/teleop_ramp.py" "$@"; fi
     # speed · turn 은 시작값. 키 q/z(둘 다) · w/x(속도) · e/c(회전)로 10 %씩 바뀐다 — 상한(v 0.8 · ω 1.0)을 넘기지 말 것
     exec ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p speed:=0.5 -p turn:=0.5 ;;
   monitor)

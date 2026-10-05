@@ -13,7 +13,7 @@
 상한은 v 0 ~ 0.8 m/s · |ω| ≤ 1.0 rad/s(규격서 제안값 — E 가 최종값을 정하면 --v-max · --w-max). 가감속 한도는 v 0.5(올릴 때) ·
 1.0(내릴 때) m/s², ω 1.5 · 2.0 rad/s², 정지 키는 v 2.0 m/s². 시뮬을 Stop → Play 로 다시 시작하면(odom 시각이 거꾸로 감) 정지로 돌린다.
 키 반응이 손에 안 맞으면 --v-step · --v-hold · --w-step · --w-hold(한 번 누를 때 · 누르고 있을 때 초당 변화량), 키 반복이 끊겨 보이면
---repeat-gap 을 키운다. 램프는 실제 시간 기준이라 시뮬 RTF 가 1 이 아니면 시뮬 시간으로는 그만큼 빠르거나 느리다(스트리밍 약 0.97).
+--repeat-gap 을 키운다(연타가 덜 먹으면 줄인다). 램프는 실제 시간 기준이라 시뮬 RTF 가 1 이 아니면 시뮬 시간으로는 그만큼 빠르거나 느리다(스트리밍 약 0.97).
 /cmd_vel 발행자는 이 노드 하나여야 한다(규격서) — 이미 있으면 뜨지 않는다. 시스템 python3 + ROS Jazzy(run_proxy.sh 가 source).
 """
 import argparse
@@ -34,7 +34,8 @@ from rclpy.signals import SignalHandlerOptions
 
 TOPIC = "/cmd_vel"
 ODOM = "/chassis/odom"
-REPEAT_GAP = 0.15          # s — 같은 키가 이보다 촘촘히 오면 키를 누르고 있는 것(자동 반복), 아니면 새로 누른 것 (--repeat-gap)
+REPEAT_GAP = 0.10          # s — 같은 키가 이보다 촘촘히 오면 누르고 있는 것(자동 반복은 0.03~0.09 s), 아니면 새로 누른 것 (--repeat-gap).
+#                           0.15 일 때는 0.1~0.15 s 간격 연타가 누르고 있기로 잡혀 덜 올라갔다(10.5 시험: 5연타 0.35)
 V_TAP, V_HOLD = 0.1, 0.5   # 속도 목표: 한 번 누를 때 m/s · 누르고 있을 때 초당 m/s (--v-step · --v-hold)
 W_TAP, W_HOLD = 0.05, 1.0  # 조향 목표: 한 번 누를 때 rad/s · 누르고 있을 때 초당 rad/s (--w-step · --w-hold)
 LETTERS = {b"w": "up", b"s": "down", b"a": "left", b"d": "right", b"e": "center", b" ": "stop",
