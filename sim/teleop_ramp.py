@@ -10,8 +10,11 @@
   a / ←   왼쪽 조향 ω +0.05 rad/s (누르고 있으면 초당 +1.0)  e       조향을 가운데(ω 0)로
   d / →   오른쪽 조향 ω -0.05 rad/s                        Ctrl+C  끝 — 정지를 보내고 나감
 
-상한은 v 0 ~ 0.8 m/s · |ω| ≤ 1.0 rad/s(규격서 제안값 — E 가 최종값을 정하면 --v-max · --w-max). 가감속 한도는 v 0.5(올릴 때) ·
-1.0(내릴 때) m/s², ω 1.5 · 2.0 rad/s², 정지 키는 v 2.0 m/s². 시뮬을 Stop → Play 로 다시 시작하면(odom 시각이 거꾸로 감) 정지로 돌린다.
+상한은 v 0 ~ 0.8 m/s · |ω| ≤ 0.7 rad/s — Nova Carter 공식 Nav2 설정(carter_navigation)과 같은 값이다. Nav2 를 기본 설정 그대로
+비교 기준선으로 쓰고 비교에 완주 시간 · 제한 시간이 들어가므로 교사 · 추론도 같은 상한을 쓴다(10.5 결정, 규격서 제안값 — E 가 최종값을
+정하면 --v-max · --w-max). 로봇 에셋은 v 1.0 m/s · ω 1.2 rad/s 를 넘는 명령을 잘라 내므로 그보다 큰 상한은 받지 않는다(라벨과 실제
+움직임이 어긋남). 가감속 한도는 v 0.5(올릴 때) · 1.0(내릴 때) m/s², ω 1.5 · 2.0 rad/s², 정지 키는 v 2.0 m/s².
+시뮬을 Stop → Play 로 다시 시작하면(odom 시각이 거꾸로 감) 정지로 돌린다.
 키 반응이 손에 안 맞으면 --v-step · --v-hold · --w-step · --w-hold(한 번 누를 때 · 누르고 있을 때 초당 변화량), 키 반복이 끊겨 보이면
 --repeat-gap 을 키운다(연타가 덜 먹으면 줄인다). 램프는 실제 시간 기준이라 시뮬 RTF 가 1 이 아니면 시뮬 시간으로는 그만큼 빠르거나 느리다(스트리밍 약 0.97).
 /cmd_vel 발행자는 이 노드 하나여야 한다(규격서) — 이미 있으면 뜨지 않는다. 시스템 python3 + ROS Jazzy(run_proxy.sh 가 source).
@@ -38,6 +41,9 @@ REPEAT_GAP = 0.10          # s — 같은 키가 이보다 촘촘히 오면 누�
 #                           0.15 일 때는 0.1~0.15 s 간격 연타가 누르고 있기로 잡혀 덜 올라갔다(10.5 시험: 5연타 0.35)
 V_TAP, V_HOLD = 0.1, 0.5   # 속도 목표: 한 번 누를 때 m/s · 누르고 있을 때 초당 m/s (--v-step · --v-hold)
 W_TAP, W_HOLD = 0.05, 1.0  # 조향 목표: 한 번 누를 때 rad/s · 누르고 있을 때 초당 rad/s (--w-step · --w-hold)
+V_MAX, W_MAX = 0.8, 0.7    # 상한 — Nav2 기본 설정(carter_navigation 의 DWB max_vel_x · max_vel_theta, 속도 평활기)과 같게 (--v-max · --w-max)
+ROBOT_V_MAX, ROBOT_W_MAX = 1.0, 1.2  # 로봇 에셋 한도 — Nova_Carter_ROS 의 differential_controller_01 maxLinearSpeed · maxAngularSpeed
+#                                      (Payloads/ros.usda). 시뮬이 이보다 큰 명령을 잘라 낸다(10.5 확인). 씬에서 올리기 전에는 상한을 넘기지 않는다
 LETTERS = {b"w": "up", b"s": "down", b"a": "left", b"d": "right", b"e": "center", b" ": "stop",
            b"\r": "center", b"\n": "center"}
 ARROWS = {b"A": "up", b"B": "down", b"C": "right", b"D": "left"}
@@ -134,10 +140,11 @@ class Teleop:
 
 
 def banner(a):
+    top = min(9, int(a.v_max * 10 + 1e-9))  # 숫자 키 n = 0.1 n m/s — 상한 아래 칸까지만 적는다
     return (f"키보드 조작 + 가감속 램프 — 끝내려면 Ctrl+C (한글 입력 상태면 영문으로 바꾸세요)\n"
             f"  w ↑  속도 목표 +{a.v_step:g} (누르고 있으면 계속)     s ↓  속도 목표 -{a.v_step:g}\n"
             f"  a ←  왼쪽 조향 +{a.w_step:g} (누르고 있으면 계속)    d →  오른쪽 조향\n"
-            f"  e  조향 가운데로    0~8  속도 목표를 0.0~0.8 m/s 로    space  정지(빠르게 감속)\n"
+            f"  e  조향 가운데로    0~{top}  속도 목표를 0.0~{top / 10:.1f} m/s 로    space  정지(빠르게 감속)\n"
             f"키를 한 번 누르면 그 값이 유지되고, 명령은 가감속 한도를 거쳐 서서히 바뀝니다.\n"
             f"상한 v {a.v_min:.1f} ~ {a.v_max:.1f} m/s · |ω| {a.w_max:.1f} rad/s · "
             f"가감속 v {a.v_acc:g}↑ {a.v_dec:g}↓ m/s² · ω {a.w_acc:g}↑ {a.w_dec:g}↓ rad/s² · {a.rate:g} Hz\n")
@@ -150,9 +157,9 @@ def status(tp, odom):
 
 def parse_args():
     p = argparse.ArgumentParser(description="키보드 조작 + 가감속 램프 — /cmd_vel 을 연속값으로 발행 (키는 파일 머리말 참고)")
-    p.add_argument("--v-max", type=float, default=0.8, help="선속도 상한 m/s (규격서 제안 0.8)")
+    p.add_argument("--v-max", type=float, default=V_MAX, help=f"선속도 상한 m/s (규격서 제안 = Nav2 기본 설정 {V_MAX:g}, 로봇 에셋 한도 {ROBOT_V_MAX:g})")
     p.add_argument("--v-min", type=float, default=0.0, help="선속도 하한 m/s — 0 이면 후진 없음")
-    p.add_argument("--w-max", type=float, default=1.0, help="각속도 상한 rad/s (규격서 제안 1.0)")
+    p.add_argument("--w-max", type=float, default=W_MAX, help=f"각속도 상한 rad/s (규격서 제안 = Nav2 기본 설정 {W_MAX:g}, 로봇 에셋 한도 {ROBOT_W_MAX:g})")
     p.add_argument("--v-acc", type=float, default=0.5, help="선속도를 키울 때 가감속 한도 m/s²")
     p.add_argument("--v-dec", type=float, default=1.0, help="선속도를 줄일 때 한도 m/s²")
     p.add_argument("--brake", type=float, default=2.0, help="정지 키로 줄일 때 선속도 한도 m/s²")
@@ -168,6 +175,8 @@ def parse_args():
     if (a.rate < 10 or a.v_min > 0
             or min(a.v_acc, a.v_dec, a.brake, a.w_acc, a.w_dec, a.v_max, a.w_max, a.v_step, a.v_hold, a.w_step, a.w_hold, a.repeat_gap) <= 0):
         p.error("--rate 는 10 이상, 한도 · 상한 · 키 반응 값은 0 보다 크게, --v-min 은 0 이하")
+    if a.v_max > ROBOT_V_MAX or a.w_max > ROBOT_W_MAX:
+        p.error(f"--v-max 는 {ROBOT_V_MAX:g}, --w-max 는 {ROBOT_W_MAX:g} 이하 — 로봇 에셋이 그보다 큰 명령을 잘라 내 라벨과 실제 움직임이 어긋남")
     return a
 
 

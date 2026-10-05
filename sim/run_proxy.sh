@@ -38,7 +38,7 @@ case $MODE in
     info=$(ros2 topic info /cmd_vel --no-daemon --spin-time 3 2>&1) || { echo "/cmd_vel 이 없음 — 씬이 Play 중인지, 도메인($ROS_DOMAIN_ID)이 같은지 확인"; exit 3; }
     pub=$(echo "$info" | sed -n 's/^Publisher count: *//p')
     if [ "${pub:-0}" != "0" ]; then echo "/cmd_vel 발행자가 이미 ${pub}개 — 발행자는 항상 1개(규격서). 먼저 그쪽을 끄세요"; exit 3; fi
-    # speed · turn 은 시작값. 키 q/z(둘 다) · w/x(속도) · e/c(회전)로 10 %씩 바뀐다 — 상한(v 0.8 · ω 1.0)을 넘기지 말 것
+    # speed · turn 은 시작값. 키 q/z(둘 다) · w/x(속도) · e/c(회전)로 10 %씩 바뀐다 — 상한(v 0.8 · ω 0.7, Nav2 기본 설정과 같음)을 넘기지 말 것
     exec ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p speed:=0.5 -p turn:=0.5 ;;
   monitor)
     # 10.1 확인: 데스크톱 화면은 GPU 1 에만 나오는데(xorg.conf), 렌더를 GPU 0 에 고정한 창은 화면에 못 그린다

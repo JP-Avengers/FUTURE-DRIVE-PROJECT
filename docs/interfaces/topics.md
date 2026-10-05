@@ -54,7 +54,8 @@
 - **주의 — Stop → Play 하면 시뮬 시간이 0 으로 돌아갑니다(10.1).** 로봇은 출발점으로, odom 은 (0, 0) 으로 돌아가고 `/clock` 도 0 에서 다시 시작합니다. 한 녹화 파일에 Stop → Play 가 섞이면 시각이 뒤로 가므로, 기록은 Stop 전에 끊고 Play 뒤 새 파일로 시작합니다 — **E 확인이 필요합니다.**
 - **주의 — 실제 회전이 명령 ω 보다 약 1.3배 빠릅니다(9.30).** ω = ±0.2 명령에 odom ωz 는 ±0.262 였고, 루프 주행에서도 명령이 일정한 구간은 1.31~1.35배였습니다. v 는 명령대로(0.50)입니다. 원인은 확인 중입니다. 교사 라벨은 명령값이라 학습에는 문제가 없고, 명령 추종이나 궤적을 비교할 때 감안합니다.
 - **규격 밖 토픽**: 로봇 에셋이 스테레오 IMU 4개(`/front_stereo_imu/imu` · `/back_stereo_imu/imu` · `/left_stereo_imu/imu` · `/right_stereo_imu/imu`)를 더 냅니다. 기록하지 않습니다. `/tf_static` 은 나오지 않습니다.
-- **속도 상한 제안**: 0 ≤ v ≤ 0.8 m/s, |ω| ≤ 1.0 rad/s. 교사 리그 실행 파일에 고정합니다(수행계획서 2.3 "속도 상한은 실행 파일 하나로 고정"). 0.8 m/s 는 Nova Carter 공식 Nav2 설정의 최대 속도와 같습니다.
+- **속도 상한 제안**: 0 ≤ v ≤ 0.8 m/s, |ω| ≤ 0.7 rad/s. 교사 리그 실행 파일(`sim/teleop_ramp.py`)에 고정합니다(수행계획서 2.3 "속도 상한은 실행 파일 하나로 고정"). Nova Carter 공식 Nav2 설정(`carter_navigation`, IsaacSim 6.0.1 태그 — DWB `max_vel_x` 0.8 · `max_vel_theta` 0.7, 속도 평활기도 같음)과 같은 값입니다. Nav2 는 기본 설정 그대로 비교 기준선으로 쓰고, 비교표에 완주 시간 · 성공 판정에 제한 시간이 들어가므로 교사 · 추론 노드도 같은 상한을 씁니다(10.5 결정 — ω 는 1.0 에서 0.7 로).
+- **로봇 에셋 한도**: Nova Carter ROS 에셋의 차동 구동 노드(`differential_drive/differential_controller_01`)가 v 1.0 m/s · ω 1.2 rad/s(명령 기준)를 넘는 명령을 잘라 내고, 가감속도 v 2.0 m/s² · ω 2.68 rad/s² 로 묶습니다(10.5 확인 — 1.2 m/s 명령에 odom 1.00). 위 상한은 그 안에 있습니다. 한도를 넘는 `/cmd_vel` 은 라벨과 실제 움직임이 어긋나므로 `sim/teleop_ramp.py` 는 그런 상한을 받지 않습니다.
 - **발행자 1개 규칙**: 새 노드를 띄우기 전에 `ros2 topic info /cmd_vel` 의 `Publisher count` 가 0 인지 봅니다. `sim/run_proxy.sh teleop` 은 이것을 확인한 뒤에만 키보드 조작을 띄웁니다.
 - 교사 데이터 기록(10 fps)은 영상과 `/cmd_vel` 의 (v, ω)를 시뮬 시간으로 맞춰 샘플링합니다 — 기록 방식은 E 가 [`d2e_teacher.md`](d2e_teacher.md)에 정합니다.
 - 서버 ROS 설정: `ROS_DOMAIN_ID=42`, `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`, `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST`([`../server207.md`](../server207.md)). 씬은 `sim/run_proxy.sh` 로 띄웁니다 — 이 설정과 GPU 0 · LiDAR 끔을 고정합니다([`sim/README.md`](../../sim/README.md)).
@@ -79,3 +80,4 @@
 | 9.30 | 9.30 실측(시뮬 시간 기준) — 카메라 20 Hz · odom/IMU/`/clock` 80~84 Hz(고유 60 Hz) · 모드별 RTF. odom 축 확정(시작 자세 기준, 루프 주행 3회)과 `map` 변환식, odom z 주의. 주의 3건(같은 시각 메시지 · 카메라 빈 구간 · 회전 약 1.3배)과 규격 밖 토픽. LiDAR 기본 끔(`sim/run_proxy.sh`). 상태: 비대면 확인 | |
 | 10.1 | 1차 수집 실행을 스트리밍으로(서버 앞 모니터 모드는 이 서버에서 못 씀) — RTF 표 | |
 | 10.1 | 스트리밍 + 클라이언트 RTF 0.97~0.99, 주의 추가 — Stop → Play 하면 시뮬 시간이 0 으로 | |
+| 10.5 | 속도 상한 제안을 Nav2 기본 설정과 같게 — v 0.8 유지, ω 1.0 → 0.7. 로봇 에셋 한도(v 1.0 · ω 1.2, 가감속 2.0 · 2.68) 추가 | |
