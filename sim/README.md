@@ -88,3 +88,17 @@ OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/check_proxy_scene
 - **서버 앞 모니터로는 띄우지 않습니다**(10.1 확인). 데스크톱 화면이 GPU 1 에만 나오는데 렌더를 GPU 0 에 고정하면 창을 못 그립니다(`createSwapchain failed`). `sim/run_proxy.sh monitor` 는 안내만 찍고 끝납니다.
 - **환경변수**: `FD_LIDAR=1` LiDAR 켬(점검도 같은 값으로) · `FD_DOMAIN=43` 시험용 도메인 · `FD_VIEW_RES=1280x720` 뷰포트 해상도(스트리밍 — RTF 가 낮을 때 줄임).
 - `run_streaming.sh` 는 씬 없이 빈 앱을 스트리밍할 때 씁니다.
+
+### 경로 추종 주행 — `sim/pursuit.py`
+
+규칙 기반 pure pursuit 노드입니다. `/chassis/odom` 만 받아 루프 중심선(`params.yaml` 의 `loop`, 약 119 m)에서 `--lookahead` 앞 점을 따라가도록 `/cmd_vel` 을 냅니다. **E2E 가 아니고 장애물도 피하지 않습니다**(카메라 · LiDAR 를 안 봄). 9.30 루프 주행 시험(양방향 완주, 최대 이탈 0.44 m)과 10.6 시연 영상에 썼습니다. 경로 · 좌표 변환은 `sim/looppath.py`.
+
+```bash
+# 씬이 Play 된 뒤 다른 터미널 — run_proxy.sh 와 같은 도메인(42)으로, teleop 은 띄우지 않은 상태에서
+source /opt/ros/jazzy/setup.bash
+export ROS_DOMAIN_ID=42 RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+python3 sim/pursuit.py --dir cw --v 0.8 --lookahead 2.0     # 한 바퀴 돌면 LAP_DONE … max_cte=… 찍고 정지
+```
+
+- 실패하면 `FAIL <이유>`(OFFROAD 3.5 m · STALL 10 s · NO_ODOM · TIMEOUT)를 찍고 멈춥니다. 종료 코드 0 = 완주.
+- 시작 자세(`looppath.py` 의 `X0 · Y0 · PSI0`)는 `params.yaml` 의 `robot.start` 와 같아야 합니다 — 시작 자세를 바꾸면 같이 고칩니다.
