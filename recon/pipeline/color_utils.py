@@ -115,6 +115,12 @@ def project_colors(points, normals, frames, poses, occluder, c, require_depth=Fa
     seen = tot > 0
     colors = np.zeros((len(points), 3))
     colors[seen] = (best_c[seen] * w[seen, :, None]).sum(axis=1) / tot[seen, None]
+    return fill_unseen(points, normals, colors, seen), seen, rows
+
+
+def fill_unseen(points, normals, colors, seen):
+    """어느 키프레임에도 안 보인 점: 가장 가까운 색칠된 점의 색 (0.5 m 넘게 멀면 바닥 평균 색 쪽으로)."""
+    colors = colors.copy()
     if seen.any() and not seen.all():
         d, j = cKDTree(points[seen]).query(points[~seen])
         up = seen & (normals[:, 2] > 0.9)
@@ -123,4 +129,4 @@ def project_colors(points, normals, frames, poses, occluder, c, require_depth=Fa
         colors[~seen] = (1 - a) * colors[seen][j] + a * base
     elif not seen.any():
         colors[:] = 0.6
-    return np.clip(colors, 0, 1), seen, rows
+    return np.clip(colors, 0, 1)

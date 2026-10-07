@@ -16,7 +16,7 @@ import yaml
 
 import io_rgbd
 import usd_utils
-from color_utils import project_colors, raycasting_scene
+from color_utils import fill_unseen, project_colors, raycasting_scene
 from mesh_utils import Footprint, Ground, fill_small_holes, floor_colors, floor_patch
 
 
@@ -170,7 +170,7 @@ def main():
     if f.get("floor_patch", False):
         patch, report["fill"]["floor_cells"] = floor_patch(scene, f["floor_cell_m"], f["floor_band_m"], ground=ground,
                                                          min_floor_verts=f.get("min_floor_verts", 3),
-                                                         path_xy=np.array([P[:2, 3] for P in poses]) if poses else None,
+                                                         path_xy=fill_path_xy(cfg, poses, T),
                                                          max_path_dist=f.get("max_path_dist_m"))
         report["fill"]["floor_area_m2"] = round(report["fill"]["floor_cells"] * f["floor_cell_m"] ** 2, 2)
         scene = scene + patch
@@ -179,7 +179,7 @@ def main():
           f" | 바닥 채움 {report['fill'].get('floor_area_m2', 0)} m²")
 
     if "colorize" in cfg:
-        report["colorize"] = colorize(cfg, out, scene, ground, fr, poses)
+        report["colorize"] = colorize(cfg, out, scene, ground, fr, poses, T)
         print(f"      색 투영: 키프레임 {report['colorize']['keyframes']}장 | 색이 보인 정점 {report['colorize']['seen_pct']}%"
               f" | 키프레임 depth ↔ 메쉬 차이 중앙 {report['colorize']['depth_vs_mesh_median_cm']} cm")
 
@@ -239,7 +239,18 @@ def main():
         raise SystemExit(1)
 
 
-def colorize(cfg, out, scene, ground, fr, poses):
+def fill_path_xy(cfg, poses, T):
+    """바닥 채우기 거리 제한에 쓸 주행 경로 (xy). 보조 키프레임(반시계 회차 등)이 있으면 그 경로도 포함."""
+    if not poses:
+        return None
+    xy = [np.array([P[:2, 3] for P in poses])]
+    extra = cfg.get("colorize", {}).get("extra_input")
+    if extra:
+        xy.append(np.array([(T @ P)[:2, 3] for P in io_rgbd.load(extra).poses]))
+    return np.vstack(xy)
+
+
+def colorize(cfg, out, scene, ground, fr, poses, T):
     """키프레임 RGB 를 씬 메쉬(구멍 메운 조각 포함)에 투영 → 정점 색. 키프레임별 depth ↔ 메쉬 차이는 color_qc.csv (B 피드백용)."""
     c = cfg["colorize"]
     v, n = np.asarray(scene.vertices), np.asarray(scene.vertex_normals)
@@ -248,7 +259,20 @@ def colorize(cfg, out, scene, ground, fr, poses):
     if lift and ground is not None:   # 키프레임 depth 의 바닥이 메쉬 바닥보다 높게 나옴 → 그 높이에서 투영해야 사진의 같은 자리
         on_floor = (n[:, 2] > 0.9) & (np.abs(v[:, 2] - ground.height(v[:, :2])) < cfg["ground"]["band_m"])
         pts[on_floor, 2] += lift
-    colors, seen, rows = project_colors(pts, n, fr, poses, raycasting_scene(scene), c, qc=True)
+    occ = raycasting_scene(scene)
+    colors, seen, rows = project_colors(pts, n, fr, poses, occ, c, qc=True)
+    extra = {}
+    if c.get("extra_input"):          # 보조 키프레임 (예: 반시계 회차) — 주 키프레임이 못 본 점에만, 제외 구역 빼고
+        fr2 = io_rgbd.load(c["extra_input"])
+        todo = ~seen
+        for x0, x1, y0, y1 in c.get("extra_exclude_xy", []):   # 씬 좌표 (origin keep 이면 B 맵 좌표와 같음)
+            todo &= ~((v[:, 0] >= x0) & (v[:, 0] <= x1) & (v[:, 1] >= y0) & (v[:, 1] <= y1))
+        idx = np.where(todo)[0]
+        col2, seen2, _ = project_colors(pts[idx], n[idx], fr2, [T @ P for P in fr2.poses], occ, c)
+        colors[idx[seen2]] = col2[seen2]
+        seen[idx[seen2]] = True
+        extra = dict(extra_keyframes=len(fr2.poses), extra_colored_pct=round(100 * float(seen2.sum()) / len(seen), 1))
+        colors = fill_unseen(v, n, colors, seen)
     scene.vertex_colors = o3d.utility.Vector3dVector(colors)
     with open(os.path.join(out, "color_qc.csv"), "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
@@ -257,7 +281,7 @@ def colorize(cfg, out, scene, ground, fr, poses):
     med = [r["median_abs_cm"] for r in rows if r["median_abs_cm"] is not None]
     bias = [r["bias_cm"] for r in rows if r["bias_cm"] is not None]
     worst = sorted((r for r in rows if r["median_abs_cm"] is not None), key=lambda r: -r["median_abs_cm"])[:5]
-    return dict(keyframes=len(rows), seen_pct=round(100 * float(seen.mean()), 1), floor_lift_m=lift,
+    return dict(keyframes=len(rows), seen_pct=round(100 * float(seen.mean()), 1), floor_lift_m=lift, **extra,
                 depth_vs_mesh_median_cm=round(float(np.median(med)), 1), depth_vs_mesh_bias_cm=round(float(np.median(bias)), 1),
                 worst_keyframes=[dict(id=r["id"], x=r["x"], y=r["y"], median_abs_cm=r["median_abs_cm"]) for r in worst])
 
