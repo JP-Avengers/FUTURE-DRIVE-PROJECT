@@ -1,0 +1,72 @@
+# B 맵 v0.2 (주차장, 2026-10-06 인계). 형상 = B 의 원본 depth TSDF 메쉬(색 없음), 색 = 키프레임 RGB 투영.
+# 형상 메쉬를 받으므로 tsdf.py 는 건너뛴다.
+#   python recon/pipeline/build_usd.py        --config recon/configs/map_v02.yaml --out $OUT
+#   python recon/pipeline/check_visibility.py --config recon/configs/map_v02.yaml --out $OUT
+
+name: parking
+out: ~/recon_out/map_v02               # 레포 밖. 메쉬·USD 는 커밋하지 않음
+
+input:
+  format: rtabmap_keyframes            # B 키프레임 내보내기 (keyframes/rgb·depth·calib + 궤적)
+  root: ~/jinwoo/data/map_v0.2         # 받은 폴더. 경로에 한글이 있으면 Open3D 가 못 읽으므로 영문 경로로 복사
+  poses: trajectory_camera_optical.txt # 시각 tx ty tz qx qy qz qw id — 카메라 광학 좌표계 → map
+  depth_scale: 1000.0                  # keyframes/depth 는 mm (B 가 보정 완료 — 다시 보정하지 않음)
+
+geometry:                              # 받은 형상 메쉬 (input.root 기준)
+  mesh: geometry_rawdepth_tsdf_5cm.ply # 형상 기준: 5 cm, 약 420만 삼각형, 색 없음
+  far_mesh: preview_tsdf_5cm.ply       # 바깥 구역용: 키프레임 TSDF (depth 10 m — 형상 메쉬 8 m 보다 조금 더 멂). 빼면 끔
+
+cleanup:
+  min_cluster_tris: 500
+
+orient:
+  up_hint: [0, 0, 1]                   # 맵이 이미 중력 기준 Z-up (IMU)
+  max_tilt_deg: 20
+  level: false                         # 중력 방향 그대로 — 바닥 평면에 맞춰 돌리지 않음 (실제 경사 유지)
+  origin: keep                         # x·y 는 B 맵 좌표 그대로 (궤적·floor_holes.csv 와 바로 비교). z 만 주 바닥 = 0
+  crop_below_floor: 0.3                # 바닥 높이 지도보다 이만큼(m) 아래는 잡음으로 잘라냄
+
+ground:                                # 실외 바닥 높이 지도 (없으면 z=0 평면 — 실내). 바닥 채우기·바깥 바닥·벽이 따라감
+  cell_m: 0.5
+  band_m: 0.3                          # 카메라 경로로 이은 지면에서 이 안의 위 향한 면 = 바닥 (연석 18 cm 포함, 차 보닛 제외)
+  camera_height_m: auto                # auto = 카메라에서 아래로 쏜 광선 중앙값 (실측 1.55 m)
+
+fill:
+  small_hole_size_m: 0.3
+  floor_patch: true
+  floor_cell_m: 0.1                    # 주차장은 넓어서 10 cm 칸
+  floor_band_m: 0.3                    # 바닥 높이 ± 이 안의 위 향한 면이 있으면 덮인 칸 (연석·보도 포함, 차 밑은 채움)
+  max_path_dist_m: 6.0                 # 주행 경로에서 6 m 안만 메움 (B 지도 범위). 루프 가운데 등 촬영 안 된 곳은 억지로 안 채움
+
+colorize:                              # 키프레임 RGB → 정점 색. 가림 = 메쉬 깊이 + 키프레임 depth
+  max_dist_m: 15.0                     # 이보다 먼 키프레임 색은 안 씀
+  top_k: 3                             # 점마다 점수(정면·가까움) 높은 키프레임 몇 장을 섞나
+  min_cos: 0.1                         # 면을 거의 옆에서 본 키프레임은 안 씀
+  occlusion_tol_m: 0.05                # 메쉬 깊이보다 이만큼 + 거리×per_m 뒤면 가려짐
+  occlusion_tol_per_m: 0.02
+  depth_tol_m: 0.15                    # 키프레임 depth 와 이만큼 + 거리×per_m 넘게 다르면 버림
+  depth_tol_per_m: 0.05
+  floor_lift_m: 0.045                  # 키프레임 depth 의 바닥이 메쉬 바닥보다 4.4 cm 높음 (10.7 측정) → 그 높이에서 투영
+
+decimate:
+  visual_tris: 0                       # 0 = 줄이지 않음. 정점 색이라 줄이면 바닥부터 줄어 주차선이 뭉개짐 (텍스처 방식은 다음 단계)
+  collider_tris: 200000
+
+zones:                                 # 10.7 미팅: 배경은 보이는 대로 (벽 X), 외곽은 인위적으로 마무리하지 않고 점군 보강으로
+  near_cell_m: 0.1
+  far_tris: 200000
+  ground_cell_m: 0.5
+  ground_margin_m: 1.0                 # 충돌용 바닥 면만 지도보다 1 m 넓게 (안 보임)
+  ground_far: false                    # 지도 밖 보이는 바닥 면 안 만듦
+  backdrop_height_m: 0                 # 배경 벽 안 만듦
+  boundary_height_m: 2.0               # 안 보이는 경계벽 (충돌만 — 차가 지도 밖으로 못 나감)
+
+visibility:                            # 차량 카메라 경로 (지붕 1.55 m) 기준
+  path_step: 5
+  offsets_m: [-1.0, 0.0, 1.0]
+  yaws_deg: [-30, 0, 30]
+  min_clearance_m: 0.2
+  ray_width: 160
+  horizon_deg: 11.5
+  list_cell_m: 0.5
+  list_top: 30

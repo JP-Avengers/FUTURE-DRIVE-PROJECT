@@ -4,6 +4,7 @@ pose 는 **카메라 광학 좌표계(x 오른쪽 · y 아래 · z 앞) → worl
 RTAB-Map 에서 꺼낼 때는 `rtabmap-export --poses_camera` (로봇 base_link 기준인 --poses 가 아님).
 """
 import os
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -17,6 +18,7 @@ class Frames:
     poses: list          # 4x4 np.ndarray, 카메라 → world
     intrinsic: o3d.camera.PinholeCameraIntrinsic
     depth_scale: float   # 깊이 PNG 값 / depth_scale = m  (mm 단위 PNG 면 1000)
+    ids: list = None     # 프레임 이름 (키프레임 ID 등, 점검 결과를 B 에게 알려줄 때)
 
 
 def read_log(path):
@@ -91,7 +93,43 @@ def load_tum(cfg):
     return Frames(color, depth, poses, intr, cfg.get("depth_scale", 1000.0))
 
 
-LOADERS = {"open3d_lounge": load_open3d_lounge, "tum": load_tum}
+def read_calib_yaml(path):
+    """RTAB-Map 보정 yaml (OpenCV 형식) → (width, height, fx, fy, cx, cy)."""
+    s = open(path, encoding="utf-8").read()
+    k = [float(x) for x in re.search(r"camera_matrix:.*?data:\s*\[([^\]]+)\]", s, re.S).group(1).replace("\n", " ").split(",")]
+    w, h = (int(re.search(rf"{key}:\s*(\d+)", s).group(1)) for key in ("image_width", "image_height"))
+    return w, h, k[0], k[4], k[2], k[5]
+
+
+def load_rtabmap_keyframes(cfg):
+    """B 의 키프레임 내보내기 (map v0.2~). 모두 같은 키프레임 ID 로 묶인다.
+
+    poses        `시각 tx ty tz qx qy qz qw id` — 카메라 광학 좌표계 → map (trajectory_camera_optical.txt)
+    keyframes/   rgb/<id>.jpg · depth/<id>.png (mm, RGB 에 정렬, 보정 완료) · calib/<id>.yaml
+    """
+    root = os.path.expanduser(cfg["root"])
+    kf = os.path.join(root, cfg.get("keyframes", "keyframes"))
+    _, rows = read_tum_list(os.path.join(root, cfg.get("poses", "trajectory_camera_optical.txt")))
+    color, depth, poses, ids, calib = [], [], [], [], set()
+    for r in rows:
+        v = list(map(float, r))
+        i = int(v[7])
+        c, d = os.path.join(kf, "rgb", f"{i}.jpg"), os.path.join(kf, "depth", f"{i}.png")
+        if not (os.path.exists(c) and os.path.exists(d)):
+            continue
+        color.append(c)
+        depth.append(d)
+        poses.append(tum_to_matrix(v[0:3], v[3:7]))
+        ids.append(i)
+        calib.add(read_calib_yaml(os.path.join(kf, "calib", f"{i}.yaml")))
+    if len(calib) != 1:
+        raise SystemExit(f"키프레임마다 내부 파라미터가 다름 ({len(calib)}종) — 지금은 한 종류만 지원")
+    print(f"키프레임: pose {len(rows)} → 이미지 있는 것 {len(ids)}")
+    intr = o3d.camera.PinholeCameraIntrinsic(*calib.pop())
+    return Frames(color, depth, poses, intr, cfg.get("depth_scale", 1000.0), ids)
+
+
+LOADERS = {"open3d_lounge": load_open3d_lounge, "tum": load_tum, "rtabmap_keyframes": load_rtabmap_keyframes}
 
 
 def load(cfg):

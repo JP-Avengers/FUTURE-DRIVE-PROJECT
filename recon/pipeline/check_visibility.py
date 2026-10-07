@@ -19,7 +19,7 @@ import open3d as o3d
 import yaml
 
 import io_rgbd
-from mesh_utils import Footprint
+from mesh_utils import Footprint, Ground
 
 NAMES = ["ok", "backface", "down", "side", "up"]
 
@@ -108,6 +108,8 @@ def main():
     T = np.array(json.load(open(os.path.join(out, "transform.json"), encoding="utf-8"))["T_input_to_scene"])
     fr = io_rgbd.load(cfg["input"])
     poses = [T @ p for p in fr.poses]                         # 카메라 경로를 메쉬와 같은 씬 좌표로
+    gpath = os.path.join(out, "ground.npz")                   # 실외: 바닥 높이 지도 (없으면 z=0)
+    ground = Ground.load(gpath) if os.path.exists(gpath) else Ground()
     scene = o3d.t.geometry.RaycastingScene()
     scene.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(mesh))
     W = c["ray_width"]
@@ -130,7 +132,9 @@ def main():
         per_off[off] += cnt
         m1, m2 = cls == 1, cls == 2
         p1 = o[m1] + d[m1] * t[m1, None]                     # 물체 구멍: 뒤쪽 면에 맞은 지점
-        p2 = o[m2] - d[m2] * (o[m2, 2:3] / d[m2, 2:3])       # 바닥 구멍: 바닥(z=0)이 있어야 할 지점
+        p2 = o[m2] - d[m2] * ((o[m2, 2:3] - ground.height(o[m2])[:, None]) / d[m2, 2:3])   # 바닥 구멍: 바닥이 있어야 할 지점
+        if len(p2):                                          # 바닥 높이가 곳곳 다르면 닿는 자리 높이로 한 번 더
+            p2 = o[m2] - d[m2] * ((o[m2, 2:3] - ground.height(p2)[:, None]) / d[m2, 2:3])
         hole_pts += [np.c_[p1, np.full(len(p1), 1), np.full(len(p1), k)],
                      np.c_[p2, np.full(len(p2), 2), np.full(len(p2), k)]]
     pct = 100 * counts / counts.sum()
@@ -155,7 +159,8 @@ def main():
         for j in np.argsort(-cams_seen, kind="stable")[:c["list_top"]]:
             x, y, z, kind = uniq[j]
             rows.append(dict(kind="floor" if kind == 2 else "object", x=round((x + .5) * cell, 2), y=round((y + .5) * cell, 2),
-                             z=0.0 if kind == 2 else round((z + .5) * cell, 2), cameras=int(cams_seen[j]), rays=int(rays[j])))
+                             z=round(float(ground.height(np.array([[(x + .5) * cell, (y + .5) * cell]]))[0]), 2) if kind == 2
+                             else round((z + .5) * cell, 2), cameras=int(cams_seen[j]), rays=int(rays[j])))
     with open(os.path.join(vdir, "holes_list.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["kind", "x", "y", "z", "cameras", "rays"])
         w.writeheader()

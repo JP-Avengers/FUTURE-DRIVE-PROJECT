@@ -31,7 +31,8 @@ Windows 에서는 `py -3.12 -m venv ~/o3d_env` 로 만들고, 아래 명령의 `
 
 ```
 recon/configs/<이름>.yaml         설정 (입력 형식, voxel, 깊이 한계, 목표 삼각형 수 …)
-recon/pipeline/io_rgbd.py         입력 읽기: open3d_lounge(시험용) · tum(B 인계)
+recon/pipeline/io_rgbd.py         입력 읽기: open3d_lounge(시험용) · tum · rtabmap_keyframes(B 맵 v0.2)
+recon/pipeline/color_utils.py     키프레임 RGB → 메쉬 정점 색 투영 (가림 처리) + 키프레임 정합 점검
 recon/pipeline/tsdf.py            RGB-D 프레임 + pose → TSDF → mesh_raw.ply (근거리) + mesh_far_raw.ply (원거리, 배경용)
 recon/pipeline/build_usd.py       정리 → 바닥 평면으로 Z-up·원점 → 구멍 메우기 → 경량화 → 충돌 메쉬 → 구역(바깥·배경·경계) → USD → 검증
 recon/pipeline/mesh_utils.py      공용: 지도 범위(footprint)와 평면·벽, 작은 구멍 메우기, 바닥 채우기
@@ -68,6 +69,15 @@ OUT=~/recon_out/lounge        # 결과를 둘 폴더 — 원하는 곳으로
   부분마다 prim 이 따로라 Isaac Sim 에서 `VisualFar`·`Backdrop` 만 끄고 켜는 비교가 가능하다.
 - **충돌**: 정적 배경이라 삼각형 메쉬 그대로 (`MeshCollisionAPI approximation = none`). 볼록 분해는 움직이는 물체에만 필요
 - **파라미터 실험**: config 를 레포 밖으로 복사해 값을 바꾸고 `--out` 을 다른 폴더로 → 두 `report.json` 비교
+
+### 실제 주차장 — B 맵 v0.2 (`configs/map_v02.yaml`)
+
+B 가 형상 메쉬(원본 depth TSDF, 색 없음)와 키프레임을 넘기므로 `tsdf.py` 없이 바로 `build_usd.py` → `check_visibility.py`. 받은 폴더는 영문 경로로 복사 (Open3D 는 한글 경로를 못 읽음).
+
+- **색**: 키프레임 RGB 를 메쉬에 투영 (`color_utils.py`) — 가림은 메쉬 깊이 + 키프레임 depth 로 거름. 키프레임별 depth ↔ 메쉬 차이는 `color_qc.csv` (B 피드백용)
+- **바닥 높이 지도** (`ground:`, `ground.npz`): 실외 바닥은 평평하지 않아 z=0 대신 카메라 경로 아래 지면 기준으로 칸마다 바닥 높이. 바닥 채우기·충돌 바닥 면이 이 높이를 따라감
+- **10.7 미팅 반영**: 주행 중 구멍만 안 보이게. 배경 벽·지도 밖 바닥 면은 만들지 않고(배경은 보이는 대로), 경로에서 `max_path_dist_m`(6 m) 넘는 촬영 안 된 곳은 메우지 않음 — 외곽은 점군 보강으로 완성
+- 시각용은 경량화하지 않음 (정점 색이라 줄이면 주차선이 뭉개짐)
 
 ### 결과 확인 — `$OUT/`
 
