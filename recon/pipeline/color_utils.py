@@ -130,3 +130,21 @@ def fill_unseen(points, normals, colors, seen):
     elif not seen.any():
         colors[:] = 0.6
     return np.clip(colors, 0, 1)
+
+
+def floor_offset(frames, poses, ground, step=5, max_depth=8.0, band=0.25):
+    """키프레임 depth 로 본 바닥이 메쉬 바닥(ground)보다 얼마나 높은가 (m, 중앙값).
+    키프레임 depth 와 형상 메쉬의 바닥 높이가 다르면 사진 속 바닥 무늬가 앞뒤로 밀려 투영되므로, 그만큼 올려서 투영한다."""
+    K = frames.intrinsic.intrinsic_matrix
+    fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+    dz = []
+    for f in range(0, len(poses), step):
+        d = np.asarray(o3d.io.read_image(frames.depth[f])).astype(np.float64)[::4, ::4] / frames.depth_scale
+        vv, uu = np.mgrid[0:d.shape[0], 0:d.shape[1]] * 4
+        ok = (d > 0) & (d < max_depth)
+        z = d[ok]
+        X = np.c_[(uu[ok] - cx) * z / fx, (vv[ok] - cy) * z / fy, z] @ poses[f][:3, :3].T + poses[f][:3, 3]
+        h = X[:, 2] - ground.height(X[:, :2])
+        dz.append(h[np.abs(h) < band])
+    dz = np.concatenate(dz) if dz else np.zeros(0)
+    return float(np.median(dz)) if len(dz) > 1000 else 0.0

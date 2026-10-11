@@ -16,7 +16,7 @@ import yaml
 
 import io_rgbd
 import usd_utils
-from color_utils import fill_unseen, project_colors, raycasting_scene
+from color_utils import fill_unseen, floor_offset, project_colors, raycasting_scene
 from mesh_utils import Footprint, Ground, fill_small_holes, floor_colors, floor_patch
 
 
@@ -180,7 +180,8 @@ def main():
 
     if "colorize" in cfg:
         report["colorize"] = colorize(cfg, out, scene, ground, fr, poses, T)
-        print(f"      색 투영: 키프레임 {report['colorize']['keyframes']}장 | 색이 보인 정점 {report['colorize']['seen_pct']}%"
+        print(f"      색 투영: 주 키프레임 {report['colorize']['keyframes']}장 (바닥 올림 {report['colorize']['floor_lift_m'] * 100:.1f} cm)"
+              f" | 색이 보인 정점 {report['colorize']['seen_pct']}%"
               f" | 키프레임 depth ↔ 메쉬 차이 중앙 {report['colorize']['depth_vs_mesh_median_cm']} cm")
 
     d = cfg["decimate"]
@@ -239,39 +240,61 @@ def main():
         raise SystemExit(1)
 
 
+def extra_sources(cfg):
+    """보조 키프레임 묶음 목록 [(이름, input, 제외 구역)] — 색 우선순위 순서. colorize.extra_inputs (예전 extra_input 도 받음)."""
+    c = cfg.get("colorize", {})
+    if c.get("extra_input"):
+        return [("extra", c["extra_input"], c.get("extra_exclude_xy", []))]
+    return [(e.get("name", e["input"].get("keyframes", "extra")), e["input"], e.get("exclude_xy", [])) for e in c.get("extra_inputs", [])]
+
+
 def fill_path_xy(cfg, poses, T):
-    """바닥 채우기 거리 제한에 쓸 주행 경로 (xy). 보조 키프레임(반시계 회차 등)이 있으면 그 경로도 포함."""
+    """바닥 채우기 거리 제한에 쓸 주행 경로 (xy). 보조 키프레임 묶음의 경로도 포함."""
     if not poses:
         return None
     xy = [np.array([P[:2, 3] for P in poses])]
-    extra = cfg.get("colorize", {}).get("extra_input")
-    if extra:
-        xy.append(np.array([(T @ P)[:2, 3] for P in io_rgbd.load(extra).poses]))
+    for _, inp, _ in extra_sources(cfg):
+        xy.append(np.array([(T @ P)[:2, 3] for P in io_rgbd.load(inp).poses]))
     return np.vstack(xy)
 
 
 def colorize(cfg, out, scene, ground, fr, poses, T):
-    """키프레임 RGB 를 씬 메쉬(구멍 메운 조각 포함)에 투영 → 정점 색. 키프레임별 depth ↔ 메쉬 차이는 color_qc.csv (B 피드백용)."""
+    """키프레임 RGB 를 씬 메쉬(구멍 메운 조각 포함)에 투영 → 정점 색. 키프레임별 depth ↔ 메쉬 차이는 color_qc.csv (B 피드백용).
+    주 키프레임(input)으로 먼저 칠하고, 보조 묶음은 순서대로 아직 못 칠한 점에만 (묶음별 제외 구역 빼고).
+    floor_lift_m: auto 면 묶음마다 '키프레임 depth 바닥 − 메쉬 바닥'을 재서 그만큼 바닥을 올려 투영."""
     c = cfg["colorize"]
     v, n = np.asarray(scene.vertices), np.asarray(scene.vertex_normals)
-    pts = v.copy()
-    lift = c.get("floor_lift_m", 0.0)
-    if lift and ground is not None:   # 키프레임 depth 의 바닥이 메쉬 바닥보다 높게 나옴 → 그 높이에서 투영해야 사진의 같은 자리
+    on_floor = None
+    if ground is not None:
         on_floor = (n[:, 2] > 0.9) & (np.abs(v[:, 2] - ground.height(v[:, :2])) < cfg["ground"]["band_m"])
-        pts[on_floor, 2] += lift
+
+    def lifted(frames, src_poses):
+        lift = c.get("floor_lift_m", 0.0)
+        if lift == "auto":
+            lift = floor_offset(frames, src_poses, ground) if ground is not None else 0.0
+        pts = v.copy()
+        if lift and on_floor is not None:   # 키프레임 depth 의 바닥이 메쉬 바닥보다 높게 나옴 → 그 높이에서 투영해야 사진의 같은 자리
+            pts[on_floor, 2] += lift
+        return pts, round(float(lift), 3)
+
     occ = raycasting_scene(scene)
+    pts, lift = lifted(fr, poses)
     colors, seen, rows = project_colors(pts, n, fr, poses, occ, c, qc=True)
-    extra = {}
-    if c.get("extra_input"):          # 보조 키프레임 (예: 반시계 회차) — 주 키프레임이 못 본 점에만, 제외 구역 빼고
-        fr2 = io_rgbd.load(c["extra_input"])
+    sources = [dict(name="main", keyframes=len(poses), floor_lift_m=lift, colored_pct=round(100 * float(seen.mean()), 1))]
+    for name, inp, exclude in extra_sources(cfg):
+        fr2 = io_rgbd.load(inp)
+        p2 = [T @ P for P in fr2.poses]
         todo = ~seen
-        for x0, x1, y0, y1 in c.get("extra_exclude_xy", []):   # 씬 좌표 (origin keep 이면 B 맵 좌표와 같음)
+        for x0, x1, y0, y1 in exclude:      # 씬 좌표 (origin keep 이면 B 맵 좌표와 같음)
             todo &= ~((v[:, 0] >= x0) & (v[:, 0] <= x1) & (v[:, 1] >= y0) & (v[:, 1] <= y1))
         idx = np.where(todo)[0]
-        col2, seen2, _ = project_colors(pts[idx], n[idx], fr2, [T @ P for P in fr2.poses], occ, c)
+        pts2, lift2 = lifted(fr2, p2)
+        col2, seen2, _ = project_colors(pts2[idx], n[idx], fr2, p2, occ, c)
         colors[idx[seen2]] = col2[seen2]
         seen[idx[seen2]] = True
-        extra = dict(extra_keyframes=len(fr2.poses), extra_colored_pct=round(100 * float(seen2.sum()) / len(seen), 1))
+        sources.append(dict(name=name, keyframes=len(p2), floor_lift_m=lift2, colored_pct=round(100 * float(seen2.sum()) / len(seen), 1)))
+        print(f"      보조 색 {name}: 키프레임 {len(p2)}장 · 바닥 올림 {lift2 * 100:.1f} cm · 새로 칠한 정점 {sources[-1]['colored_pct']}%")
+    if len(sources) > 1:
         colors = fill_unseen(v, n, colors, seen)
     scene.vertex_colors = o3d.utility.Vector3dVector(colors)
     with open(os.path.join(out, "color_qc.csv"), "w", newline="", encoding="utf-8") as fh:
@@ -281,7 +304,7 @@ def colorize(cfg, out, scene, ground, fr, poses, T):
     med = [r["median_abs_cm"] for r in rows if r["median_abs_cm"] is not None]
     bias = [r["bias_cm"] for r in rows if r["bias_cm"] is not None]
     worst = sorted((r for r in rows if r["median_abs_cm"] is not None), key=lambda r: -r["median_abs_cm"])[:5]
-    return dict(keyframes=len(rows), seen_pct=round(100 * float(seen.mean()), 1), floor_lift_m=lift, **extra,
+    return dict(keyframes=len(rows), seen_pct=round(100 * float(seen.mean()), 1), floor_lift_m=lift, sources=sources,
                 depth_vs_mesh_median_cm=round(float(np.median(med)), 1), depth_vs_mesh_bias_cm=round(float(np.median(bias)), 1),
                 worst_keyframes=[dict(id=r["id"], x=r["x"], y=r["y"], median_abs_cm=r["median_abs_cm"]) for r in worst])
 
