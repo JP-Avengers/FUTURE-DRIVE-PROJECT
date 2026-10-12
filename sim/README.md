@@ -89,6 +89,23 @@ OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/check_proxy_scene
 - **환경변수**: `FD_LIDAR=1` LiDAR 켬(점검도 같은 값으로) · `FD_DOMAIN=43` 시험용 도메인 · `FD_VIEW_RES=1280x720` 뷰포트 해상도(스트리밍 — RTF 가 낮을 때 줄임).
 - `run_streaming.sh` 는 씬 없이 빈 앱을 스트리밍할 때 씁니다.
 
+### 교사 데이터 녹화 — `sim/record_teacher.sh`
+
+규격서 토픽 전부(카메라 · `camera_info` · odom · IMU · `/tf` · `/clock` · `/cmd_vel` · `/route_command`)를 rosbag2 MCAP 으로 시뮬 시간 기준으로 남깁니다. **구독만 하므로 `/cmd_vel` 발행자(teleop) 수는 그대로 1개입니다.** 10 fps 샘플링 · 학습용 변환(HDF5)은 하지 않고 원본을 남깁니다 — 방식은 E 가 [`d2e_teacher.md`](../docs/interfaces/d2e_teacher.md) 에 정합니다.
+
+```bash
+# 1차 수집 순서 — 터미널 셋(모두 tmux 안)
+sim/run_proxy.sh stream                   # ① 씬 (Mac 스트리밍 클라이언트로 봄)
+sim/run_proxy.sh teleop                   # ② 키보드 조작(가감속 램프)
+sim/record_teacher.sh <운전자> <cw|ccw> [메모]   # ③ 녹화 — Ctrl+C 로 끝내면 바로 점검
+```
+
+- **저장**: `data/teacher/raw_v1/<월일_시분초>_<운전자>_<방향>/` — MCAP · `meta.yaml`(운전자 · 방향 · 레포 커밋 · 씬 params 해시) · `qc.txt`. Git 에 안 올리고 `MANIFEST.md` 에 묶음 단위로 기록합니다.
+- **Stop → Play 전에 녹화를 끕니다.** 시뮬 시간이 0 으로 돌아가 한 파일에 섞이면 점검이 NG 를 냅니다. Play 뒤 새로 띄웁니다.
+- **압축**: 기본 `zstd_fast` — 10.12 헤드리스 시험에서 시뮬 1분에 0.19 GB(압축 없는 9.30 샘플은 1.14 GB). 1.5~2시간이면 약 17~23 GB. `FD_REC_COMPRESS=0` 이면 끔.
+- **점검** `sim/qc_teacher.py <녹화 폴더>` — 따로 돌려도 됩니다. 카메라 장 수 · Hz · 최대 간격(헤더 시각, 0.5 s 초과 NG), `/clock` 이 뒤로 갔는지(NG), odom 같은 시각 비율, `/cmd_vel` 상한(v 0.8 · ω 0.7 초과 NG), 크기를 찍습니다. 9.30 샘플의 "0.48 s 빈 구간"은 수신 시각 간격이었고 헤더 시각은 이어져 있었습니다(`cam_rx` 줄).
+- 서버 작업은 D 만 합니다. 운전은 D 가 연결한 D 의 Mac 에서 D 입회로 교대합니다.
+
 ### 경로 추종 주행 — `sim/pursuit.py`
 
 규칙 기반 pure pursuit 노드입니다. `/chassis/odom` 만 받아 루프 중심선(`params.yaml` 의 `loop`, 약 119 m)에서 `--lookahead` 앞 점을 따라가도록 `/cmd_vel` 을 냅니다. **E2E 가 아니고 장애물도 피하지 않습니다**(카메라 · LiDAR 를 안 봄). 9.30 루프 주행 시험(양방향 완주, 최대 이탈 0.44 m)과 10.6 시연 영상에 썼습니다. 경로 · 좌표 변환은 `sim/looppath.py`.
