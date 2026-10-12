@@ -122,6 +122,12 @@ python3 sim/pursuit.py --dir cw --v 0.8 --lookahead 2.0     # 한 바퀴 돌면 
 
 ## 실제 주차장 씬 — 맵 v0.4b (10.12)
 
+> **r3 를 쓰세요(10.12 저녁).** C 가 아래 문제(겹친 바닥 · sRGB 색 · 경로 위 덩어리)를 원본에서 고친 `data/usd/parking_v0.4b_r3/`(레포 `7355d1f` 파이프라인)는 D 보정 레이어 없이 올라갑니다. 루트 `sim/scenes/parking/parking_v0.4b_r3.usda` — dfix 레이어 2개를 빼고, 바닥 높이 기준이 바뀌어(씬 전체 6.5 cm 낮아짐) 로봇 시작 z 만 −0.05 로 둡니다. PhysX 멈춤 · 걸림 없이 X-Mobility 제로샷 완주(랩 173.4 s, 평균 이탈 0.62 · 최대 2.08 m). 경로는 `data/usd/parking_v0.4b_r3/route_bonnet_cw.csv`(앞 판과 x · y 같고 z 만 다름). 아래 내용은 처음 판(v0.4b + dfix) 기록입니다.
+>
+> ```bash
+> FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/run_proxy.sh stream
+> ```
+
 C 가 D 에게 처음 넘긴 실제 주차장 USD(`data/usd/parking_v0.4b/`, B 맵 v0.4b 본네트 카메라 기준)를 Proxy 와 같은 로봇 · 센서 · ROS · 물리 레이어로 묶은 씬입니다. 루트는 `sim/scenes/parking/parking_v0.4b.usda` — Proxy 의 `env_proxy` · `background` 자리에 C 의 `parking_scene.usda` 가 들어갑니다. 실행은 `run_proxy.sh` 에 `FD_SCENE` 만 붙입니다.
 
 ```bash
