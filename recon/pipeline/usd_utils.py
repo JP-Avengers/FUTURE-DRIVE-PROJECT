@@ -43,7 +43,7 @@ def _new_stage():
     return stage
 
 
-def write_scene(usd_dir, name, visuals, colliders, info=None):
+def write_scene(usd_dir, name, visuals, colliders, info=None, double_sided=("Backdrop",)):
     """<name>_mesh.usdc + <name>_scene.usda (/World/<Name> 가 메쉬 파일을 payload 로 참조).
 
     visuals   : {"Visual": 메쉬, "VisualFar": …, "Backdrop": …}  — 보이는 부분 (정점 색)
@@ -57,7 +57,7 @@ def write_scene(usd_dir, name, visuals, colliders, info=None):
     st = _new_stage()
     st.SetDefaultPrim(UsdGeom.Xform.Define(st, f"/{prim_name}").GetPrim())
     for part, mesh in visuals.items():
-        add_mesh(st, f"/{prim_name}/{part}", mesh, double_sided=(part == "Backdrop"))
+        add_mesh(st, f"/{prim_name}/{part}", mesh, double_sided=(part in double_sided))   # 양면 = 뒤에서 봐도 그림 (비쳐 보이지 않게)
     for part, mesh in colliders.items():
         col = add_mesh(st, f"/{prim_name}/{part}", mesh, with_color=False)
         col.CreateVisibilityAttr(UsdGeom.Tokens.invisible)

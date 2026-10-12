@@ -155,6 +155,14 @@ def main():
     ground = None
     if outdoor:       # 바닥이 평평하지 않음 → 바닥 높이 지도. 바닥 아래 잡음은 그 높이 기준으로 잘라냄
         ground = make_ground(cfg, scene, poses)
+        # 바닥 높이 0 을 '주행 경로 아래 바닥 중앙값'으로 다시 맞춤 — RANSAC 은 실행마다 1~2 cm 달라져 씬 z 가 흔들림
+        dz = float(np.median(ground.height(np.array([P[:2, 3] for P in poses]))))
+        scene.translate((0.0, 0.0, -dz))
+        T[2, 3] -= dz
+        ground.grid = ground.grid - dz
+        poses = [T @ P for P in fr.poses]
+        json.dump(dict(source=mesh_path, T_input_to_scene=T.tolist(), orient=cfg["orient"], floor_zero="주행 경로 아래 바닥 중앙값 = 0"),
+                  open(os.path.join(out, "transform.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         v = np.asarray(scene.vertices)
         below = v[:, 2] < ground.height(v[:, :2]) - cfg["orient"]["crop_below_floor"]
         scene.remove_vertices_by_mask(below)
@@ -285,7 +293,8 @@ def main():
     scene_usd, mesh_usd = usd_utils.write_scene(
         os.path.join(out, "usd"), cfg["name"], visuals, colliders,
         info=dict(config=os.path.basename(args.config), transform="../transform.json",
-                  **{f"{k}_tris": len(m.triangles) for k, m in {**visuals, **colliders}.items()}))
+                  **{f"{k}_tris": len(m.triangles) for k, m in {**visuals, **colliders}.items()}),
+        double_sided=tuple(cfg.get("usd", {}).get("double_sided", ["Backdrop"])))
     problems, summary = usd_utils.verify_scene(scene_usd, mesh_usd)
     report["usd"] = dict(scene=scene_usd, mesh=mesh_usd, mesh_mb=round(os.path.getsize(mesh_usd) / 1e6, 2),
                          prims=summary, problems=problems)

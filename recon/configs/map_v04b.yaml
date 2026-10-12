@@ -104,3 +104,6 @@ visibility:                            # 차량 카메라 경로 (지붕 1.55 m)
   horizon_deg: 11.5
   list_cell_m: 0.5
   list_top: 30
+
+usd:
+  double_sided: [Visual]               # 시각용 메쉬는 양면 — 로봇 카메라(0.35 m)에서 물체 뒷면이 비쳐 보이지 않게
