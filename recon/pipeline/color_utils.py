@@ -148,3 +148,37 @@ def floor_offset(frames, poses, ground, step=5, max_depth=8.0, band=0.25):
         dz.append(h[np.abs(h) < band])
     dz = np.concatenate(dz) if dz else np.zeros(0)
     return float(np.median(dz)) if len(dz) > 1000 else 0.0
+
+
+def seen_through(mesh, frame_sets, c):
+    """키프레임마다 광선을 쏴서, 메쉬 면에 먼저 닿는데 그 픽셀의 키프레임 depth 는 더 멀리 찍힌 경우 = 그 순간 그 면은 없었음.
+    여러 번 '뚫고 보인' 면 = 지나간 사람·차의 잔상 (움직이는 물체). frame_sets = [(Frames, 씬 좌표 poses), …].
+    반환: 지울 삼각형 bool (N_tri,), 통계."""
+    rs = raycasting_scene(mesh)
+    n_tri = len(mesh.triangles)
+    through, seen = np.zeros(n_tri, np.int32), np.zeros(n_tri, np.int32)
+    W = c.get("ray_width", 160)
+    tol0, tol1, dmax = c.get("tol_m", 0.15), c.get("tol_per_m", 0.05), c.get("max_depth_m", 8.0)
+    for frames, poses in frame_sets:
+        intr = frames.intrinsic
+        s = W / intr.width
+        H = int(round(intr.height * s))
+        K = intr.intrinsic_matrix.copy()
+        K[:2] *= s
+        vv, uu = np.mgrid[0:H, 0:W]
+        src_u = np.clip(np.rint((uu + 0.5) / s - 0.5).astype(int), 0, intr.width - 1)
+        src_v = np.clip(np.rint((vv + 0.5) / s - 0.5).astype(int), 0, intr.height - 1)
+        for f, P in enumerate(poses):
+            d = np.asarray(o3d.io.read_image(frames.depth[f])).astype(np.float32) / frames.depth_scale
+            dk = d[src_v, src_u].ravel()
+            rays = o3d.t.geometry.RaycastingScene.create_rays_pinhole(o3d.core.Tensor(K), o3d.core.Tensor(np.linalg.inv(P)), W, H)
+            ans = rs.cast_rays(rays)
+            t, pid = ans["t_hit"].numpy().ravel(), ans["primitive_ids"].numpy().ravel()
+            ok = (dk > 0) & (dk < dmax) & np.isfinite(t)
+            tol = tol0 + tol1 * t
+            th = ok & (dk > t + tol)                        # 면 너머까지 찍힘
+            sn = ok & (np.abs(dk - t) <= tol)               # 그 면이 찍힘
+            np.add.at(through, pid[th], 1)
+            np.add.at(seen, pid[sn], 1)
+    remove = (through >= c.get("min_through", 3)) & (through > c.get("through_ratio", 2.0) * seen)
+    return remove, dict(triangles_removed=int(remove.sum()), frames=sum(len(p) for _, p in frame_sets))

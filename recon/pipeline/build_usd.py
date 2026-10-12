@@ -16,7 +16,7 @@ import yaml
 
 import io_rgbd
 import usd_utils
-from color_utils import fill_unseen, floor_offset, project_colors, raycasting_scene
+from color_utils import fill_unseen, floor_offset, project_colors, raycasting_scene, seen_through
 from mesh_utils import Footprint, Ground, fill_small_holes, floor_colors, floor_patch
 
 
@@ -162,6 +162,17 @@ def main():
     print(f"[3/8] Z-up: 범위 {report['orient']['extent_m']} m | 바닥 기울기 {report['orient']['floor_tilt_from_hint_deg']}°"
           + (f" | 카메라 높이 {report['ground']['camera_height_m']} m · 바닥 아래 잡음 정점 {report['ground']['cropped_below_vertices']:,} 삭제"
              if outdoor else f" | 바닥 정점 {report['orient']['floor_vertex_pct']}%"))
+
+    if cfg.get("transients") and fr is not None:   # 지나간 사람·차 잔상 지우기 (메우기 전에 — 지운 자리 바닥은 아래에서 채움)
+        sets = [(fr, poses)] + [(f2, [T @ P for P in f2.poses]) for f2 in (io_rgbd.load(inp) for _, inp, _ in extra_sources(cfg))]
+        gone, report["transients"] = seen_through(scene, sets, cfg["transients"])
+        removed = o3d.geometry.TriangleMesh(scene.vertices, o3d.utility.Vector3iVector(np.asarray(scene.triangles)[gone]))
+        removed.remove_unreferenced_vertices()
+        o3d.io.write_triangle_mesh(os.path.join(out, "transients_removed.ply"), removed)   # 지운 부분 (확인용)
+        scene.remove_triangles_by_mask(gone)
+        scene.remove_unreferenced_vertices()
+        scene, _ = cleanup(scene, cfg["cleanup"]["min_cluster_tris"])
+        print(f"      잔상 지우기: 키프레임 {report['transients']['frames']}장 광선 → 삼각형 {report['transients']['triangles_removed']:,}개 삭제")
 
     f = cfg.get("fill", {})
     report["fill"] = {}

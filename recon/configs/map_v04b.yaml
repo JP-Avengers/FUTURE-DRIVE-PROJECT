@@ -26,6 +26,14 @@ orient:
   origin: keep                         # x·y 는 B 맵 좌표 그대로 (궤적·floor_holes.csv 와 바로 비교). z 만 주 바닥 = 0
   crop_below_floor: 0.3                # 바닥 높이 지도보다 이만큼(m) 아래는 잡음으로 잘라냄
 
+transients:                            # 지나간 사람·차 잔상 지우기: 키프레임 광선이 면을 '뚫고' 더 멀리 찍힌 면
+  ray_width: 160                       # 키프레임마다 광선 해상도 (가로)
+  max_depth_m: 8.0                     # 이보다 먼 depth 는 안 씀
+  tol_m: 0.15                          # 면보다 이만큼 + 거리×per_m 더 멀리 찍혀야 '뚫고 보임'
+  tol_per_m: 0.05
+  min_through: 3                       # 뚫고 보인 키프레임이 이 이상이고
+  through_ratio: 2.0                   # 그 면이 찍힌 횟수의 이 배보다 많으면 지움
+
 ground:                                # 실외 바닥 높이 지도 (없으면 z=0 평면 — 실내). 바닥 채우기·바깥 바닥·벽이 따라감
   cell_m: 0.5
   band_m: 0.3                          # 카메라 경로로 이은 지면에서 이 안의 위 향한 면 = 바닥 (연석 18 cm 포함, 차 보닛 제외)
