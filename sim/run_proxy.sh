@@ -9,7 +9,7 @@
 #   sim/run_proxy.sh monitor         이 서버에서는 못 씀(10.1) — 화면이 GPU 1 에만 나와 GPU 0 렌더 창을 못 그린다
 #
 # 끄기: 띄운 터미널에서 Ctrl+C (tmux 는 tmux send-keys -t <세션> C-c). 끝에 [Error] 줄 수와 GPU 상태를 찍는다.
-# 환경변수: FD_LIDAR=1 LiDAR 켬 · FD_DOMAIN=43 시험용 도메인 · FD_VIEW_RES=1280x720 뷰포트 해상도(stream) · FD_TELEOP=stock 예전 조작(teleop)
+# 환경변수: FD_LIDAR=1 LiDAR 켬 · FD_DOMAIN=43 시험용 도메인 · FD_VIEW_RES=1280x720 뷰포트 해상도(stream) · FD_TELEOP=stock 예전 조작(teleop) · FD_SCENE=sim/scenes/parking/parking_v0.4b.usda 다른 씬(기본 Proxy)
 # 로그: logs/run_proxy/<모드>_<월일_시분초>.log
 set -euo pipefail
 CD1=${CD1:-$HOME/Capstone_Design_1}
@@ -25,7 +25,8 @@ set -u
 export ROS_DOMAIN_ID=${FD_DOMAIN:-42}   # .bashrc 값과 상관없이 고정. FD_DOMAIN 은 시험 격리용
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 export OMNI_KIT_ACCEPT_EULA=YES PYTHONUNBUFFERED=1
-export FD_PROXY_MODE=$MODE FD_SCENE=$CD1/sim/scenes/proxy/proxy_parking.usda
+# 씬 루트 — 기본 Proxy. 실행 폴더가 바뀌어도(stream 은 logs/etli) 열리게 절대 경로로 바꾼다
+export FD_PROXY_MODE=$MODE FD_SCENE=$(realpath "${FD_SCENE:-$CD1/sim/scenes/proxy/proxy_parking.usda}")
 
 case $MODE in
   check)
@@ -46,7 +47,8 @@ case $MODE in
     echo "monitor 모드는 이 서버에서 쓸 수 없습니다 — 화면은 GPU 1 에만 나오는데 렌더는 GPU 0 고정이라 창을 못 그립니다(10.1 확인)."
     echo "대신: tmux 안에서 sim/run_proxy.sh stream → Mac 의 스트리밍 클라이언트로 보고, 다른 ssh 터미널에서 sim/run_proxy.sh teleop"
     exit 2 ;;
-  stream|headless) ;;
+  stream|headless)
+    [ -f "$FD_SCENE" ] || { echo "씬 파일이 없음: ${FD_SCENE:-(빈 값)}"; exit 2; } ;;
   *) usage ;;
 esac
 
@@ -75,7 +77,7 @@ esac
 
 mkdir -p "$CD1/logs/run_proxy" "$RUNDIR"
 LOG=$CD1/logs/run_proxy/${MODE}_$(date +%m%d_%H%M%S).log
-echo "RUN_PROXY mode=$MODE domain=$ROS_DOMAIN_ID lidar=${FD_LIDAR:-0} view_res=${FD_VIEW_RES:-기본} log=$LOG"
+echo "RUN_PROXY mode=$MODE scene=${FD_SCENE#$CD1/} domain=$ROS_DOMAIN_ID lidar=${FD_LIDAR:-0} view_res=${FD_VIEW_RES:-기본} log=$LOG"
 cd "$RUNDIR"
 # Ctrl+C 는 Isaac Sim 이 받아 스스로 끝난다. 이 셸은 그 뒤에 요약을 찍으려고 빈 처리기만 둔다
 # (trap '' 로 무시하면 자식도 무시한 채 시작해 Ctrl+C 가 안 먹는다)

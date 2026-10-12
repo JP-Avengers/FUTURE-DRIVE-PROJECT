@@ -1,0 +1,47 @@
+#usda 1.0
+(
+    customLayerData = {
+        string collision = "data/usd/parking_v0.4b_dfix/collision_onefloor.usdc — 겹친 바닥을 한 겹으로 (sim/make_single_floor.py, D 임시 보정). C 원본 충돌 메쉬로는 PhysX 가 경로 12.4 m · 75 m 지점에서 멈춤(10.12)"
+        string color = "data/usd/parking_v0.4b_dfix/color_linear.usdc — 정점 색 sRGB → 선형 (sim/make_linear_color.py, D 임시 보정)"
+        string lights = "돔 600 · 해 0 — 사진 색에 그림자가 이미 들어 있음, 10.12 비교 렌더로 정함"
+        string map = "data/usd/parking_v0.4b/ — C 이진우 10.12, B 맵 v0.4b(본네트 카메라), MANIFEST sha12 b07a82333fe8"
+        string start_pose = "route_bonnet_cw.csv 회차 0 첫 점 (C 제안)"
+    }
+    defaultPrim = "World"
+    doc = "실제 주차장 씬(맵 v0.4b) 루트 — 이 파일을 연다. Proxy 씬의 env_proxy · background 자리에 C 의 USD 를 넣고 로봇 · 센서 · ROS · 물리 · 조명은 Proxy 레이어를 그대로 쓴다(조명 세기만 여기서 바꿈). C 원본은 고치지 않고 D 임시 보정 레이어 2개(충돌 한 겹 · 색 선형)를 그 앞에 얹는다. 좌표는 B 맵 좌표(원점 = 10.5 촬영 첫 키프레임, 방위 임의, 주 바닥 z 0) — Proxy 의 ENU 와 다르다"
+    metersPerUnit = 1
+    subLayers = [
+        @../proxy/sensors.usda@,
+        @../proxy/ros.usda@,
+        @../proxy/robot.usda@,
+        @../../../data/usd/parking_v0.4b_dfix/collision_onefloor.usdc@,
+        @../../../data/usd/parking_v0.4b_dfix/color_linear.usdc@,
+        @../../../data/usd/parking_v0.4b/usd/parking_scene.usda@,
+        @../proxy/world.usda@
+    ]
+    timeCodesPerSecond = 60
+    upAxis = "Z"
+)
+
+over "World"
+{
+    over "Nova_Carter_ROS"
+    {
+        float xformOp:rotateZ = -97.4
+        double3 xformOp:translate = (-1.6, -4.893, 0)
+    }
+
+    over "Lights"
+    {
+        over "Dome"
+        {
+            float inputs:intensity = 600
+        }
+
+        over "Sun"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

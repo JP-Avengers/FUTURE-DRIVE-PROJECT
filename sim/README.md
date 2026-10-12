@@ -119,3 +119,22 @@ python3 sim/pursuit.py --dir cw --v 0.8 --lookahead 2.0     # 한 바퀴 돌면 
 
 - 실패하면 `FAIL <이유>`(OFFROAD 3.5 m · STALL 10 s · NO_ODOM · TIMEOUT)를 찍고 멈춥니다. 종료 코드 0 = 완주.
 - 시작 자세(`looppath.py` 의 `X0 · Y0 · PSI0`)는 `params.yaml` 의 `robot.start` 와 같아야 합니다 — 시작 자세를 바꾸면 같이 고칩니다.
+
+## 실제 주차장 씬 — 맵 v0.4b (10.12)
+
+C 가 D 에게 처음 넘긴 실제 주차장 USD(`data/usd/parking_v0.4b/`, B 맵 v0.4b 본네트 카메라 기준)를 Proxy 와 같은 로봇 · 센서 · ROS · 물리 레이어로 묶은 씬입니다. 루트는 `sim/scenes/parking/parking_v0.4b.usda` — Proxy 의 `env_proxy` · `background` 자리에 C 의 `parking_scene.usda` 가 들어갑니다. 실행은 `run_proxy.sh` 에 `FD_SCENE` 만 붙입니다.
+
+```bash
+FD_SCENE=sim/scenes/parking/parking_v0.4b.usda sim/run_proxy.sh stream     # 스트리밍 (headless 도 같음)
+sim/run_proxy.sh teleop                                                      # 조작 · 점검(check) · 녹화는 그대로
+```
+
+- **좌표는 B 맵 좌표입니다** — 원점 = 10.5 촬영 첫 키프레임, 방위 임의, 주 바닥 z 0. Proxy 의 ENU(루프 남서 꼭짓점 원점)와 다르고, 아직 맞추지 않았습니다(`c2d_usd.md` 원점 칸 미합의).
+- **시작 자세**: C 제안 그대로 경로 회차 0 첫 점 (−1.60, −4.89), yaw −97.4° — 시계 방향. 루트 레이어에서 Proxy `robot.usda` 의 값을 덮어씁니다.
+- **C 원본은 고치지 않고 D 임시 보정 레이어 2개를 앞에 얹습니다**(`data/usd/parking_v0.4b_dfix/`). C 가 원본에서 고치면 루트의 `subLayers` 에서 뺍니다.
+  - `color_linear.usdc` (`sim/make_linear_color.py`) — 정점 색이 사진값(sRGB)이라 RTX 가 2~3배 밝게 그려 E2E 카메라 화면이 하얗게 날아갔습니다. 선형으로 바꿔 덮어씁니다.
+  - `collision_onefloor.usdc` (`sim/make_single_floor.py`) — C 의 충돌 메쉬는 지형 메쉬 + 지도 전체 바닥 면 + 부분 바닥 면을 합친 것이라 바닥이 여러 겹입니다(회차 0 경로 바퀴 자리의 85 % 이상). 이대로 몰면 **PhysX 가 경로 12.4 m (−2.94, −17.18) · 75 m (−14.15, 1.37) 지점에서 끝나지 않는 계산에 빠져 시뮬이 멈춥니다**(헤드리스 · 스트리밍 모두, 출발점을 바꿔도 같은 자리 — CCD 끄기 · 중복 삼각형 제거로는 안 풀림). 바닥 면 한 장 + 그보다 5 cm 넘게 솟은 지형만 남기면 두 곳 모두 지나갑니다.
+- **조명**: 돔 600 · 해 0 (Proxy 는 1000 · 1500). 사진 색에 그림자가 이미 들어 있어 해를 끄고, 사진과 밝기가 비슷한 돔 세기를 비교 렌더로 골랐습니다.
+- **알려진 걸림**: 회차 0 경로 52.5 m 지점 (−33.9 ~ −33.4, −6.75 ~ −6.55)에 바닥보다 최대 15 cm 솟은 덩어리가 있어 Nova Carter 가 기울며(roll 9°) 멈춥니다. 실제 물체인지 잡음인지는 아직 모릅니다(C 확인 필요).
+- `sim/pursuit.py` 는 Proxy 루프 전용이라 이 씬에서는 쓰지 않습니다(경로 · 시작 자세가 다름).
+- 점검(10.12): `run_proxy.sh check` NG 0 — 규격 토픽 6/6, 카메라 20.1 Hz, RTF 0.98(스트리밍). 로드 5.5 s, `[Error]` 0.
