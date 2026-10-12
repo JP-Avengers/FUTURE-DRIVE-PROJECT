@@ -37,7 +37,9 @@
 | `/tf` | `tf2_msgs/TFMessage` | 시뮬 | `odom` → `base_link` → 센서 | odom 한 번에 메시지 4개 | |
 | `/clock` | `rosgraph_msgs/Clock` | 시뮬 | — | 시뮬 스텝마다 — odom 과 같음 | |
 | `/cmd_vel` | `geometry_msgs/Twist` | 교사 리그 **또는** 추론 노드 — **발행자는 항상 1개** | — | 10 Hz 이상 | `linear.x` = v (m/s) · `angular.z` = ω (rad/s). 나머지 성분은 0 |
-| `/route_command` | `std_msgs/UInt8` | 교사 리그 · 평가 스크립트 | — | 10 Hz | **0 직진 · 1 좌회전 · 2 우회전** — 제안, E 확정 |
+| `/route_command` | `std_msgs/UInt8` | 교사 리그(자동 교사 `sim/teacher.py` 는 경로 기하로 냄) · 평가 스크립트 | — | 10 Hz 이상(자동 교사 20 Hz) | **0 직진 · 1 좌회전 · 2 우회전** — 제안, E 확정. 자동 교사 규칙: 40° 넘게 꺾이는 곳의 꼭짓점 앞 5 m ~ 뒤 2 m |
+| `/teacher/cmd_vel` | `geometry_msgs/TwistStamped` | 자동 교사(`sim/teacher.py`) | `base_link` | 20 Hz(시뮬 시간, 헤더 = 시뮬 시각) | **자동 교사 녹화의 라벨** — 교사의 깨끗한 명령. 이때 `/cmd_vel` 은 실행 명령(라벨 + 조향 잡음)이라 라벨로 쓰지 않음. 사람 조작 녹화에는 없음(라벨 = `/cmd_vel`) — 10.12 제안, E 확정 |
+| `/teacher/status` | `std_msgs/String` (JSON 한 줄) | 자동 교사 | — | 20 Hz | `ph` 단계(ALIGN · FOLLOW · DWELL · DONE) · `lap` · `s`(진행 m) · `cte`(경로 이탈 m, 왼쪽 +) · `he`(방향 오차 °) · `cmd` · `vt`(목표 속도) · `vl` · `wl`(라벨) · `we`(실행 ω) · `nw`(실행 − 라벨) · `x` · `y`(맵) — 학습 때 거르기용(예: FOLLOW 만) |
 | `/front_3d_lidar/lidar_points` | `sensor_msgs/PointCloud2` | 시뮬 | `front_3d_lidar` | 약 6.5 Hz | 수집·평가 설정에서는 끔 — `sim/run_proxy.sh` 가 기본으로 끔(`FD_LIDAR=1` 로 켬) |
 
 - **주기는 시뮬 시간(메시지 헤더 시각) 기준입니다** — 9.30 서버 실측, 물리 설정을 고친 뒤(CPU 물리 · 스텝 60 Hz, 팀 레포 `ea4cf1c`)입니다. 실제 시간 기준 주기는 RTF(시뮬 시간 ÷ 실제 시간)만큼 달라지고, RTF 는 실행 모드마다 다릅니다.

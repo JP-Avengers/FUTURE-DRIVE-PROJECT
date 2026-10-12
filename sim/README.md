@@ -120,6 +120,32 @@ python3 sim/pursuit.py --dir cw --v 0.8 --lookahead 2.0     # 한 바퀴 돌면 
 - 실패하면 `FAIL <이유>`(OFFROAD 3.5 m · STALL 10 s · NO_ODOM · TIMEOUT)를 찍고 멈춥니다. 종료 코드 0 = 완주.
 - 시작 자세(`looppath.py` 의 `X0 · Y0 · PSI0`)는 `params.yaml` 의 `robot.start` 와 같아야 합니다 — 시작 자세를 바꾸면 같이 고칩니다.
 
+### 자동 교사 — `sim/teacher.py` · `sim/auto_teacher.sh` · `sim/auto_batch.sh` (10.12)
+
+교사 데이터를 사람 조작 대신 **정답 경로를 따르는 규칙 노드**로 무인 수집합니다(10.12 검토 — 사람 조작은 비교용 소량 · 교사 20회 평가로, 10.13 멘토 회의 질문 4). `pursuit.py` 와 같은 조향식에 수집용 기능을 더했습니다. 계산부는 `sim/teacher_core.py`(ROS 없음)이고, 노드와 시험(`sim/test_teacher_core.py`)이 같은 코드를 씁니다.
+
+- **라벨 `/teacher/cmd_vel`**(TwistStamped, 시뮬 시각) = 교사의 깨끗한 명령. **실행 `/cmd_vel`** = 라벨 + 조향 잡음 — 학습 라벨로 `/cmd_vel` 을 쓰지 않습니다([`topics.md`](../docs/interfaces/topics.md) · [`d2e_teacher.md`](../docs/interfaces/d2e_teacher.md), E 확인 전).
+- **이탈 복구 장면** — 시간의 30 %(`--noise-duty`)에 0.5~2 s 삼각 펄스(꼭대기 0.3~0.6 rad/s)를 실행 명령에만 더합니다. `hold`(기본)는 직선 구간 펄스 동안 교정을 멈춰 더 크게 벗어나게 하고(회전 구간에 걸치는 펄스는 `add`), `add` 는 교사가 계속 고치는 위에 더합니다.
+- **`/route_command`** 를 녹화 때 함께 냅니다 — 40° 넘게 꺾이는 곳의 꼭짓점 앞 5 m ~ 뒤 2 m 를 좌 · 우회전(Proxy 는 `eval/routes/loop_*.yaml` 초안과 같은 구간, 26° BEND 는 직진).
+- **`/teacher/status`**(JSON 한 줄, 20 Hz) — 단계(ALIGN · FOLLOW · DWELL · DONE) · 바퀴 · 진행 `s` · 이탈 `cte`(왼쪽 +) · 방향 오차 · 지시 · 목표 속도 · 잡음. 학습 때 FOLLOW 만 쓰는 식으로 거릅니다.
+- **주행 규칙** — 상한 v 0.8 · |ω| 0.7(사람 · Nav2 와 같음), 가감속 한도는 키보드 램프와 같음, 시뮬 시간 20 Hz. 속도 목표는 0.5~0.8 m/s 에서 약 30 m 마다 새로 뽑고(`--v-range` · `--v-change`), 회전 구간은 0.5(`--v-turn`), 곡률이 크면 더 줄입니다. 바퀴 끝마다 출발점에서 감속 정지 후 2 s 대기(목표 도달 장면).
+- **경로** — `proxy`(Proxy 루프) 또는 `csv:<파일>[@회차]`(C 의 `route_*.csv`, 앞뒤 1 m 이동 평균). `ccw` 는 같은 출발점에서 거꾸로 돌고, 출발 방향이 20° 넘게 다르면 제자리 회전부터 합니다. 시작 자세는 `FD_SCENE` 루트에서 읽습니다.
+- **`--label-only`** — `/cmd_vel` 을 내지 않고 라벨 · 지시만 냅니다. 학습 모델이 몰 때 그 자리 라벨을 남기는 DAgger(2차 수집)용.
+
+```bash
+# 씬이 떠 있을 때 한 묶음 — 녹화(record_teacher.sh) + 교사를 같이 돌리고, 끝나면 녹화를 닫고 점검
+sim/auto_teacher.sh proxy cw 3 잡음30 -- --seed 1
+FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/auto_teacher.sh csv:data/usd/parking_v0.4b_r3/route_bonnet_cw.csv ccw 2
+
+# 밤새 무인 — 헤드리스 씬을 띄우고 작업 파일의 줄마다 auto_teacher.sh, 끝나면 씬을 끔(tmux 안에서, 기본 도메인 43)
+FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/auto_batch.sh <작업 파일>
+python3 sim/test_teacher_core.py        # 계산부 시험 (ROS 없이)
+```
+
+- **녹화 폴더**는 사람 조작과 같은 `data/teacher/raw_v1/<월일_시분초>_auto_<방향>/` — `teacher/`(교사 로그 · 요약 JSON · 경로 CSV)와 `meta.yaml` 의 `teacher` 칸이 더 붙습니다. 점검(`qc.txt`)에 `label` · `teacher` 줄이 더 나옵니다(라벨 Hz · 상한, 주행 중 잡음 · 이탈 비율, 지시별 비율).
+- **실패**(이탈 3 m · 10 s 정체 · 시간 초과 · odom 끊김 · 시뮬 재시작)면 교사가 정지 명령을 내고 끝나며, 녹화는 닫아 남깁니다(`meta.yaml` 의 `teacher.rc` 로 거름). `auto_batch.sh` 는 실패한 다음 작업 전에 씬을 다시 띄웁니다.
+- 장애물은 피하지 않습니다(카메라 · LiDAR 를 안 봄) — 장애물 시나리오의 교사는 우회 경로 생성 또는 Nav2 를 따로 둡니다.
+
 ## 실제 주차장 씬 — 맵 v0.4b (10.12)
 
 > **r3 를 쓰세요(10.12 저녁).** C 가 아래 문제(겹친 바닥 · sRGB 색 · 경로 위 덩어리)를 원본에서 고친 `data/usd/parking_v0.4b_r3/`(레포 `7355d1f` 파이프라인)는 D 보정 레이어 없이 올라갑니다. 루트 `sim/scenes/parking/parking_v0.4b_r3.usda` — dfix 레이어 2개를 빼고, 바닥 높이 기준이 바뀌어(씬 전체 6.5 cm 낮아짐) 로봇 시작 z 만 −0.05 로 둡니다. PhysX 멈춤 · 걸림 없이 X-Mobility 제로샷 완주(랩 173.4 s, 평균 이탈 0.62 · 최대 2.08 m). 경로는 `data/usd/parking_v0.4b_r3/route_bonnet_cw.csv`(앞 판과 x · y 같고 z 만 다름). 아래 내용은 처음 판(v0.4b + dfix) 기록입니다.
