@@ -17,7 +17,9 @@ import yaml
 import io_rgbd
 import usd_utils
 from color_utils import fill_unseen, floor_offset, project_colors, raycasting_scene, seen_through
-from mesh_utils import Footprint, Ground, fill_small_holes, floor_colors, floor_patch
+from scipy.spatial import cKDTree
+
+from mesh_utils import Footprint, Ground, fill_small_holes, floor_colors, floor_patch, split_floor
 
 
 def cleanup(mesh, min_tris):
@@ -176,9 +178,49 @@ def main():
 
     f = cfg.get("fill", {})
     report["fill"] = {}
-    if f.get("small_hole_size_m", 0) > 0:
+    sf = cfg.get("single_floor")
+    floor_col = objects = None
+    if sf and ground is not None:     # 바닥 한 장: 스캔의 바닥 층(여러 날 조각이 겹침)을 빼고, 바닥 높이 지도로 매끈한 한 장을 새로 깜
+        paths = fill_path_xy(cfg, poses, T)
+        cams = np.array([P[:3, 3] for P in poses])
+        ground = Ground.from_mesh(scene, cams - [0, 0, report["ground"]["camera_height_m"]], sf["cell_m"],
+                                  cfg["ground"]["band_m"]).smoothed(sf.get("smooth", 3))
+        if sf.get("road_smooth_m"):   # 주행 통로 노면은 넓게 다듬음 (겹친 바닥 때문에 생기는 계단 없애기)
+            ground = ground.smoothed_near(paths, sf["road_smooth_m"])
+        ground.save(os.path.join(out, "ground.npz"))
+        v = np.asarray(scene.vertices)
+        on_floor = np.abs(v[:, 2] - ground.height(v[:, :2])) < sf["band_m"]
+        objects, report["single_floor"] = split_floor(scene, ground, sf["band_m"], sf["debris_h_m"], sf["debris_extent_m"],
+                                                      paths, sf["corridor_m"], sf["corridor_h_m"])
+        if f.get("small_hole_size_m", 0) > 0:
+            objects, report["fill"]["small_hole_tris_added"] = fill_small_holes(objects, f["small_hole_size_m"])
+        # 바닥을 깔 범위: 스캔이 덮는 범위 중 (실제 바닥이 찍힌 곳 근처) 또는 (주행 경로에서 max_path_dist_m 안)
+        fp = Footprint(scene, sf["mesh_cell_m"])
+        cen = fp.lo + (np.argwhere(fp.grid) + 0.5) * fp.cell
+        seen_floor = np.zeros(fp.grid.shape, bool)
+        ij = fp.index(v[on_floor, :2])
+        ok = (ij >= 0).all(1) & (ij < fp.grid.shape).all(1)
+        seen_floor[ij[ok, 0], ij[ok, 1]] = True
+        from scipy import ndimage
+        seen_floor = ndimage.binary_dilation(seen_floor, iterations=3)
+        near = cKDTree(paths).query(cen)[0] <= f.get("max_path_dist_m", np.inf)
+        keep = seen_floor[fp.grid] | near
+        idx = np.argwhere(fp.grid)
+        fp.grid[:] = False
+        fp.grid[idx[keep, 0], idx[keep, 1]] = True
+        floor_vis = fp.plane(0.0, ground=ground)
+        floor_col = Footprint(scene, sf["collision_cell_m"], margin=sf["collision_margin_m"]).plane(0.0, ground=ground)
+        report["fill"]["floor_area_m2"] = round(fp.area(), 1)
+        report["single_floor"].update(floor_tris=len(floor_vis.triangles), collision_floor_tris=len(floor_col.triangles))
+        o3d.io.write_triangle_mesh(os.path.join(out, "floor.ply"), floor_vis)
+        scene = floor_vis + objects
+        scene.compute_vertex_normals()
+        sfr = report["single_floor"]
+        print(f"      바닥 한 장: 스캔 바닥 삼각형 {sfr['floor_tris_removed']:,} 빼고 높이 지도 바닥 {sfr['floor_tris']:,} 삼각형"
+              f" | 바닥 부스러기 {sfr['debris_pieces']}조각 · 주행 통로 덩어리 {sfr['corridor_pieces']}조각 삭제")
+    elif f.get("small_hole_size_m", 0) > 0:
         scene, report["fill"]["small_hole_tris_added"] = fill_small_holes(scene, f["small_hole_size_m"])
-    if f.get("floor_patch", False):
+    if f.get("floor_patch", False) and not sf:
         patch, report["fill"]["floor_cells"] = floor_patch(scene, f["floor_cell_m"], f["floor_band_m"], ground=ground,
                                                          min_floor_verts=f.get("min_floor_verts", 3),
                                                          path_xy=fill_path_xy(cfg, poses, T),
@@ -206,7 +248,11 @@ def main():
         report["visual"] = dict(triangles=len(visual.triangles), decimated=False)
         print(f"[5/8] 시각용: 경량화 안 함 (삼각형 {len(visual.triangles):,})")
 
-    collider = visual.simplify_quadric_decimation(target_number_of_triangles=d["collider_tris"])
+    if floor_col is not None:         # 충돌 = 바닥 한 장(굵은 격자) + 물체만 줄인 것 — 바닥이 겹치지 않게 따로 만들어 합침
+        obj_col = objects.simplify_quadric_decimation(target_number_of_triangles=max(d["collider_tris"] - len(floor_col.triangles), 10000))
+        collider = floor_col + obj_col
+    else:
+        collider = visual.simplify_quadric_decimation(target_number_of_triangles=d["collider_tris"])
     collider.vertex_colors = o3d.utility.Vector3dVector()
     collider.compute_vertex_normals()
     pts = np.asarray(visual.sample_points_uniformly(300000).points)
@@ -363,7 +409,8 @@ def zones(cfg, far_path, T, scene, visual, collider, visuals, colliders, ground=
     if far_vis is not None:
         xy = np.vstack([xy, np.asarray(far_vis.vertices)[:, :2]])
     outer = Footprint(xy, z["ground_cell_m"], margin=z["ground_margin_m"])
-    colliders["Collision"] = collider + outer.plane(-0.002, ground=ground)
+    if z.get("ground_plane", True):   # 바닥 한 장 모드는 충돌 바닥을 이미 넓게 깔았으므로 끔 (겹치면 PhysX 가 멈춤)
+        colliders["Collision"] = collider + outer.plane(-0.002, ground=ground)
     # 근거리 메쉬 가장자리 아래로 20 cm 겹치게 (칸 단위로 피해 가면 경계에 틈이 생겨 비쳐 보임)
     ground_far = outer.plane(-0.002, exclude=near_fp.shrunk(0.2), ground=ground) if z.get("ground_far", True)         else o3d.geometry.TriangleMesh()
     if len(ground_far.triangles):

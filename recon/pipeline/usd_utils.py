@@ -5,8 +5,14 @@ import numpy as np
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, Vt
 
 
-def add_mesh(stage, path, mesh, with_color=True, double_sided=False):
-    """삼각형 메쉬를 UsdGeom.Mesh 로. 법선·범위를 함께 쓰고, 색은 정점 색(displayColor)으로."""
+def srgb_to_linear(c):
+    """사진값(sRGB, 0~1) → 선형. USD displayColor 는 선형 값이라 사진값을 그대로 넣으면 Isaac Sim 에서 2~3배 밝게 나옴."""
+    c = np.asarray(c, dtype=np.float64)
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def add_mesh(stage, path, mesh, with_color=True, double_sided=False, linear_color=True):
+    """삼각형 메쉬를 UsdGeom.Mesh 로. 법선·범위를 함께 쓰고, 색은 정점 색(displayColor, 선형으로 바꿔서)으로."""
     v = np.asarray(mesh.vertices, dtype=np.float32)
     f = np.asarray(mesh.triangles, dtype=np.int32)
     prim = UsdGeom.Mesh.Define(stage, path)
@@ -23,8 +29,9 @@ def add_mesh(stage, path, mesh, with_color=True, double_sided=False):
     prim.CreateNormalsAttr(Vt.Vec3fArray.FromNumpy(np.asarray(mesh.vertex_normals, dtype=np.float32)))
     prim.SetNormalsInterpolation(UsdGeom.Tokens.vertex)
     if with_color and mesh.has_vertex_colors():
+        col = np.asarray(mesh.vertex_colors)
         prim.CreateDisplayColorPrimvar(UsdGeom.Tokens.vertex).Set(
-            Vt.Vec3fArray.FromNumpy(np.asarray(mesh.vertex_colors, dtype=np.float32)))
+            Vt.Vec3fArray.FromNumpy((srgb_to_linear(col) if linear_color else col).astype(np.float32)))
     return prim
 
 

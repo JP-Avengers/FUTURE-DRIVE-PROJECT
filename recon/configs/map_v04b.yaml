@@ -46,6 +46,19 @@ fill:
   floor_band_m: 0.3                    # 바닥 높이 ± 이 안의 위 향한 면이 있으면 덮인 칸 (연석·보도 포함, 차 밑은 채움)
   max_path_dist_m: 6.0                 # 주행 경로에서 6 m 안만 메움 (B 지도 범위). 루프 가운데 등 촬영 안 된 곳은 억지로 안 채움
 
+single_floor:                          # 바닥 한 장 (D 10.12: 바닥이 겹쳐 PhysX 멈춤·로봇 카메라에 깨져 보임)
+  cell_m: 0.1                          # 바닥 높이 지도 칸 (칸마다 바닥 정점 높이 중앙값 → 3×3 중앙값으로 다듬음)
+  smooth: 3
+  road_smooth_m: 1.5                   # 주행 경로 1.5 m 안 노면은 0.9 m 중앙값 + 가우시안으로 넓게 다듬음 (겹친 바닥 → 계단 방지)
+  mesh_cell_m: 0.05                    # 보이는 바닥 격자 (색 해상도)
+  band_m: 0.06                         # 바닥 높이 + 이 안의 스캔 면 = 바닥 층 → 뺌 (이보다 솟은 것만 물체로 남김)
+  debris_h_m: 0.12                     # 바닥에 뜬 얇은 조각: 가장 높은 곳이 이 안이고
+  debris_extent_m: 0.08                # 두께가 이 안이면 지움
+  corridor_m: 0.4                      # 차가 실제 지나간 경로에서 이 안에 절반 넘게 걸친
+  corridor_h_m: 0.4                    # 이보다 낮은 조각 = 잡음 (차가 지나간 자리라 물체가 있을 수 없음)
+  collision_cell_m: 0.25               # 충돌 바닥 격자
+  collision_margin_m: 1.0              # 충돌 바닥은 스캔 범위보다 이만큼 넓게 (안 보임)
+
 colorize:                              # 키프레임 RGB → 정점 색. 가림 = 메쉬 깊이 + 키프레임 depth
   max_dist_m: 15.0                     # 이보다 먼 키프레임 색은 안 씀
   top_k: 3                             # 점마다 점수(정면·가까움) 높은 키프레임 몇 장을 섞나
@@ -78,6 +91,7 @@ zones:                                 # 10.7 미팅: 배경은 보이는 대로
   ground_cell_m: 0.5
   ground_margin_m: 1.0                 # 충돌용 바닥 면만 지도보다 1 m 넓게 (안 보임)
   ground_far: false                    # 지도 밖 보이는 바닥 면 안 만듦
+  ground_plane: false                  # 충돌 바닥 판 따로 안 깜 (single_floor 가 이미 깔아서 — 겹치면 PhysX 멈춤)
   backdrop_height_m: 0                 # 배경 벽 안 만듦
   boundary_height_m: 2.0               # 안 보이는 경계벽 (충돌만 — 차가 지도 밖으로 못 나감)
 

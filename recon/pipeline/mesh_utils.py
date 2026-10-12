@@ -41,6 +41,25 @@ class Ground:
         g.stats = dict(cell_m=cell, band_m=band, floor_vertices=int(len(cand)), measured_cells=int(ok.sum()))
         return g
 
+    def smoothed(self, size=3):
+        """칸 높이를 size×size 중앙값으로 다듬은 사본 (바닥 잡음 줄이기)."""
+        import copy
+        out = copy.copy(self)
+        out.grid = ndimage.median_filter(self.grid, size=size) if self.grid is not None else None
+        return out
+
+    def smoothed_near(self, path_xy, radius=1.5, median=9, sigma=2.0):
+        """주행 통로(경로에서 radius 안) 칸만 넓게 다듬은 사본. 차가 지나간 노면에는 연석 같은 계단이 있을 수 없으므로,
+        겹친 스캔 바닥 때문에 칸마다 높이가 튀어 생긴 계단을 없앤다 (통로 밖 연석·보도는 그대로)."""
+        import copy
+        out = copy.copy(self)
+        ij = np.argwhere(np.ones(self.grid.shape, bool))
+        cen = self.lo + (ij + 0.5) * self.cell
+        near = (cKDTree(path_xy).query(cen)[0] < radius).reshape(self.grid.shape)
+        smooth = ndimage.gaussian_filter(ndimage.median_filter(self.grid, size=median), sigma)
+        out.grid = np.where(near, smooth, self.grid)
+        return out
+
     def height(self, xy):
         xy = np.asarray(xy, float)
         if self.grid is None:
@@ -258,3 +277,39 @@ def floor_patch(mesh, cell, band, below=0.002, footprint_cell=0.1, ground=None, 
         patch.vertex_colors = o3d.utility.Vector3dVector(np.asarray(mesh.vertex_colors)[on_floor][j])
     patch.compute_vertex_normals()
     return patch, len(ci)
+
+
+def split_floor(mesh, ground, band=0.06, debris_h=0.12, debris_extent=0.08, corridor_xy=None, corridor_m=0.4, corridor_h=0.4):
+    """스캔 메쉬에서 바닥 층을 빼고 위로 솟은 물체만 남긴다 (바닥은 높이 지도로 한 장을 따로 깜).
+    - 바닥: 세 꼭짓점이 모두 바닥 높이 + band 아래 (겹친 바닥 조각·얇은 판의 밑면·바닥 밑 잡음까지 모두)
+    - 바닥 부스러기: 이어진 조각 중 가장 높은 곳이 debris_h 안이고 두께가 debris_extent 안 (바닥에 뜬 얇은 조각)
+    - 주행 통로 덩어리: corridor_xy(차가 실제 지나간 경로) corridor_m 안에 절반 넘게 걸친, corridor_h 보다 낮은 조각
+      (차가 지나간 자리라 물체가 있을 수 없음 — 잡음)
+    반환: (물체 메쉬, 통계)"""
+    v, tri = np.asarray(mesh.vertices), np.asarray(mesh.triangles)
+    h = v[:, 2] - ground.height(v[:, :2])
+    keep = (h[tri] >= band).any(axis=1)
+    obj = o3d.geometry.TriangleMesh(mesh.vertices, o3d.utility.Vector3iVector(tri[keep]))
+    if mesh.has_vertex_colors():
+        obj.vertex_colors = mesh.vertex_colors
+    ids, cnt, _ = obj.cluster_connected_triangles()
+    ids, cnt = np.asarray(ids), np.asarray(cnt)
+    t2 = np.asarray(obj.triangles)
+    hv = h[t2]                                                     # 삼각형별 세 꼭짓점 높이
+    hmax = np.full(len(cnt), -np.inf); hmin = np.full(len(cnt), np.inf)
+    np.maximum.at(hmax, ids, hv.max(axis=1)); np.minimum.at(hmin, ids, hv.min(axis=1))
+    debris = (hmax < debris_h) & (hmax - hmin < debris_extent)
+    drop = debris[ids]
+    n_corr = 0
+    if corridor_xy is not None:
+        cen = v[t2].mean(axis=1)
+        inside = cKDTree(corridor_xy).query(cen[:, :2])[0] < corridor_m
+        frac = np.bincount(ids, weights=inside, minlength=len(cnt)) / np.maximum(cnt, 1)
+        corr = (frac > 0.5) & (hmax < corridor_h)
+        n_corr = int(corr.sum())
+        drop |= corr[ids]
+    obj.remove_triangles_by_mask(drop)
+    obj.remove_unreferenced_vertices()
+    obj.compute_vertex_normals()
+    return obj, dict(floor_tris_removed=int((~keep).sum()), debris_pieces=int(debris.sum()), corridor_pieces=n_corr,
+                     object_tris=len(obj.triangles))
