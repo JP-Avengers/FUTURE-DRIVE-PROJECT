@@ -253,9 +253,9 @@ def csv_route_closes_and_smooths():
 def start_pose_from_scenes():
     pr = tc.start_pose_from_usda(os.path.join(HERE, "scenes", "parking", "parking_v0.4b_r3.usda"))
     assert pr is not None
-    near(pr[0], -1.6, 1e-9, "x")
-    near(pr[1], -4.893, 1e-9, "y")
-    near(math.degrees(pr[2]), -97.4, 1e-9, "yaw")
+    near(pr[0], -1.756, 1e-9, "x")              # 10.13 기준선 출발점(eval/routes/parking_r3_cw.yaml)으로 옮김
+    near(pr[1], -7.621, 1e-9, "y")
+    near(math.degrees(pr[2]), -96.0, 1e-9, "yaw")
     pp = tc.start_pose_from_usda(os.path.join(HERE, "scenes", "proxy", "robot.usda"))
     assert pp is not None
     near(pp[0], looppath.X0, 1e-9, "x")

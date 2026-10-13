@@ -23,6 +23,23 @@ server207 · 하네스는 `isaacsim_env`, 분석은 `eval_env`.
 
 > **60회는 재실행 여지가 없습니다.** 시나리오·지표·로그 스키마를 리허설(11.16–23) 전에 커밋으로 고정하고, 실행 시 커밋 해시를 결과 CSV 에 함께 남기세요.
 
+## 기준선 · 경로 파일 — `eval/routes/`
+
+평가(기준선 대비 이탈 · 2.0 m 개입), 자동 교사(`sim/teacher.py`), 경로 입력(X-Mobility `/route`)이 **같은 선**을 씁니다.
+
+| 씬 | 정의 | 생성 파일 | 상태 |
+| --- | --- | --- | --- |
+| 실제 주차장 r3 | `parking_r3_island.yaml` — 가운데 화단 윤곽(꼭짓점 5)을 d 3.0 m 바깥으로 부풀린 선(변 평행 이동 + 반경 3 m 원호), 89.96 m | `parking_r3_cw/ccw.csv`(0.25 m 간격 run,s,x,y) · `.yaml`(길이 · 출발 자세 · 경로 지시 구간) | **임시(10.13 회의 전)** — 꼭짓점은 D 눈 초안 ±1 m, B · C 확인 전 |
+| Proxy | `loop_cw.yaml` · `loop_ccw.yaml` — 지도 추정 루프 중심선(꼭짓점 4) | — | 초안 |
+
+```bash
+python3 eval/routes/make_refline.py eval/routes/parking_r3_island.yaml   # 꼭짓점 · d 를 고친 뒤 다시 생성(서버 시스템 python3)
+```
+
+- 촬영 궤적(`data/usd/*/route_bonnet_cw.csv`)은 외곽을 담으려고 일부러 크게 · 작게 돈 경로라 기준선으로 쓰지 않습니다(4회차가 같은 지점에서 최대 10 m 다름).
+- 씬 시작 자세(`sim/scenes/parking/parking_v0.4b_r3.usda`)는 생성 YAML 의 `start` 와 같게 둡니다 — 기준선을 다시 만들면 같이 고칩니다.
+- 장애물 여유 검사(±2.35 m 띠 = 이탈 2.0 + 로봇 반폭 0.35)와 위에서 본 그림은 메쉬가 필요해 서버 `logs/refline/` 도구로 합니다.
+
 ## 실행 방법
 
 (작성 예정 — 명령 한 줄이라도 동작하는 것부터 적어 주세요)

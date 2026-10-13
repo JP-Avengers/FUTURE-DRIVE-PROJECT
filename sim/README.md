@@ -129,13 +129,13 @@ python3 sim/pursuit.py --dir cw --v 0.8 --lookahead 2.0     # 한 바퀴 돌면 
 - **`/route_command`** 를 녹화 때 함께 냅니다 — 40° 넘게 꺾이는 곳의 꼭짓점 앞 5 m ~ 뒤 2 m 를 좌 · 우회전(Proxy 는 `eval/routes/loop_*.yaml` 초안과 같은 구간, 26° BEND 는 직진).
 - **`/teacher/status`**(JSON 한 줄, 20 Hz) — 단계(ALIGN · FOLLOW · DWELL · DONE) · 바퀴 · 진행 `s` · 이탈 `cte`(왼쪽 +) · 방향 오차 · 지시 · 목표 속도 · 잡음. 학습 때 FOLLOW 만 쓰는 식으로 거릅니다.
 - **주행 규칙** — 상한 v 0.8 · |ω| 0.7(사람 · Nav2 와 같음), 가감속 한도는 키보드 램프와 같음, 시뮬 시간 20 Hz. 속도 목표는 0.5~0.8 m/s 에서 약 30 m 마다 새로 뽑고(`--v-range` · `--v-change`), 회전 구간은 0.5(`--v-turn`), 곡률이 크면 더 줄입니다. 바퀴 끝마다 출발점에서 감속 정지 후 2 s 대기(목표 도달 장면).
-- **경로** — `proxy`(Proxy 루프) 또는 `csv:<파일>[@회차]`(C 의 `route_*.csv`, 앞뒤 1 m 이동 평균). `ccw` 는 같은 출발점에서 거꾸로 돌고, 출발 방향이 20° 넘게 다르면 제자리 회전부터 합니다. 시작 자세는 `FD_SCENE` 루트에서 읽습니다.
+- **경로** — `proxy`(Proxy 루프) 또는 `csv:<파일>[@회차]`. 실제 맵은 **기준선 `eval/routes/parking_r3_cw.csv`**(화단 윤곽을 3 m 부풀린 선, 10.13 임시 — `eval/README.md`). 촬영 궤적 CSV(C 의 `route_*.csv`)는 외곽 촬영용으로 크게 · 작게 돈 경로라 기준선으로 쓰지 않고, 쓸 때는 `--smooth 1`(앞뒤 1 m 이동 평균). `ccw` 는 같은 출발점에서 거꾸로 돌고, 출발 방향이 20° 넘게 다르면 제자리 회전부터 합니다. 시작 자세는 `FD_SCENE` 루트에서 읽습니다.
 - **`--label-only`** — `/cmd_vel` 을 내지 않고 라벨 · 지시만 냅니다. 학습 모델이 몰 때 그 자리 라벨을 남기는 DAgger(2차 수집)용.
 
 ```bash
 # 씬이 떠 있을 때 한 묶음 — 녹화(record_teacher.sh) + 교사를 같이 돌리고, 끝나면 녹화를 닫고 점검
 sim/auto_teacher.sh proxy cw 3 잡음30 -- --seed 1
-FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/auto_teacher.sh csv:data/usd/parking_v0.4b_r3/route_bonnet_cw.csv ccw 2
+FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/auto_teacher.sh csv:eval/routes/parking_r3_cw.csv ccw 2
 
 # 밤새 무인 — 헤드리스 씬을 띄우고 작업 파일의 줄마다 auto_teacher.sh, 끝나면 씬을 끔(tmux 안에서, 기본 도메인 43)
 FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/auto_batch.sh <작업 파일>
@@ -148,7 +148,7 @@ python3 sim/test_teacher_core.py        # 계산부 시험 (ROS 없이)
 
 ## 실제 주차장 씬 — 맵 v0.4b (10.12)
 
-> **r3 를 쓰세요(10.12 저녁).** C 가 아래 문제(겹친 바닥 · sRGB 색 · 경로 위 덩어리)를 원본에서 고친 `data/usd/parking_v0.4b_r3/`(레포 `7355d1f` 파이프라인)는 D 보정 레이어 없이 올라갑니다. 루트 `sim/scenes/parking/parking_v0.4b_r3.usda` — dfix 레이어 2개를 빼고, 바닥 높이 기준이 바뀌어(씬 전체 6.5 cm 낮아짐) 로봇 시작 z 만 −0.05 로 둡니다. PhysX 멈춤 · 걸림 없이 X-Mobility 제로샷 완주(랩 173.4 s, 평균 이탈 0.62 · 최대 2.08 m). 경로는 `data/usd/parking_v0.4b_r3/route_bonnet_cw.csv`(앞 판과 x · y 같고 z 만 다름). 아래 내용은 처음 판(v0.4b + dfix) 기록입니다.
+> **r3 를 쓰세요(10.12 저녁).** C 가 아래 문제(겹친 바닥 · sRGB 색 · 경로 위 덩어리)를 원본에서 고친 `data/usd/parking_v0.4b_r3/`(레포 `7355d1f` 파이프라인)는 D 보정 레이어 없이 올라갑니다. 루트 `sim/scenes/parking/parking_v0.4b_r3.usda` — dfix 레이어 2개를 빼고, 바닥 높이 기준이 바뀌어 씬 전체가 6.5 cm 낮아졌습니다. 로봇 시작 자세는 10.13 에 기준선 출발점 (−1.756, −7.621), yaw −96.0°, z −0.035 로 옮겼습니다. PhysX 멈춤 · 걸림 없이 X-Mobility 제로샷 완주(랩 173.4 s, 평균 이탈 0.62 · 최대 2.08 m). **기준선은 `eval/routes/parking_r3_cw.csv`**(화단 윤곽을 3 m 부풀린 선, 10.13 임시 — `eval/README.md`). 촬영 궤적 `data/usd/parking_v0.4b_r3/route_bonnet_cw.csv` 는 참고용(외곽 촬영용으로 크게 · 작게 돈 경로). 아래 내용은 처음 판(v0.4b + dfix) 기록입니다.
 >
 > ```bash
 > FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/run_proxy.sh stream
@@ -162,7 +162,7 @@ sim/run_proxy.sh teleop                                                      # �
 ```
 
 - **좌표는 B 맵 좌표입니다** — 원점 = 10.5 촬영 첫 키프레임, 방위 임의, 주 바닥 z 0. Proxy 의 ENU(루프 남서 꼭짓점 원점)와 다르고, 아직 맞추지 않았습니다(`c2d_usd.md` 원점 칸 미합의).
-- **시작 자세**: C 제안 그대로 경로 회차 0 첫 점 (−1.60, −4.89), yaw −97.4° — 시계 방향. 루트 레이어에서 Proxy `robot.usda` 의 값을 덮어씁니다.
+- **시작 자세**: 처음 판(v0.4b)은 C 제안 그대로 경로 회차 0 첫 점 (−1.60, −4.89), yaw −97.4° — 시계 방향. **r3 루트는 10.13 에 기준선 출발점 (−1.756, −7.621), yaw −96.0°, z −0.035 로 옮김**(`eval/routes/parking_r3_cw.yaml` 의 `start` — 화단 3 m 선 NE 모서리 원호 끝). 루트 레이어에서 Proxy `robot.usda` 의 값을 덮어씁니다.
 - **C 원본은 고치지 않고 D 임시 보정 레이어 2개를 앞에 얹습니다**(`data/usd/parking_v0.4b_dfix/`). C 가 원본에서 고치면 루트의 `subLayers` 에서 뺍니다.
   - `color_linear.usdc` (`sim/make_linear_color.py`) — 정점 색이 사진값(sRGB)이라 RTX 가 2~3배 밝게 그려 E2E 카메라 화면이 하얗게 날아갔습니다. 선형으로 바꿔 덮어씁니다.
   - `collision_onefloor.usdc` (`sim/make_single_floor.py`) — C 의 충돌 메쉬는 지형 메쉬 + 지도 전체 바닥 면 + 부분 바닥 면을 합친 것이라 바닥이 여러 겹입니다(회차 0 경로 바퀴 자리의 85 % 이상). 이대로 몰면 **PhysX 가 경로 12.4 m (−2.94, −17.18) · 75 m (−14.15, 1.37) 지점에서 끝나지 않는 계산에 빠져 시뮬이 멈춥니다**(헤드리스 · 스트리밍 모두, 출발점을 바꿔도 같은 자리 — CCD 끄기 · 중복 삼각형 제거로는 안 풀림). 바닥 면 한 장 + 그보다 5 cm 넘게 솟은 지형만 남기면 두 곳 모두 지나갑니다.

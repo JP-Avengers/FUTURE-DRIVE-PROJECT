@@ -12,13 +12,14 @@
   - 곡률 · 회전 구간(--v-turn) 감속, 속도 목표 무작위(--v-range, 약 --v-change m 마다), 바퀴마다 출발점에서 감속 정지 후 --dwell s
   - --label-only: /cmd_vel 을 내지 않고 라벨 · 지시만 — 다른 노드(학습 모델)가 몰 때 그 자리 라벨을 남긴다(DAgger)
 경로: proxy (Proxy 루프, sim/scenes/proxy/params.yaml) 또는 csv:<파일>[@회차] (C 의 route_*.csv, 회차 기본 0). ccw 는 같은 출발점에서
-거꾸로 돈다(출발 방향이 20° 넘게 다르면 제자리 회전부터). CSV 경로는 잔떨림을 라벨에 넣지 않으려고 앞뒤 1 m 이동 평균(--smooth).
+거꾸로 돈다(출발 방향이 20° 넘게 다르면 제자리 회전부터). 실제 맵 기준선은 eval/routes/parking_r3_cw.csv(화단 3 m 선, 10.13 임시) —
+이미 매끈해 다듬지 않는다. 촬영 궤적 CSV(잔떨림 있음)를 쓸 때만 --smooth 1(앞뒤 1 m 이동 평균).
 시작 자세(odom → 맵 변환)는 FD_SCENE(run_proxy.sh 와 같은 변수) 루트의 Nova_Carter_ROS 덮어쓰기 → 같은 폴더 robot.usda →
 Proxy robot.usda 순으로 읽는다(--start 로 직접). 카메라 · LiDAR 는 보지 않으므로 장애물은 피하지 않는다.
 
   python3 sim/teacher.py --route proxy --dir cw --laps 2 --seed 1
   FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda python3 sim/teacher.py \\
-      --route csv:data/usd/parking_v0.4b_r3/route_bonnet_cw.csv --dir ccw --laps 1
+      --route csv:eval/routes/parking_r3_cw.csv --dir ccw --laps 1
 보통은 sim/auto_teacher.sh 가 녹화기와 함께 띄운다. /cmd_vel 발행자는 하나여야 하므로 teleop · pursuit 와 같이 띄우지 않는다.
 끝 줄 TEACHER_EXIT rc=0 이면 정한 바퀴를 다 돌고 멈춘 것. 실패(이탈 3 m · 10 s 정체 · 시간 초과 · odom 끊김 · 시뮬 재시작)는 rc=2.
 """
@@ -58,7 +59,7 @@ def build_route(spec, direction, step, smooth):
         pts, k, gap = tc.load_csv_route(path, int(run or 0))
         info = {"source": "csv", "file": os.path.relpath(path, CD1), "run": int(run or 0), "cut_at": k,
                 "close_gap_m": round(gap, 3)}
-        sm = 1.0 if smooth is None else smooth
+        sm = 0.0 if smooth is None else smooth  # 기준선 CSV(eval/routes)는 이미 매끈함. 촬영 궤적 CSV 는 --smooth 1
     else:
         raise SystemExit(f"--route 는 proxy 또는 csv:<파일>[@회차] — 받은 값: {spec}")
     r = tc.Route(pts, name=spec, step=step, smooth=sm)
@@ -213,7 +214,7 @@ def main():
     ap.add_argument("--rate", type=float, default=20.0, help="Hz (시뮬 시간)")
     ap.add_argument("--start", default=None, help="x,y,yaw_deg — 씬에서 읽는 대신")
     ap.add_argument("--step", type=float, default=0.25, help="경로 재표본 간격 m")
-    ap.add_argument("--smooth", type=float, default=None, help="경로 이동 평균 반폭 m (기본: proxy 0 · csv 1.0)")
+    ap.add_argument("--smooth", type=float, default=None, help="경로 이동 평균 반폭 m (기본 0 — 촬영 궤적 CSV 면 1.0 권장)")
     ap.add_argument("--summary", default=None, help="끝날 때 요약 JSON 을 쓸 곳")
     a = ap.parse_args()
     v_range, amp, dur = pair(a.v_range, "--v-range"), pair(a.noise_amp, "--noise-amp"), pair(a.noise_dur, "--noise-dur")

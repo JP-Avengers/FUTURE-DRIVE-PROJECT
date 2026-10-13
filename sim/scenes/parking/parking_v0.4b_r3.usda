@@ -3,7 +3,7 @@
     customLayerData = {
         string lights = "돔 600 · 해 0 — 사진 색에 그림자가 이미 들어 있음, 10.12 비교 렌더로 정함"
         string map = "data/usd/parking_v0.4b_r3/ — C 이진우 10.12 r3 (바닥 한 겹·색 선형·잔상 지움 — D 임시 보정 불필요), B 맵 v0.4b(본네트 카메라)"
-        string start_pose = "route_bonnet_cw.csv 회차 0 첫 점 (C 제안)"
+        string start_pose = "기준선 eval/routes/parking_r3_cw.yaml 출발점 — 화단 3 m 선 NE 모서리 원호 끝, 시계 방향(10.13 임시). 바닥 −0.057 + 0.022. 이전: route_bonnet_cw.csv 회차 0 첫 점 (−1.6, −4.893, −97.4°)"
     }
     defaultPrim = "World"
     doc = "실제 주차장 씬(맵 v0.4b) 루트 — 이 파일을 연다. Proxy 씬의 env_proxy · background 자리에 C 의 USD 를 넣고 로봇 · 센서 · ROS · 물리 · 조명은 Proxy 레이어를 그대로 쓴다(조명 세기만 여기서 바꿈). 좌표는 B 맵 좌표(원점 = 10.5 촬영 첫 키프레임, 방위 임의, 주 바닥 z 0) — Proxy 의 ENU 와 다르다"
@@ -23,8 +23,8 @@ over "World"
 {
     over "Nova_Carter_ROS"
     {
-        float xformOp:rotateZ = -97.4
-        double3 xformOp:translate = (-1.6, -4.893, -0.05)
+        float xformOp:rotateZ = -96.0
+        double3 xformOp:translate = (-1.756, -7.621, -0.035)
     }
 
     over "Lights"

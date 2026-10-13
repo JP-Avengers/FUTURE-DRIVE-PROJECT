@@ -3,7 +3,7 @@
 #
 #   sim/auto_teacher.sh <경로> <cw|ccw> <바퀴> [메모] [-- teacher.py 추가 인자]
 #   예) sim/auto_teacher.sh proxy cw 3 잡음30 -- --seed 1
-#       FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/auto_teacher.sh csv:data/usd/parking_v0.4b_r3/route_bonnet_cw.csv ccw 2
+#       FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/auto_teacher.sh csv:eval/routes/parking_r3_cw.csv ccw 2   (실제 맵 기준선)
 #
 # 녹화는 tmux 세션에서 돌고, 교사가 끝나면 Ctrl+C 로 닫는다(record_teacher.sh 가 qc_teacher.py 를 돌림). 녹화 폴더에 교사 로그 · 요약
 # (teacher/)을 넣고 meta.yaml 에 teacher 칸을 붙인다. 저장 위치 = record_teacher.sh 와 같음(FD_TEACHER_DIR, 기본 data/teacher/raw_v1).

@@ -1,0 +1,16 @@
+# 생성 파일 — 고치지 말고 parking_r3_island.yaml 를 고친 뒤 eval/routes/make_refline.py 로 다시 만든다
+name: parking_r3_ccw
+version: v0-draft
+scene: sim/scenes/parking/parking_v0.4b_r3.usda
+direction: ccw
+source: parking_r3_island.yaml (sha256 fcc3b307d8e9)
+rule: 화단 윤곽을 3 m 바깥으로 부풀린 선 — 변은 평행 이동, 꼭짓점은 반경 3 m 원호
+ref_path_csv: parking_r3_ccw.csv   # 0.25 m 간격 run,s,x,y (닫는 점 포함)
+length_m: 89.96
+start: {x: -1.756, y: -7.621, yaw_deg: 84.0, s: 0.0}   # NE 모서리 원호 끝 — 씬 시작 자세와 같게
+commands:   # /route_command — 40° 넘는 꺾임 꼭짓점 앞 5 m ~ 뒤 2 m(sim/teacher_core.py turn_windows), 그 밖은 straight. from_s > to_s 면 바퀴 이음을 넘는 구간
+  - {from_s: 87.2, to_s: 4.2, cmd: left, turn_deg: 83, apex_s: 2.2}
+  - {from_s: 22.9, to_s: 29.9, cmd: left, turn_deg: 56, apex_s: 27.9}
+  - {from_s: 35.6, to_s: 42.6, cmd: left, turn_deg: 81, apex_s: 40.6}
+  - {from_s: 42.7, to_s: 49.7, cmd: left, turn_deg: 43, apex_s: 47.7}
+  - {from_s: 72.1, to_s: 79.1, cmd: left, turn_deg: 97, apex_s: 77.1}
