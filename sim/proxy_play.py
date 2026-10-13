@@ -6,7 +6,9 @@
   Ctrl+C 는 Kit 가 받아 바로 끝낸다(종료 코드 0, 9.30) — PROXY_STOPPED 는 FD_DURATION 이 끝났을 때만 찍힌다.
 - 공통: FD_LIDAR=1 이 아니면 3D LiDAR 렌더를 끈다(규격서 "수집·평가 설정에서는 끔"). 바꾸는 것은 세션 레이어뿐이라
   GUI 에서 저장해도 씬 파일(.usda)에는 남지 않는다.
-- 로그 표지(grep 용): PROXY_LOADED · PROXY_SENSORS · PROXY_VIEW · PROXY_PLAYING · PROXY_TIMELINE · PROXY_RTF · PROXY_STOPPED
+- 공통: FD_LAYERS="a.usda:b.usda" 면 그 레이어들을 세션 레이어 밑에 얹고 Play(가장 강함, 씬 파일은 그대로) — 시나리오 장애물
+  (sim/make_obstacles.py) 처럼 씬마다 달라지는 것을 씬 루트를 늘리지 않고 넣는다. 상대 경로는 레포 루트 기준.
+- 로그 표지(grep 용): PROXY_LOADED · PROXY_LAYERS · PROXY_SENSORS · PROXY_VIEW · PROXY_PLAYING · PROXY_TIMELINE · PROXY_RTF · PROXY_STOPPED
 """
 import os
 import time
@@ -25,6 +27,22 @@ def say(msg):
     else:  # Kit 앱 안의 print 는 콘솔에 안 나올 수 있어 경고 수준으로 찍는다(9.28 open_warmup 과 같음)
         import carb
         carb.log_warn(msg)
+
+
+def add_layers(stage):
+    """FD_LAYERS 의 레이어들을 세션 레이어의 subLayers 에 얹는다(Play 전에)."""
+    paths = [p for p in os.environ.get("FD_LAYERS", "").split(":") if p.strip()]
+    if not paths:
+        return
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sess = stage.GetSessionLayer()
+    for p in paths:
+        ap = p if os.path.isabs(p) else os.path.join(root, p)
+        if not os.path.exists(ap):
+            say(f"PROXY_LAYERS WARN 없음 — {ap}")
+            continue
+        sess.subLayerPaths.append(ap)
+    say(f"PROXY_LAYERS {list(sess.subLayerPaths)}")
 
 
 def set_sensors(stage):
@@ -124,6 +142,7 @@ async def kit_main():
         await app.next_update_async()
     stage = omni.usd.get_context().get_stage()
     say(f"PROXY_LOADED {time.time() - t0:.1f}s {SCENE}")
+    add_layers(stage)
     set_sensors(stage)
     set_view(stage)
     timeline = omni.timeline.get_timeline_interface()
@@ -154,6 +173,7 @@ def headless_main():
         app.update()
     stage = omni.usd.get_context().get_stage()
     say(f"PROXY_LOADED {time.time() - t0:.1f}s {SCENE}")
+    add_layers(stage)
     set_sensors(stage)
     timeline = omni.timeline.get_timeline_interface()
     timeline.play()

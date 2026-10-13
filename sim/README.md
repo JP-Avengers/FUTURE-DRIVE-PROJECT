@@ -208,3 +208,24 @@ python3 sim/nav2/nav2_route.py --route eval/routes/parking_r3_cw.csv --out logs/
   - tmux 세션 이름 앞부분이 겹치면 다른 세션을 끔(`-t nav2` 가 `nav2sim` 도 잡음) — 겹치지 않는 이름이나 `-t "=이름"`.
   - 설정 파일에 map_server 의 `yaml_filename` 을 적으면 launch 의 `map` 인자를 덮어써 지도가 빔.
 
+### 장애물 시나리오 — `eval/scenarios/` · `sim/make_obstacles.py` (10.14)
+
+```bash
+envs/isaacsim_env/bin/python sim/make_obstacles.py eval/scenarios/parking_r3_obstacle.yaml sim/scenes/parking/obstacles/parking_r3_obstacle.usda
+FD_LAYERS=sim/scenes/parking/obstacles/parking_r3_obstacle.usda FD_LIDAR=1 FD_DOMAIN=43 FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/run_proxy.sh headless
+python3 sim/nav2/nav2_route.py --route eval/routes/parking_r3_cw.csv --scenario eval/scenarios/parking_r3_obstacle.yaml --out logs/nav2/<이름>.json
+```
+
+- **장애물 레이어** — `make_obstacles.py` 가 시나리오의 장애물(기준선 길이 s · 옆 오프셋)을 월드 좌표로 바꾸고 바닥 높이를 충돌 메쉬에서 재서, 정적 충돌 상자(UsdPreviewSurface 재질 — 카메라 · 3D LiDAR 에 보임) USD 레이어로 씀.
+- **`FD_LAYERS`**(`sim/proxy_play.py`) — 콜론으로 이은 레이어들을 세션 레이어 밑에 얹고 Play. 씬 파일 · 씬 루트를 늘리지 않고 시나리오마다 다른 것을 넣음. 로그 `PROXY_LAYERS`.
+- **`nav2_route.py --scenario`** — 장애물 가장자리 1.5 m 안의 기준선 경유점은 뺌(교사는 장애물 자리를 알아도 됨). 로봇 발자국과 상자 사이 최소 거리 · 충돌 · 가장 긴 정지를 재고, 수행계획서 2.4 판정(`pass`: 완주 · 이탈 2.0 m 안 · 충돌 없음 · 10 s 넘는 정지 없음)을 붙임.
+- **10.14 결과**(r3 남쪽 변 가운데 상자 0.6×0.6×0.8 m, Nav2 + AMCL)
+
+  | 방향 | 판정 | 랩(시뮬) | 최대 이탈(상자 둘레) | 상자와 최소 거리 | 가장 긴 정지 | 복구 |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 시계 | **통과** | 132 s | 1.36 m | 0.77 m | 3.2 s | 1(전역 비용 지도 비우고 다시 계획) |
+  | 반시계 | **통과** | 134 s | 1.45 m(랩 최대 1.55 m) | 0.83 m | 5.3 s | 3 |
+
+  카메라에는 8 m 앞부터 상자가 보이고, `/scan` 은 8 m 앞에서 스캔마다 9 ~ 21점이 상자에 맞음.
+- **녹화 주의** — 스크립트에서 `&` 로 띄운 `ros2 bag record` 는 SIGINT 를 무시함(비대화형 bash) → SIGTERM 으로 끔. `--compression-mode file` 은 멈출 때 파일 전체를 다시 압축해 오래 걸리니 `--storage-preset-profile zstd_fast`(청크 압축).
+

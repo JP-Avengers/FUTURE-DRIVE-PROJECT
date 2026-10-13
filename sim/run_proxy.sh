@@ -9,7 +9,7 @@
 #   sim/run_proxy.sh monitor         이 서버에서는 못 씀(10.1) — 화면이 GPU 1 에만 나와 GPU 0 렌더 창을 못 그린다
 #
 # 끄기: 띄운 터미널에서 Ctrl+C (tmux 는 tmux send-keys -t <세션> C-c). 끝에 [Error] 줄 수와 GPU 상태를 찍는다.
-# 환경변수: FD_LIDAR=1 LiDAR 켬 · FD_DOMAIN=43 시험용 도메인 · FD_VIEW_RES=1280x720 뷰포트 해상도(stream) · FD_TELEOP=stock 예전 조작(teleop) · FD_SCENE=sim/scenes/parking/parking_v0.4b.usda 다른 씬(기본 Proxy)
+# 환경변수: FD_LAYERS=a.usda:b.usda 씬 위에 얹을 레이어(시나리오 장애물 등, 세션 레이어) · FD_LIDAR=1 LiDAR 켬 · FD_DOMAIN=43 시험용 도메인 · FD_VIEW_RES=1280x720 뷰포트 해상도(stream) · FD_TELEOP=stock 예전 조작(teleop) · FD_SCENE=sim/scenes/parking/parking_v0.4b.usda 다른 씬(기본 Proxy)
 # 로그: logs/run_proxy/<모드>_<월일_시분초>.log
 set -euo pipefail
 CD1=${CD1:-$HOME/Capstone_Design_1}
