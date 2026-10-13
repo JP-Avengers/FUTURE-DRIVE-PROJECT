@@ -148,7 +148,7 @@ python3 sim/test_teacher_core.py        # 계산부 시험 (ROS 없이)
 
 ## 실제 주차장 씬 — 맵 v0.4b (10.12)
 
-> **r3 를 쓰세요(10.12 저녁).** C 가 아래 문제(겹친 바닥 · sRGB 색 · 경로 위 덩어리)를 원본에서 고친 `data/usd/parking_v0.4b_r3/`(레포 `7355d1f` 파이프라인)는 D 보정 레이어 없이 올라갑니다. 루트 `sim/scenes/parking/parking_v0.4b_r3.usda` — dfix 레이어 2개를 빼고, 바닥 높이 기준이 바뀌어 씬 전체가 6.5 cm 낮아졌습니다. 로봇 시작 자세는 10.13 에 기준선 출발점 (−1.756, −7.621), yaw −96.0°, z −0.035 로 옮겼습니다. PhysX 멈춤 · 걸림 없이 X-Mobility 제로샷 완주(랩 173.4 s, 평균 이탈 0.62 · 최대 2.08 m). **기준선은 `eval/routes/parking_r3_cw.csv`**(화단 윤곽을 3 m 부풀린 선, 10.13 임시 — `eval/README.md`). 촬영 궤적 `data/usd/parking_v0.4b_r3/route_bonnet_cw.csv` 는 참고용(외곽 촬영용으로 크게 · 작게 돈 경로). 아래 내용은 처음 판(v0.4b + dfix) 기록입니다.
+> **r3 를 쓰세요(10.12 저녁).** C 가 아래 문제(겹친 바닥 · sRGB 색 · 경로 위 덩어리)를 원본에서 고친 `data/usd/parking_v0.4b_r3/`(레포 `7355d1f` 파이프라인)는 D 보정 레이어 없이 올라갑니다. 루트 `sim/scenes/parking/parking_v0.4b_r3.usda` — dfix 레이어 2개를 빼고, 바닥 높이 기준이 바뀌어 씬 전체가 6.5 cm 낮아졌습니다. 로봇 시작 자세는 10.13 에 기준선 출발점 (−1.756, −7.621), yaw −96.0°, z −0.035 로 옮겼습니다. **D 보정 1개(10.13)**: 서쪽 끝 (−36.8, −7.35)에 바닥 면과 따로 떨어진 납작한 조각(6삼각형)이 바닥과 겹쳐 있어, 잡음을 키운 자동 교사가 밟자 PhysX 가 멈췄습니다 → `data/usd/parking_v0.4b_r3_dfix/collision_fix_w.usdc`(`sim/fix_double_floor.py`, 그 조각만 뺀 면 목록)를 루트 subLayers 에 얹었습니다. 기준선 ±2.35 m 띠의 겹친 바닥은 이것으로 0 입니다. C 가 원본에서 고치면 뺍니다(지도 전체의 비슷한 조각 목록: `sim/fix_double_floor.py <mesh> --list --th 0.08`). PhysX 멈춤 · 걸림 없이 X-Mobility 제로샷 완주(랩 173.4 s, 평균 이탈 0.62 · 최대 2.08 m). **기준선은 `eval/routes/parking_r3_cw.csv`**(화단 윤곽을 3 m 부풀린 선, 10.13 임시 — `eval/README.md`). 촬영 궤적 `data/usd/parking_v0.4b_r3/route_bonnet_cw.csv` 는 참고용(외곽 촬영용으로 크게 · 작게 돈 경로). 아래 내용은 처음 판(v0.4b + dfix) 기록입니다.
 >
 > ```bash
 > FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/run_proxy.sh stream

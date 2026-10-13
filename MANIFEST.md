@@ -30,5 +30,6 @@ du -sh data/usd/proxy_v0.1
 | 10.12 | `usd` | `parking` | v0.4b | `data/usd/parking_v0.4b/` | 92M | b07a82333fe8 | `B 맵 v0.4b(본네트 카메라) → C 메쉬 파이프라인(레포 2d6947e)` | C | `C 가 zip 으로 D 에게 전달, D 가 서버에 올림. 씬 루트 sim/scenes/parking/parking_v0.4b.usda — 아래 dfix 와 함께 씀` |
 | 10.12 | `usd` | `parking_dfix` | v0.4b | `data/usd/parking_v0.4b_dfix/` | 25M | 380ce4b5c516 | `parking v0.4b(b07a82333fe8) → sim/make_linear_color.py · sim/make_single_floor.py(5 cm)` | D | `D 임시 보정 — 정점 색 sRGB→선형, 충돌 겹친 바닥을 한 겹으로(원본 충돌로는 PhysX 가 2곳에서 멈춤). C 가 원본에서 고치면 폐기` |
 | 10.12 | `usd` | `parking` | v0.4b r3 | `data/usd/parking_v0.4b_r3/` | 66M | bc5436d55df5 | `B 맵 v0.4b(본네트 카메라) → C 메쉬 파이프라인(레포 7355d1f), sha 는 usd/parking_mesh.usdc` | C | `D 10.12 피드백 반영(바닥 한 장 · 색 선형 · 잔상 지움 · 양면 표시 · 바닥 높이 기준 고정, 씬 6.5 cm 낮아짐) — dfix 불필요. 씬 루트 sim/scenes/parking/parking_v0.4b_r3.usda` |
+| 10.13 | `usd` | `parking_dfix` | v0.4b r3 | `data/usd/parking_v0.4b_r3_dfix/` | 476K | 4a4006a9d448 | `parking v0.4b r3(bc5436d55df5) → sim/fix_double_floor.py --th 0.08 -- -36.8,-7.35,0.5` | D | `D 임시 보정 — 충돌 바닥 위 납작한 조각 한 곳(6삼각형, 바닥 위 최대 7.4 cm, 서쪽 끝) 지움: 자동 교사 잡음 0.4 · 펄스 0.8 시험 중 그 자리에서 PhysX 멈춤(10.13). r3 루트가 씀. C 가 원본에서 고치면 폐기` |
 
 **구분** — `usd` 씬·메쉬 · `teacher` 교사 주행 원본 로그 · `dataset` 학습용 HDF5 · `checkpoint` 모델 가중치 · `eval` 평가 결과 · `raw` 센서 원본(rosbag)
