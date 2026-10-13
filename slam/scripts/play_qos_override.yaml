@@ -1,0 +1,11 @@
+# bag 재생 시 대용량 이미지 토픽을 best_effort/volatile로 발행 (reliable+transient_local 재생 시 프레임 손실 회피)
+/camera/camera/color/image_raw:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+/camera/camera/depth/image_rect_raw:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100

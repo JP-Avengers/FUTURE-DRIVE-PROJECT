@@ -1,0 +1,31 @@
+# intra-process 재생용: 이미지 토픽 volatile + 큰 큐 (rosbag2 QoS override는 모든 키가 필요)
+/camera/camera/color/image_raw:
+  history: keep_last
+  depth: 100
+  reliability: reliable
+  durability: volatile
+  deadline: {sec: 0, nsec: 0}
+  lifespan: {sec: 0, nsec: 0}
+  liveliness: automatic
+  liveliness_lease_duration: {sec: 0, nsec: 0}
+  avoid_ros_namespace_conventions: false
+/camera/camera/depth/image_rect_raw:
+  history: keep_last
+  depth: 100
+  reliability: reliable
+  durability: volatile
+  deadline: {sec: 0, nsec: 0}
+  lifespan: {sec: 0, nsec: 0}
+  liveliness: automatic
+  liveliness_lease_duration: {sec: 0, nsec: 0}
+  avoid_ros_namespace_conventions: false
+/camera/camera/aligned_depth_to_color/image_raw:
+  history: keep_last
+  depth: 100
+  reliability: reliable
+  durability: volatile
+  deadline: {sec: 0, nsec: 0}
+  lifespan: {sec: 0, nsec: 0}
+  liveliness: automatic
+  liveliness_lease_duration: {sec: 0, nsec: 0}
+  avoid_ros_namespace_conventions: false
