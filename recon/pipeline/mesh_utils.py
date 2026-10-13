@@ -279,10 +279,12 @@ def floor_patch(mesh, cell, band, below=0.002, footprint_cell=0.1, ground=None, 
     return patch, len(ci)
 
 
-def split_floor(mesh, ground, band=0.06, debris_h=0.12, debris_extent=0.08, corridor_xy=None, corridor_m=0.4, corridor_h=0.4):
+def split_floor(mesh, ground, band=0.06, debris_h=0.12, debris_extent=0.08, corridor_xy=None, corridor_m=0.4, corridor_h=0.4,
+                flat_h=0.0):
     """스캔 메쉬에서 바닥 층을 빼고 위로 솟은 물체만 남긴다 (바닥은 높이 지도로 한 장을 따로 깜).
     - 바닥: 세 꼭짓점이 모두 바닥 높이 + band 아래 (겹친 바닥 조각·얇은 판의 밑면·바닥 밑 잡음까지 모두)
-    - 바닥 부스러기: 이어진 조각 중 가장 높은 곳이 debris_h 안이고 두께가 debris_extent 안 (바닥에 뜬 얇은 조각)
+    - 바닥 부스러기: 이어진 조각 중 가장 높은 곳이 debris_h 안이고 두께가 debris_extent 안 (바닥에 뜬 얇은 조각),
+      또는 가장 높은 곳이 flat_h 안 (두께와 상관없이 바닥에 깔린 납작한 조각 — 바닥 판과 겹쳐 PhysX 가 멈춤, D 10.13)
     - 주행 통로 덩어리: corridor_xy(차가 실제 지나간 경로) corridor_m 안에 절반 넘게 걸친, corridor_h 보다 낮은 조각
       (차가 지나간 자리라 물체가 있을 수 없음 — 잡음)
     반환: (물체 메쉬, 통계)"""
@@ -298,7 +300,7 @@ def split_floor(mesh, ground, band=0.06, debris_h=0.12, debris_extent=0.08, corr
     hv = h[t2]                                                     # 삼각형별 세 꼭짓점 높이
     hmax = np.full(len(cnt), -np.inf); hmin = np.full(len(cnt), np.inf)
     np.maximum.at(hmax, ids, hv.max(axis=1)); np.minimum.at(hmin, ids, hv.min(axis=1))
-    debris = (hmax < debris_h) & (hmax - hmin < debris_extent)
+    debris = ((hmax < debris_h) & (hmax - hmin < debris_extent)) | (hmax < flat_h)
     drop = debris[ids]
     n_corr = 0
     if corridor_xy is not None:
@@ -313,3 +315,28 @@ def split_floor(mesh, ground, band=0.06, debris_h=0.12, debris_extent=0.08, corr
     obj.compute_vertex_normals()
     return obj, dict(floor_tris_removed=int((~keep).sum()), debris_pieces=int(debris.sum()), corridor_pieces=n_corr,
                      object_tris=len(obj.triangles))
+
+
+def drop_low_pieces(mesh, ground, low_h=0.15, flat_h=0.10, flat_nz=0.7):
+    """충돌용 물체 메쉬에서 바닥 판과 겹칠 수 있는 낮은 부분을 지운다 (줄인 뒤에 — 줄이면서 새 조각이 생김).
+    - 이어진 조각 전체가 바닥 위 low_h 안 (작은 잡음 덩어리·납작한 조각 → 바퀴가 밟으면 PhysX 멈춤·걸림)
+    - 세 꼭짓점이 모두 바닥 위 flat_h 안이고 거의 수평인 면 (물체 밑동의 '두 번째 바닥')
+    반환: (메쉬, 지운 조각 수, 지운 삼각형 수)"""
+    v, tri = np.asarray(mesh.vertices), np.asarray(mesh.triangles)
+    if len(tri) == 0:
+        return mesh, 0, 0
+    h = v[:, 2] - ground.height(v[:, :2])
+    ids, cnt, _ = mesh.cluster_connected_triangles()
+    ids, cnt = np.asarray(ids), np.asarray(cnt)
+    hmax = np.full(len(cnt), -np.inf)
+    np.maximum.at(hmax, ids, h[tri].max(axis=1))
+    low = hmax < low_h
+    e1, e2 = v[tri[:, 1]] - v[tri[:, 0]], v[tri[:, 2]] - v[tri[:, 0]]
+    n = np.cross(e1, e2)
+    nz = np.abs(n[:, 2]) / np.maximum(np.linalg.norm(n, axis=1), 1e-12)
+    flat = (h[tri].max(axis=1) < flat_h) & (nz > flat_nz)
+    drop = low[ids] | flat
+    out = o3d.geometry.TriangleMesh(mesh)
+    out.remove_triangles_by_mask(drop)
+    out.remove_unreferenced_vertices()
+    return out, int(low.sum()), int(drop.sum())

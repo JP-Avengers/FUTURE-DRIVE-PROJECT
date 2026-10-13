@@ -14,12 +14,14 @@ import numpy as np
 import open3d as o3d
 import yaml
 
+import far_zone
 import io_rgbd
+import sky
 import usd_utils
 from color_utils import fill_unseen, floor_offset, project_colors, raycasting_scene, seen_through
 from scipy.spatial import cKDTree
 
-from mesh_utils import Footprint, Ground, fill_small_holes, floor_colors, floor_patch, split_floor
+from mesh_utils import Footprint, Ground, drop_low_pieces, fill_small_holes, floor_colors, floor_patch, split_floor
 
 
 def cleanup(mesh, min_tris):
@@ -141,6 +143,7 @@ def main():
     raw.compute_vertex_normals()
     print(f"[1/8] 불러오기: 삼각형 {len(raw.triangles):,}")
 
+    raw_v = np.asarray(raw.vertices).copy()   # 정리 전 정점 — 바닥 한 장을 깔 '스캔이 찍은 범위'에 씀 (아래)
     clean, report["cleanup"] = cleanup(raw, cfg["cleanup"]["min_cluster_tris"])
     del raw
     print(f"[2/8] 정리: 조각 {report['cleanup']['small_clusters']:,}개 · 삼각형 {report['cleanup']['removed_tris']:,}개 삭제")
@@ -152,7 +155,7 @@ def main():
     json.dump(dict(source=mesh_path, T_input_to_scene=T.tolist(), orient=cfg["orient"]),
               open(os.path.join(out, "transform.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     poses = [T @ P for P in fr.poses] if fr else None              # 카메라 경로도 같은 씬 좌표로
-    ground = None
+    ground = scan_xy = None
     if outdoor:       # 바닥이 평평하지 않음 → 바닥 높이 지도. 바닥 아래 잡음은 그 높이 기준으로 잘라냄
         ground = make_ground(cfg, scene, poses)
         # 바닥 높이 0 을 '주행 경로 아래 바닥 중앙값'으로 다시 맞춤 — RANSAC 은 실행마다 1~2 cm 달라져 씬 z 가 흔들림
@@ -163,6 +166,11 @@ def main():
         poses = [T @ P for P in fr.poses]
         json.dump(dict(source=mesh_path, T_input_to_scene=T.tolist(), orient=cfg["orient"], floor_zero="주행 경로 아래 바닥 중앙값 = 0"),
                   open(os.path.join(out, "transform.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        # 스캔이 바닥을 찍은 범위 = 정리·자르기 전 정점 중 바닥 높이 + 0.5 m 아래. 북쪽 주차장은 바닥이 두 겹(0 · −40 cm)이고
+        # 원본 삼각형 절반 넘게가 500개 미만 작은 조각이라, 정리·자르기 뒤 정점만으로는 범위에서 빠져 바닥 판이 안 깔렸음 (r3)
+        rv = raw_v @ T[:3, :3].T + T[:3, 3]
+        scan_xy = rv[rv[:, 2] < ground.height(rv[:, :2]) + 0.5, :2]
+        del raw_v, rv
         v = np.asarray(scene.vertices)
         below = v[:, 2] < ground.height(v[:, :2]) - cfg["orient"]["crop_below_floor"]
         scene.remove_vertices_by_mask(below)
@@ -199,11 +207,12 @@ def main():
         v = np.asarray(scene.vertices)
         on_floor = np.abs(v[:, 2] - ground.height(v[:, :2])) < sf["band_m"]
         objects, report["single_floor"] = split_floor(scene, ground, sf["band_m"], sf["debris_h_m"], sf["debris_extent_m"],
-                                                      paths, sf["corridor_m"], sf["corridor_h_m"])
+                                                      paths, sf["corridor_m"], sf["corridor_h_m"], sf.get("flat_h_m", 0.0))
         if f.get("small_hole_size_m", 0) > 0:
             objects, report["fill"]["small_hole_tris_added"] = fill_small_holes(objects, f["small_hole_size_m"])
         # 바닥을 깔 범위: 스캔이 덮는 범위 중 (실제 바닥이 찍힌 곳 근처) 또는 (주행 경로에서 max_path_dist_m 안)
-        fp = Footprint(scene, sf["mesh_cell_m"])
+        # 스캔 범위는 정리·자르기 전 바닥 근처 정점(scan_xy)으로 — r3 북쪽 주차장 차로 바닥 구멍의 원인 (위 [3/8] 참고)
+        fp = Footprint(scan_xy if scan_xy is not None else scene, sf["mesh_cell_m"])
         cen = fp.lo + (np.argwhere(fp.grid) + 0.5) * fp.cell
         seen_floor = np.zeros(fp.grid.shape, bool)
         ij = fp.index(v[on_floor, :2])
@@ -217,7 +226,9 @@ def main():
         fp.grid[:] = False
         fp.grid[idx[keep, 0], idx[keep, 1]] = True
         floor_vis = fp.plane(0.0, ground=ground)
-        floor_col = Footprint(scene, sf["collision_cell_m"], margin=sf["collision_margin_m"]).plane(0.0, ground=ground)
+        # 충돌 바닥 = 스캔 범위 ∪ 보이는 바닥 범위, 1 m 넓게 (보이는 바닥이 스캔 정점보다 넓게 깔린 곳도 덮게)
+        col_xy = np.vstack([np.asarray(scene.vertices)[:, :2], np.asarray(floor_vis.vertices)[:, :2]])
+        floor_col = Footprint(col_xy, sf["collision_cell_m"], margin=sf["collision_margin_m"]).plane(0.0, ground=ground)
         report["fill"]["floor_area_m2"] = round(fp.area(), 1)
         report["single_floor"].update(floor_tris=len(floor_vis.triangles), collision_floor_tris=len(floor_col.triangles))
         o3d.io.write_triangle_mesh(os.path.join(out, "floor.ply"), floor_vis)
@@ -258,6 +269,10 @@ def main():
 
     if floor_col is not None:         # 충돌 = 바닥 한 장(굵은 격자) + 물체만 줄인 것 — 바닥이 겹치지 않게 따로 만들어 합침
         obj_col = objects.simplify_quadric_decimation(target_number_of_triangles=max(d["collider_tris"] - len(floor_col.triangles), 10000))
+        if sf.get("collision_low_h_m"):   # 바닥 판과 겹치는 낮은 조각·물체 밑동의 수평면 (D 10.13: 서쪽 끝 납작한 조각에서 PhysX 멈춤)
+            obj_col, n_low, n_drop = drop_low_pieces(obj_col, ground, sf["collision_low_h_m"], sf["collision_flat_h_m"])
+            report["single_floor"].update(collision_low_pieces=n_low, collision_low_tris=n_drop)
+            print(f"      충돌 물체: 낮은 조각 {n_low}개 · 바닥 근처 수평면 포함 삼각형 {n_drop:,}개 삭제")
         collider = floor_col + obj_col
     else:
         collider = visual.simplify_quadric_decimation(target_number_of_triangles=d["collider_tris"])
@@ -272,8 +287,28 @@ def main():
                               floor_max_cm=round(100 * float(dist[floor].max()), 2))
     print(f"[6/8] 충돌용: 삼각형 {len(collider.triangles):,} | 바닥 오차 95% {report['collider']['floor_p95_cm']} cm · 최대 {report['collider']['floor_max_cm']} cm")
 
+    ft = cfg.get("far_tsdf")
+    sets = {}
+    if (ft or cfg.get("sky")) and fr is not None:   # 키프레임 묶음 이름 → Frames (먼 구역 · 하늘에 씀)
+        sets = {"main": fr, **{name: io_rgbd.load(inp) for name, inp, _ in extra_sources(cfg)}}
+    if ft and sets:   # 먼 구역 3D: 스캔 밖을 키프레임 RGB-D 로 직접 쌓음 → zones 가 스캔 범위 밖만 잘라 VisualFar 로
+        far_raw, nk = far_zone.far_volume(list(sets.values()), ft)
+        far_path = os.path.join(out, "mesh_far_raw.ply")
+        o3d.io.write_triangle_mesh(far_path, far_raw)
+        report["far_tsdf"] = dict(keyframes=nk, raw_tris=len(far_raw.triangles))
+        del far_raw
+
     visuals, colliders = {"Visual": visual}, {"Collision": collider}
     report["zones"] = zones(cfg, far_path, T, scene, visual, collider, visuals, colliders, ground)
+    if ft and "VisualFar" in visuals:   # TSDF 평균색은 흐림 → 잘게 나눠 키프레임 사진을 다시 투영
+        if ft.get("fill_hole_m"):          # 작은 구멍만 (depth 가 아예 안 닿은 넓은 곳은 그대로 둠)
+            visuals["VisualFar"], report["far_tsdf"]["hole_tris_added"] = fill_small_holes(visuals["VisualFar"], ft["fill_hole_m"])
+        order = [(sets[k], [T @ P for P in sets[k].poses]) for k in ft["color_order"] if k in sets]
+        visuals["VisualFar"], pct = far_zone.recolor(visuals["VisualFar"], visual, order, ft)
+        report["far_tsdf"].update(tris=len(visuals["VisualFar"].triangles), photo_colored_pct=round(100 * pct, 1))
+        report["zones"]["far_tris"] = len(visuals["VisualFar"].triangles)
+        print(f"      먼 구역 3D: 키프레임 {report['far_tsdf']['keyframes']}장 TSDF ({ft['voxel_m'] * 100:g} cm) → 스캔 밖 "
+              f"{report['far_tsdf']['tris']:,} 삼각형 · 사진 색 {report['far_tsdf']['photo_colored_pct']}%")
     if report["zones"]:
         zr = report["zones"]
         print(f"[7/8] 구역: 바깥 구역 삼각형 {zr['far_tris']:,} | 바닥 충돌면 {zr['ground_area_m2']} m²"
@@ -295,6 +330,14 @@ def main():
         info=dict(config=os.path.basename(args.config), transform="../transform.json",
                   **{f"{k}_tris": len(m.triangles) for k, m in {**visuals, **colliders}.items()}),
         double_sided=tuple(cfg.get("usd", {}).get("double_sided", ["Backdrop"])))
+    sk = cfg.get("sky")
+    if sk and sets:   # 하늘 돔 텍스처 (지붕 키프레임 하늘 화소) — 씬의 돔 조명에 얹는 덮어쓰기 레이어 usd/sky.usda
+        prof, max_el = sky.profile([(sets[k], [T @ P for P in sets[k].poses]) for k in sk["sets"] if k in sets], cfg["far_tsdf"])
+        nz = np.asarray(visual.vertex_normals)[:, 2] > 0.9
+        gcol = np.median(np.asarray(visual.vertex_colors)[nz], axis=0) * 0.8 if visual.has_vertex_colors() else [0.4] * 3
+        sky_path, sky_int = sky.write(os.path.join(out, "usd"), prof, gcol, sk["dome_intensity"])
+        report["sky"] = dict(layer=sky_path, max_elev_deg=max_el, dome_intensity=round(sky_int, 1))
+        print(f"      하늘: 높이각 0~{max_el}° 를 지붕 키프레임에서 | 돔 세기 {sk['dome_intensity']} → {sky_int:.0f} ({sky_path})")
     problems, summary = usd_utils.verify_scene(scene_usd, mesh_usd)
     report["usd"] = dict(scene=scene_usd, mesh=mesh_usd, mesh_mb=round(os.path.getsize(mesh_usd) / 1e6, 2),
                          prims=summary, problems=problems)
@@ -415,7 +458,7 @@ def zones(cfg, far_path, T, scene, visual, collider, visuals, colliders, ground=
             far_vis = visuals["VisualFar"] = far
 
     xy = np.asarray(visual.vertices)[:, :2]
-    if far_vis is not None:
+    if far_vis is not None and z.get("outer_includes_far", True):   # 먼 구역이 보이기만 하는 배경이면 경계·바닥은 스캔 범위로 (로봇이 스캔 밖으로 못 나가게)
         xy = np.vstack([xy, np.asarray(far_vis.vertices)[:, :2]])
     outer = Footprint(xy, z["ground_cell_m"], margin=z["ground_margin_m"])
     if z.get("ground_plane", True):   # 바닥 한 장 모드는 충돌 바닥을 이미 넓게 깔았으므로 끔 (겹치면 PhysX 가 멈춤)

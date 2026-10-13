@@ -54,10 +54,13 @@ single_floor:                          # 바닥 한 장 (D 10.12: 바닥이 겹�
   band_m: 0.06                         # 바닥 높이 + 이 안의 스캔 면 = 바닥 층 → 뺌 (이보다 솟은 것만 물체로 남김)
   debris_h_m: 0.12                     # 바닥에 뜬 얇은 조각: 가장 높은 곳이 이 안이고
   debris_extent_m: 0.08                # 두께가 이 안이면 지움
+  flat_h_m: 0.10                       # 두께와 상관없이 가장 높은 곳이 이 안인 조각도 지움 (바닥 판과 겹친 납작한 조각 — D 10.13 PhysX 멈춤)
   corridor_m: 0.4                      # 차가 실제 지나간 경로에서 이 안에 절반 넘게 걸친
   corridor_h_m: 0.4                    # 이보다 낮은 조각 = 잡음 (차가 지나간 자리라 물체가 있을 수 없음)
   collision_cell_m: 0.25               # 충돌 바닥 격자
   collision_margin_m: 1.0              # 충돌 바닥은 스캔 범위보다 이만큼 넓게 (안 보임)
+  collision_low_h_m: 0.15              # 충돌 물체(줄인 뒤): 조각 전체가 바닥 위 이 안이면 지움 (작은 잡음 덩어리 — 걸림 · PhysX 멈춤)
+  collision_flat_h_m: 0.10             # 충돌 물체: 바닥 위 이 안의 거의 수평인 면 지움 (물체 밑동의 두 번째 바닥)
 
 colorize:                              # 키프레임 RGB → 정점 색. 가림 = 메쉬 깊이 + 키프레임 depth
   max_dist_m: 15.0                     # 이보다 먼 키프레임 색은 안 씀
@@ -87,7 +90,8 @@ decimate:
 
 zones:                                 # 10.7 미팅: 배경은 보이는 대로 (벽 X), 외곽은 인위적으로 마무리하지 않고 점군 보강으로
   near_cell_m: 0.1
-  far_tris: 200000
+  far_tris: 300000                     # 먼 구역(far_tsdf) 줄이는 목표 — 아래 subdivide 로 4배가 됨
+  outer_includes_far: false            # 경계벽·충돌 바닥 범위는 스캔만 (먼 구역은 보이기만 — 로봇이 스캔 밖으로 못 나가게)
   ground_cell_m: 0.5
   ground_margin_m: 1.0                 # 충돌용 바닥 면만 지도보다 1 m 넓게 (안 보임)
   ground_far: false                    # 지도 밖 보이는 바닥 면 안 만듦
@@ -106,4 +110,30 @@ visibility:                            # 차량 카메라 경로 (지붕 1.55 m)
   list_top: 30
 
 usd:
-  double_sided: [Visual]               # 시각용 메쉬는 양면 — 로봇 카메라(0.35 m)에서 물체 뒷면이 비쳐 보이지 않게
+  double_sided: [Visual, VisualFar]    # 시각용 메쉬는 양면 — 로봇 카메라(0.35 m)에서 물체 뒷면이 비쳐 보이지 않게
+
+far_tsdf:                              # 먼 구역 3D (pipeline/far_zone.py) — 스캔 밖을 키프레임 RGB-D 로 직접 쌓은 메쉬 (VisualFar, 충돌 없음)
+  # 10.7 미팅 '외곽은 점군 보강으로': 벽·상자 없이 카메라 depth 가 닿은 곳(최대 약 45 m)까지만 스캔과 같은 방식으로. 안 닿은 곳은 비움
+  voxel_m: 0.4                         # 먼 depth 잡음(30 m 에서 수 m) 때문에 크게 — 0.2 m 이면 면이 상쇄돼 조각만 남음 (10.13 시험)
+  sdf_trunc_voxels: 6                  # 절단 거리 = 2.4 m
+  min_depth_m: 3.0
+  max_depth_m: 45.0
+  frame_step: 1
+  sky_smooth_std: 0.02                 # 하늘 화소(depth 뺌): 7×7 밝기 표준편차가 이보다 작고
+  sky_smooth_bright: 0.55              # 이보다 밝거나
+  sky_white_bright: 0.85               # 이보다 아주 밝음 (흰 구름 · 햇빛). 역광·노을 쪽 하늘의 잡음 depth 가 흰 덩어리가 됨
+  fill_hole_m: 1.5                     # 이 반경 안의 작은 구멍만 메움 (depth 가 아예 안 닿은 넓은 곳은 비워 둠)
+  subdivide: 1                         # 색 해상도: 한 번 잘게 나눠(삼각형 4배) 사진 투영
+  color_order: [roof_cw, roof_ccw, main, bonnet_ccw]   # 지붕(10/5 낮, 위를 더 봄)부터 — 본네트(10/9·10 해질녘)는 역광
+  color:                               # color_utils.project_colors 설정 (먼 거리용으로 느슨하게)
+    top_k: 2
+    max_dist_m: 45.0
+    min_cos: 0.05
+    occlusion_tol_m: 0.3
+    occlusion_tol_per_m: 0.05
+    depth_tol_m: 1.0
+    depth_tol_per_m: 0.3
+
+sky:                                   # 하늘 돔 텍스처 (pipeline/sky.py) → usd/sky.usda 를 씬 루트에서 world.usda 보다 위에
+  sets: [roof_cw, roof_ccw]            # 지붕 카메라 (위로 약 26° 까지 봄). 하늘 화소 기준은 far_tsdf 의 sky_*
+  dome_intensity: 600                  # D 씬 루트의 돔 세기 (텍스처 없음) — 같은 밝기가 되게 나눔
