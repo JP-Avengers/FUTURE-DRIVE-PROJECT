@@ -171,3 +171,35 @@ sim/run_proxy.sh teleop                                                      # �
 - **알려진 걸림**: 회차 0 경로 52.5 m 지점 (−33.9 ~ −33.4, −6.75 ~ −6.55)에 바닥보다 최대 15 cm 솟은 덩어리가 있어 Nova Carter 가 기울며(roll 9°) 멈춥니다. 실제 물체인지 잡음인지는 아직 모릅니다(C 확인 필요).
 - `sim/pursuit.py` 는 Proxy 루프 전용이라 이 씬에서는 쓰지 않습니다(경로 · 시작 자세가 다름).
 - 점검(10.12): `run_proxy.sh check` NG 0 — 규격 토픽 6/6, 카메라 20.1 Hz, RTF 0.98(스트리밍). 로드 5.5 s, `[Error]` 0.
+
+## Nav2 — `sim/nav2/` (10.13)
+
+비교군(수행계획서) 겸 교사(10.13 멘토: Nav2 주행도 학습 데이터로 써도 됨 — 장애물 시나리오부터). 서버 apt `ros-jazzy-navigation2` · `nav2-bringup` · `pointcloud-to-laserscan` · `robot-localization`(10.13 설치, 1.3.13).
+
+```bash
+envs/isaacsim_env/bin/python sim/nav2/make_map.py data/usd/parking_v0.4b_r3/usd/parking_mesh.usdc data/nav2/parking_v0.4b_r3 --keepout eval/routes/parking_r3_island.yaml   # 지도(한 번)
+FD_LIDAR=1 FD_DOMAIN=43 FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/run_proxy.sh headless          # tmux 안 — LiDAR 를 켜야 함
+ros2 launch sim/nav2/nav2.launch.py map:=$PWD/data/nav2/parking_v0.4b_r3/map.yaml [localization:=amcl|gt]    # 시스템 Jazzy · 도메인 43
+python3 sim/nav2/nav2_route.py --route eval/routes/parking_r3_cw.csv --out logs/nav2/<이름>.json              # 기준선 한 바퀴(경유점 4 m), 이탈은 /ground_truth/tf 로
+```
+
+- **지도**(`make_map.py`) — 충돌 메쉬로 만든 PGM · YAML(0.05 m). 장애물 = 바닥 위 0.12 ~ 1.0 m 의 면 + 경계벽, 가운데 화단은 `--keepout` 으로 채움(메쉬로는 화단 안이 거의 비어 경로가 화단을 가로지름). 좌표는 B 맵 좌표(= Nav2 `map`).
+- **설정**(`nav2_params.yaml`) — NVIDIA carter_navigation 설정(DWB, v 0.8 · ω 0.7 — 우리 상한과 같음)이 바탕, 고친 곳은 `# FD:` 주석.
+  - 3D LiDAR → `/scan`(launch 의 pointcloud_to_laserscan) — 앞 ±90°, 높이 띠 바닥 위 약 0.23 ~ 1.0 m(지도 장애물 띠 안). NVIDIA 의 -0.4 ~ 1.5 m 띠는 1 m 위 나뭇가지 · 경사 바닥이 스캔에만 잡혀 지도와 안 맞음. 우리 씬의 2D LiDAR 두 대는 데이터가 안 나옴.
+  - 가감속 한도는 키보드 램프 · 자동 교사와 같게 — DWB 와 velocity_smoother 둘 다(한쪽만 바꾸면 DWB 가 못 따라갈 회전을 짜 모서리에서 맴돎).
+  - 경유점 판정 반경 0.7 → 1.5 m(`navigate_through_poses.xml`) — 모서리에서 경유점을 0.7 m 밖으로 지나면 그 점으로 돌아가려 제자리를 돎.
+  - AMCL 오도메트리 잡음 가정 alpha 0.2 → 0.05(시뮬 odom 은 정답과 0.35° 안).
+- **위치 추정** — `amcl`(기본, 실제 로봇과 같은 방식 — 10.13 멘토 의견) / `gt`(정답 map → odom 고정 변환, Nav2 자체 시험용).
+- **10.13 결과**(r3 시계 1바퀴, 경유점 4 m, 기본 DWB)
+
+  | 위치 추정 | 결과 | 랩(시뮬) | 기준선 평균 · 최대 이탈 | 복구 |
+  | --- | --- | --- | --- | --- |
+  | gt | **완주** | 129 s | 0.22 · 1.42 m | 0 |
+  | amcl(alpha 0.05) | 실패 — 25 m 쯤 위치 오차 0.1 ~ 0.36 m 로 따라가다 남쪽 변에서 AMCL 이 8 m 튐 | 39 s | 0.30 · 1.10 m | 3 |
+
+  AMCL 은 비슷한 모양(주차 차량 줄)이 반복되는 곳에서 입자 무리를 갈아타며 튐 — 조정이 남음(입자 수 · 레이저 모델 · 무작위 입자 · 갱신 간격).
+- **주의**
+  - ROS 노드를 `kill -9` 나 `tmux kill-session` 으로 끄면 `/dev/shm` 에 Fast DDS 조각이 남아, 새로 띄운 노드가 다른 노드의 서비스는 보이는데 통신을 못 함(Nav2 활성 대기에서 멈춤). Ctrl+C 로 끄고, 이상하면 `fastdds shm clean`.
+  - tmux 세션 이름 앞부분이 겹치면 다른 세션을 끔(`-t nav2` 가 `nav2sim` 도 잡음) — 겹치지 않는 이름이나 `-t "=이름"`.
+  - 설정 파일에 map_server 의 `yaml_filename` 을 적으면 launch 의 `map` 인자를 덮어써 지도가 빔.
+
