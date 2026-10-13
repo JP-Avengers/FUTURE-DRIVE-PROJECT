@@ -203,8 +203,10 @@ def main():
     ap.add_argument("--v-change", type=float, default=30.0)
     ap.add_argument("--v-turn", type=float, default=0.5, help="회전 구간(지시 좌 · 우) 속도 목표 상한")
     ap.add_argument("--lookahead", type=float, default=2.0)
-    ap.add_argument("--noise-duty", type=float, default=0.3, help="잡음이 켜진 시간 비율 (0 = 잡음 없음)")
-    ap.add_argument("--noise-amp", default="0.3,0.6", help="펄스 꼭대기 |Δω| 범위 rad/s")
+    # 기본 0.4 · 0.3~0.8(10.13): 기준선에서 0.3 m 넘게 벗어난 장면 약 39 %(계획서 이탈 복구 40 %), 최대 이탈 약 1.1 m.
+    # 0.3 · 0.3~0.6 은 17 % · 0.44 m 에 그침. 실행 |ω| 는 상한 0.7 에서 잘림
+    ap.add_argument("--noise-duty", type=float, default=0.4, help="잡음이 켜진 시간 비율 (0 = 잡음 없음)")
+    ap.add_argument("--noise-amp", default="0.3,0.8", help="펄스 꼭대기 |Δω| 범위 rad/s (실행은 상한 0.7 에서 잘림)")
     ap.add_argument("--noise-dur", default="0.5,2.0", help="펄스 길이 범위 s")
     ap.add_argument("--noise-mode", choices=["hold", "add"], default="hold")
     ap.add_argument("--seed", type=int, default=0)
