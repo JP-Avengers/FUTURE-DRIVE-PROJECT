@@ -24,6 +24,7 @@ $CD1/                     = 이 레포 (git 추적)
 ## 규칙
 
 - **GPU**: Isaac Sim 은 GPU 0 고정. `CUDA_VISIBLE_DEVICES` 가 아니라 `SimulationApp({'active_gpu': 0, 'physics_gpu': 0, 'multi_gpu': False})` 로 지정합니다 (기본값이 멀티 GPU). torch 등 일반 CUDA 프로세스만 `CUDA_VISIBLE_DEVICES` 를 씁니다.
+- **E2E 학습 · 추론 = `envs/ml_env`**: 시스템 Python 3.12.3(`--system-site-packages`) · torch 2.11.0+cu128 · torchvision 0.26 · numpy 1.26.4(시스템) · cv_bridge 됨 · PyYAML · h5py. ROS 노드는 `source /opt/ros/jazzy/setup.bash` 뒤 `envs/ml_env/bin/python` 으로 띄웁니다(Isaac Sim 의 `isaacsim_env` 와 섞지 않음). 10.13 확인: ResNet18 192×256 추론 CPU 5.4 ms · GPU 0.7 ms.
 - **캐시**: `UV_CACHE_DIR` · `PIP_CACHE_DIR` · `PRE_COMMIT_HOME` 은 `$CD1/.cache/` 아래로 등록돼 있습니다.
 - **루트 밖에 남는 것**: `~/.cache/ov` · `~/.local/share/ov`(Isaac Sim 셰이더 캐시), `~/.nvidia-omniverse/logs`, `~/.ros/`, `~/.local/bin/uv`, `/opt/ros/jazzy`
 - **커밋 전 훅**: `$CD1/envs/tools_env/bin/pre-commit` 이 설치돼 있어 5MB 초과 파일·개인키·충돌 표식, `sim/` 의 `cv_bridge` import 가 막힙니다([sim/README.md](../sim/README.md)).

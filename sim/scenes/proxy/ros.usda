@@ -66,5 +66,90 @@ over "World"
             int node:typeVersion = 1
         }
     }
+
+    def OmniGraph "ROS_GroundTruth"
+    {
+        token evaluationMode = "Automatic"
+        token evaluator:type = "execution"
+        token fabricCacheBacking = "StageWithoutHistory"
+        int2 fileFormatVersion = (1, 9)
+        token pipelineStage = "pipelineStageSimulation"
+
+        def OmniGraphNode "tick"
+        {
+            token node:type = "omni.graph.action.OnPlaybackTick"
+            int node:typeVersion = 2
+            custom double outputs:deltaSeconds
+            custom double outputs:frame
+            custom uint outputs:tick (
+                customData = {
+                    bool isExecution = 1
+                }
+            )
+            custom double outputs:time
+        }
+
+        def OmniGraphNode "context"
+        {
+            custom uchar inputs:domain_id
+            custom bool inputs:useDomainIDEnvVar
+            token node:type = "isaacsim.ros2.bridge.ROS2Context"
+            int node:typeVersion = 2
+            custom uint64 outputs:context
+        }
+
+        def OmniGraphNode "sim_time"
+        {
+            custom uint64 inputs:referenceTimeDenominator
+            custom int64 inputs:referenceTimeNumerator
+            custom bool inputs:resetOnStop
+            token node:type = "isaacsim.core.nodes.IsaacReadSimulationTime"
+            int node:typeVersion = 1
+            custom double outputs:simulationTime
+        }
+
+        def OmniGraphNode "publish_gt"
+        {
+            custom token[] inputs:childFrames
+            custom uint64 inputs:context
+            prepend uint64 inputs:context.connect = </World/ROS_GroundTruth/context.outputs:context>
+            custom uint inputs:execIn (
+                customData = {
+                    bool isExecution = 1
+                }
+            )
+            prepend uint inputs:execIn.connect = </World/ROS_GroundTruth/tick.outputs:tick>
+            custom string inputs:nodeNamespace
+            custom double4[] inputs:orientations
+            custom token[] inputs:parentFrames
+            custom rel inputs:parentPrim = </World> (
+                customData = {
+                    dictionary omni = {
+                        dictionary graph = {
+                            string relType = "target"
+                        }
+                    }
+                }
+            )
+            custom string inputs:qosProfile
+            custom uint64 inputs:queueSize
+            custom bool inputs:staticPublisher
+            custom rel inputs:targetPrims = </World/Nova_Carter_ROS/chassis_link> (
+                customData = {
+                    dictionary omni = {
+                        dictionary graph = {
+                            string relType = "target"
+                        }
+                    }
+                }
+            )
+            custom double inputs:timeStamp
+            prepend double inputs:timeStamp.connect = </World/ROS_GroundTruth/sim_time.outputs:simulationTime>
+            custom string inputs:topicName = "ground_truth/tf"
+            custom double3[] inputs:translations
+            token node:type = "isaacsim.ros2.bridge.ROS2PublishTransformTree"
+            int node:typeVersion = 1
+        }
+    }
 }
 

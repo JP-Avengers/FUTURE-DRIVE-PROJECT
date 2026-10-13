@@ -61,6 +61,7 @@ GPU 0 고정은 스크립트 안의 `active_gpu=0`·`multi_gpu=False`로 합니�
 ```bash
 $CD1/envs/isaacsim_env/bin/python sim/build_proxy_scene.py      # params.yaml → scenes/proxy/*.usda (몇 초, Isaac Sim 불필요)
 OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/author_proxy_layers.py   # ros·sensors 레이어 처음 채우기 (/clock · E2E 카메라)
+source /opt/ros/jazzy/setup.bash && OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/author_ground_truth.py   # ros 레이어에 정답 위치 /ground_truth/tf 더하기(10.13, 이미 있으면 그대로) — 모든 씬에 들어감
 # 헤드리스로 열어 로봇·토픽 확인 — 위 Bridge 검증처럼 시스템 ROS 를 먼저 source 한 셸에서
 OMNI_KIT_ACCEPT_EULA=YES $CD1/envs/isaacsim_env/bin/python sim/check_proxy_scene.py 25 --drive 0.5   # RTF · 직진 거리, 끝에 "OK"
 ```

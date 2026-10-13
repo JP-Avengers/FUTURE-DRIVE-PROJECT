@@ -36,6 +36,7 @@
 | `/chassis/imu` | `sensor_msgs/Imu` | 시뮬 | `chassis_imu` | odom 과 같음 | |
 | `/tf` | `tf2_msgs/TFMessage` | 시뮬 | `odom` → `base_link` → 센서 | odom 한 번에 메시지 4개 | |
 | `/clock` | `rosgraph_msgs/Clock` | 시뮬 | — | 시뮬 스텝마다 — odom 과 같음 | |
+| `/ground_truth/tf` | `tf2_msgs/TFMessage` | 시뮬(`sim/scenes/proxy/ros.usda` 의 `ROS_GroundTruth`, 10.13) | `World` → `nova_carter`(로봇 몸체 = `/chassis/odom` 의 `base_link` 자리). 같은 메시지에 바퀴 링크 변환도 섞여 있으니 `header.frame_id == "World"` 인 것만 씀 | odom 과 같음(84 Hz) | **정답 위치** — 씬 월드 기준, x · y 는 B 맵 좌표(z 는 씬 기준). odom + 출발 자세와 1.4 cm · 0.8° 안에서 일치(10.13 r3 양방향). 학습 라벨 · 채점용 — **평가 때 모델 입력에는 쓰지 않음**(10.13 멘토: 평가는 센서로 구한 위치로) |
 | `/cmd_vel` | `geometry_msgs/Twist` | 교사 리그 **또는** 추론 노드 — **발행자는 항상 1개** | — | 10 Hz 이상 | `linear.x` = v (m/s) · `angular.z` = ω (rad/s). 나머지 성분은 0 |
 | `/route_command` | `std_msgs/UInt8` | 교사 리그(자동 교사 `sim/teacher.py` 는 경로 기하로 냄) · 평가 스크립트 | — | 10 Hz 이상(자동 교사 20 Hz) | **0 직진 · 1 좌회전 · 2 우회전** — 제안, E 확정. 자동 교사 규칙: 40° 넘게 꺾이는 곳의 꼭짓점 앞 5 m ~ 뒤 2 m |
 | `/teacher/cmd_vel` | `geometry_msgs/TwistStamped` | 자동 교사(`sim/teacher.py`) | `base_link` | 20 Hz(시뮬 시간, 헤더 = 시뮬 시각) | **자동 교사 녹화의 라벨** — 교사의 깨끗한 명령. 이때 `/cmd_vel` 은 실행 명령(라벨 + 조향 잡음)이라 라벨로 쓰지 않음. 사람 조작 녹화에는 없음(라벨 = `/cmd_vel`) — 10.12 제안, E 확정 |
@@ -83,3 +84,4 @@
 | 10.1 | 1차 수집 실행을 스트리밍으로(서버 앞 모니터 모드는 이 서버에서 못 씀) — RTF 표 | |
 | 10.1 | 스트리밍 + 클라이언트 RTF 0.97~0.99, 주의 추가 — Stop → Play 하면 시뮬 시간이 0 으로 | |
 | 10.5 | 속도 상한 제안을 Nav2 기본 설정과 같게 — v 0.8 유지, ω 1.0 → 0.7. 로봇 에셋 한도(v 1.0 · ω 1.2, 가감속 2.0 · 2.68) 추가 | |
+| 10.13 | `/ground_truth/tf` 추가 — 시뮬 정답 위치(World → 로봇 몸체), 학습 라벨 · 채점용. 출발 자세 없이 지도 좌표를 바로 얻음(무작위 시작 · 리셋 대비, E 요청) |

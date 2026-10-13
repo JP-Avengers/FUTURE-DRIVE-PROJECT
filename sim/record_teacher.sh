@@ -23,7 +23,7 @@ export ROS_DOMAIN_ID=${FD_DOMAIN:-42} RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AU
 
 # 규격서 2장 토픽. /route_command 는 수집 때 아무도 내지 않는 안(경로 파일 + 자세로 나중에 붙임)이지만, 누가 내면 남도록 넣어 둔다
 TOPICS=(/front_camera/image_raw /front_camera/camera_info /chassis/odom /chassis/imu /tf /clock /cmd_vel /route_command
-        /teacher/cmd_vel /teacher/status)
+        /teacher/cmd_vel /teacher/status /ground_truth/tf)
 
 # 씬이 Play 중이어야 시뮬 시간으로 기록된다
 if ! timeout 15 ros2 topic echo --once /clock >/dev/null 2>&1; then

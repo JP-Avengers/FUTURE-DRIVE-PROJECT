@@ -23,6 +23,8 @@
 
 - 실물 위치: server207 `$CD1/data/teacher/` — [`MANIFEST.md`](../../MANIFEST.md) 에 버전 기록
 - **1차 교사 데이터(10.13)**: `data/teacher/raw_v1/` — 묶음 폴더 9개(`<시각>_auto_<cw|ccw>/` 안에 MCAP 1개 · `meta.yaml` · `qc.txt` · `teacher/summary.json`(바퀴별 이탈 · 잡음 통계)). 실제 맵 r3, 기준선 화단 3 m 선, 45바퀴 · 시뮬 약 2시간. 카메라는 20 Hz로 녹화했으니 10 fps 샘플링은 E 쪽에서
+- **정답 위치(10.13~)**: 다음 녹화부터 `/ground_truth/tf`([topics.md](topics.md))가 들어감. 1차 데이터(`raw_v1`)엔 없으니 `/chassis/odom` + 출발 자세(`teacher/summary.json` 의 `start_pose` — 9개 모두 (−1.756, −7.621, −96.0°))로 계산(topics.md 변환식). `/teacher/status` 에도 map x · y 가 20 Hz로 있음
+- **E2E 학습 · 추론 환경(서버)**: `envs/ml_env` — [server207.md](../server207.md)
 - 납기: 수집용 Proxy 씬 10.6 · Proxy 씬 10.11 · 캠퍼스 씬 11.16 (수행계획서 그림 2)
 - 토픽 · frame_id · 좌표계: [`topics.md`](topics.md)
 
@@ -36,3 +38,4 @@
 | 10.12 | v0 | 자동 교사 안 — 라벨 `/teacher/cmd_vel` · 상태 `/teacher/status` 추가, `/route_command` 를 녹화 때 냄, 원본 형식 비고 (D, 10.13 멘토 회의 질문 4) | |
 | 10.13 | v0 | 1차 교사 데이터 위치 · 구성 추가(`data/teacher/raw_v1/`, MANIFEST `parking_r3_auto` v1.0) (D) | |
 | 10.13 | v0 | 원본 형식 — 멘토 회의 결론(자동 교사 · Nav2 주행 · 특수 상황은 사람 조작), 기준선(화단 3 m 선) 채택 (D) | |
+| 10.13 | v0 | 정답 위치 `/ground_truth/tf`(다음 녹화부터) · 1차 데이터 지도 좌표 구하는 법 · 서버 학습 · 추론 환경(`ml_env`) (D) | |
