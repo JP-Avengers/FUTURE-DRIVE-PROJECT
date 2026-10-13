@@ -1,5 +1,5 @@
 # 실제 주차장(맵 v0.4b r3) 기준선 정의 — 가운데 화단 윤곽을 d m 바깥으로 둥글게 부풀린 닫힌 선. 평가 · 자동 교사 · 경로 입력이 같은 선을 쓴다.
-# 상태: 임시(10.13 멘토 회의 전, D 가 d 3.0 m 로 잡아 둠). 꼭짓점은 D 가 위에서 본 정사 영상에서 눈으로 찍은 초안(±1 m) — B · C 확인 전.
+# 상태: 채택(10.13 멘토 회의 — 지금 기준 경로로 문제없음, d 3.0 m). 꼭짓점은 D 가 위에서 본 정사 영상에서 눈으로 찍은 초안(±1 m) — B · C 확인 전.
 # 촬영 궤적(route_bonnet_cw.csv)을 쓰지 않는 이유: 외곽을 담으려 일부러 크게 · 작게 돈 경로라 4회차가 같은 지점에서 최대 10 m 다름.
 # 고친 뒤 다시 만들기: python3 eval/routes/make_refline.py eval/routes/parking_r3_island.yaml  → parking_r3_cw/ccw .csv · .yaml
 name: parking_r3

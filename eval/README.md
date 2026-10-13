@@ -29,7 +29,7 @@ server207 · 하네스는 `isaacsim_env`, 분석은 `eval_env`.
 
 | 씬 | 정의 | 생성 파일 | 상태 |
 | --- | --- | --- | --- |
-| 실제 주차장 r3 | `parking_r3_island.yaml` — 가운데 화단 윤곽(꼭짓점 5)을 d 3.0 m 바깥으로 부풀린 선(변 평행 이동 + 반경 3 m 원호), 89.96 m | `parking_r3_cw/ccw.csv`(0.25 m 간격 run,s,x,y) · `.yaml`(길이 · 출발 자세 · 경로 지시 구간) | **임시(10.13 회의 전)** — 꼭짓점은 D 눈 초안 ±1 m, B · C 확인 전 |
+| 실제 주차장 r3 | `parking_r3_island.yaml` — 가운데 화단 윤곽(꼭짓점 5)을 d 3.0 m 바깥으로 부풀린 선(변 평행 이동 + 반경 3 m 원호), 89.96 m | `parking_r3_cw/ccw.csv`(0.25 m 간격 run,s,x,y) · `.yaml`(길이 · 출발 자세 · 경로 지시 구간) | **채택(10.13 멘토 회의)** — 꼭짓점은 D 눈 초안 ±1 m, B · C 확인 전 |
 | Proxy | `loop_cw.yaml` · `loop_ccw.yaml` — 지도 추정 루프 중심선(꼭짓점 4) | — | 초안 |
 
 ```bash

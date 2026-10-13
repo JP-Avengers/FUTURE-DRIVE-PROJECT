@@ -129,7 +129,7 @@ python3 sim/pursuit.py --dir cw --v 0.8 --lookahead 2.0     # 한 바퀴 돌면 
 - **`/route_command`** 를 녹화 때 함께 냅니다 — 40° 넘게 꺾이는 곳의 꼭짓점 앞 5 m ~ 뒤 2 m 를 좌 · 우회전(Proxy 는 `eval/routes/loop_*.yaml` 초안과 같은 구간, 26° BEND 는 직진).
 - **`/teacher/status`**(JSON 한 줄, 20 Hz) — 단계(ALIGN · FOLLOW · DWELL · DONE) · 바퀴 · 진행 `s` · 이탈 `cte`(왼쪽 +) · 방향 오차 · 지시 · 목표 속도 · 잡음. 학습 때 FOLLOW 만 쓰는 식으로 거릅니다.
 - **주행 규칙** — 상한 v 0.8 · |ω| 0.7(사람 · Nav2 와 같음), 가감속 한도는 키보드 램프와 같음, 시뮬 시간 20 Hz. 속도 목표는 0.5~0.8 m/s 에서 약 30 m 마다 새로 뽑고(`--v-range` · `--v-change`), 회전 구간은 0.5(`--v-turn`), 곡률이 크면 더 줄입니다. 바퀴 끝마다 출발점에서 감속 정지 후 2 s 대기(목표 도달 장면).
-- **경로** — `proxy`(Proxy 루프) 또는 `csv:<파일>[@회차]`. 실제 맵은 **기준선 `eval/routes/parking_r3_cw.csv`**(화단 윤곽을 3 m 부풀린 선, 10.13 임시 — `eval/README.md`). 촬영 궤적 CSV(C 의 `route_*.csv`)는 외곽 촬영용으로 크게 · 작게 돈 경로라 기준선으로 쓰지 않고, 쓸 때는 `--smooth 1`(앞뒤 1 m 이동 평균). `ccw` 는 같은 출발점에서 거꾸로 돌고, 출발 방향이 20° 넘게 다르면 제자리 회전부터 합니다. 시작 자세는 `FD_SCENE` 루트에서 읽습니다.
+- **경로** — `proxy`(Proxy 루프) 또는 `csv:<파일>[@회차]`. 실제 맵은 **기준선 `eval/routes/parking_r3_cw.csv`**(화단 윤곽을 3 m 부풀린 선, 10.13 멘토 회의에서 채택 — `eval/README.md`). 촬영 궤적 CSV(C 의 `route_*.csv`)는 외곽 촬영용으로 크게 · 작게 돈 경로라 기준선으로 쓰지 않고, 쓸 때는 `--smooth 1`(앞뒤 1 m 이동 평균). `ccw` 는 같은 출발점에서 거꾸로 돌고, 출발 방향이 20° 넘게 다르면 제자리 회전부터 합니다. 시작 자세는 `FD_SCENE` 루트에서 읽습니다.
 - **`--label-only`** — `/cmd_vel` 을 내지 않고 라벨 · 지시만 냅니다. 학습 모델이 몰 때 그 자리 라벨을 남기는 DAgger(2차 수집)용.
 
 ```bash

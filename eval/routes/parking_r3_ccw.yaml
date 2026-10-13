@@ -3,7 +3,7 @@ name: parking_r3_ccw
 version: v0-draft
 scene: sim/scenes/parking/parking_v0.4b_r3.usda
 direction: ccw
-source: parking_r3_island.yaml (sha256 fcc3b307d8e9)
+source: parking_r3_island.yaml (sha256 3d2d36f0bc3e)
 rule: 화단 윤곽을 3 m 바깥으로 부풀린 선 — 변은 평행 이동, 꼭짓점은 반경 3 m 원호
 ref_path_csv: parking_r3_ccw.csv   # 0.25 m 간격 run,s,x,y (닫는 점 포함)
 length_m: 89.96
