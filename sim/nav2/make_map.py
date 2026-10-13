@@ -8,9 +8,11 @@
 
 레포 루트(= $CD1)에서:
     envs/isaacsim_env/bin/python sim/nav2/make_map.py data/usd/parking_v0.4b_r3/usd/parking_mesh.usdc data/nav2/parking_v0.4b_r3
-→ <out>/map.pgm · map.yaml(Nav2 map_server 형식) · preview.png(기준선 겹침, 확인용)
---keepout eval/routes/parking_r3_island.yaml 이면 가운데 화단 윤곽(island 꼭짓점)을 장애물로 채운다 — 화단 안은 메쉬로는 거의 비어
-있어(북쪽 경계석이 낮음) 경로 계획이 화단을 가로지를 수 있으므로. 실제로도 차로 밖이라 들어가면 안 되는 곳.
+→ <out>/map.pgm · map.yaml(Nav2 map_server 형식 — 형상 그대로, 위치 추정(AMCL)용) · preview.png(기준선 겹침, 확인용)
+--keepout eval/routes/parking_r3_island.yaml 이면 가운데 화단 윤곽(island 꼭짓점)을 장애물로 채운 map_keepout.pgm · .yaml 도 쓴다
+(경로 계획 · 비용 지도용) — 화단 안은 메쉬로는 거의 비어 있어(북쪽 경계석이 낮음) 경로가 화단을 가로지를 수 있으므로.
+AMCL 에는 채우지 않은 map.yaml 을 준다: LiDAR 가 못 보는 큰 장애물 덩어리가 있으면 엉뚱한 자세의 스캔도 거기 걸려 점수가 높아져
+먼 곳의 가짜 무리가 살아남고 위치가 튐(10.14 — 10 m 어긋난 자세 점수 비 0.56 → 0.19).
 """
 import argparse
 import csv
@@ -31,6 +33,7 @@ ap.add_argument("--h-hi", type=float, default=1.0)
 ap.add_argument("--margin", type=float, default=2.0)
 ap.add_argument("--route", default="eval/routes/parking_r3_cw.csv", help="미리보기에 겹칠 기준선(없으면 생략)")
 ap.add_argument("--keepout", help="island 꼭짓점이 든 기준선 정의 yaml — 그 다각형 안을 장애물로")
+ap.add_argument("--prim", default="Collision", help="장애물을 뽑을 메쉬 prim — Collision(기본) 또는 Visual(LiDAR 가 보는 형상)")
 a = ap.parse_args()
 FCELL = 0.5
 
@@ -60,7 +63,7 @@ def samples(A, B, C, step):
 
 st = Usd.Stage.Open(a.mesh)
 root = st.GetDefaultPrim()
-coll = next(p for p in Usd.PrimRange(root) if p.GetName() == "Collision")
+coll = next(p for p in Usd.PrimRange(root) if p.GetName() == a.prim)
 bnd = next((p for p in Usd.PrimRange(root) if p.GetName() == "Boundary"), None)
 A, B, C = tris(coll)
 x0, y0 = np.minimum.reduce([A, B, C]).min(0)[:2] - a.margin
@@ -104,31 +107,36 @@ if bnd:
     for p in samples(*tris(bnd), a.cell * 0.7):
         occ[cell_of(p)] = True
 
-keep = 0
+inside = np.zeros((nx, ny), bool)
 if a.keepout:
     poly = np.array([(float(v[1]), float(v[2])) for v in yaml.safe_load(open(a.keepout))["island"]])
     gx, gy = np.meshgrid(x0 + (np.arange(nx) + 0.5) * a.cell, y0 + (np.arange(ny) + 0.5) * a.cell, indexing="ij")
-    inside = np.zeros((nx, ny), bool)
     for (xa, ya), (xb, yb) in zip(poly, np.roll(poly, -1, 0)):   # 짝홀 규칙
         cross = ((ya > gy) != (yb > gy)) & (gx < (xb - xa) * (gy - ya) / (yb - ya + 1e-12) + xa)
         inside ^= cross
-    occ |= inside
-    keep = int(inside.sum())
-
-# PGM: 0 = 장애물, 254 = 빈 칸, 205 = 미지 / 행 0 = 위쪽(y 최대)
-img = np.full((nx, ny), 205, np.uint8)
-img[floor] = 254
-img[occ] = 0
-img = img.T[::-1]
+keep = int(inside.sum())
 os.makedirs(a.out, exist_ok=True)
-with open(os.path.join(a.out, "map.pgm"), "wb") as f:
-    f.write(f"P5\n{nx} {ny}\n255\n".encode())
-    f.write(img.tobytes())
-with open(os.path.join(a.out, "map.yaml"), "w") as f:
-    f.write(f"# sim/nav2/make_map.py — {os.path.relpath(a.mesh)} · 장애물 바닥 위 {a.h_lo}~{a.h_hi} m · 경계벽"
-            f"{' · 화단 채움 ' + a.keepout if a.keepout else ''}\n"
-            f"image: map.pgm\nmode: trinary\nresolution: {a.cell}\norigin: [{x0:.3f}, {y0:.3f}, 0.0]\n"
-            f"negate: 0\noccupied_thresh: 0.65\nfree_thresh: 0.25\n")
+
+
+def write_map(name, occ_cells, note):
+    """PGM: 0 = 장애물, 254 = 빈 칸, 205 = 미지 / 행 0 = 위쪽(y 최대)."""
+    im = np.full((nx, ny), 205, np.uint8)
+    im[floor] = 254
+    im[occ_cells] = 0
+    im = im.T[::-1]
+    with open(os.path.join(a.out, name + ".pgm"), "wb") as f:
+        f.write(f"P5\n{nx} {ny}\n255\n".encode())
+        f.write(im.tobytes())
+    with open(os.path.join(a.out, name + ".yaml"), "w") as f:
+        f.write(f"# sim/nav2/make_map.py — {os.path.relpath(a.mesh)} · 장애물 바닥 위 {a.h_lo}~{a.h_hi} m · 경계벽{note}\n"
+                f"image: {name}.pgm\nmode: trinary\nresolution: {a.cell}\norigin: [{x0:.3f}, {y0:.3f}, 0.0]\n"
+                f"negate: 0\noccupied_thresh: 0.65\nfree_thresh: 0.25\n")
+    return im
+
+
+img = write_map("map", occ, " (위치 추정용 — 화단 안은 채우지 않음)")
+if a.keepout:
+    img = write_map("map_keepout", occ | inside, f" · 화단 채움 {a.keepout} (경로 계획 · 비용 지도용)")
 
 # 미리보기 PNG(2배 축소 없이 0.05 m/px) — 기준선을 빨간 선으로
 rgb = np.stack([img] * 3, -1).copy()

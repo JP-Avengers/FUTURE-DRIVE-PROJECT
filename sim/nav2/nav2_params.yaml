@@ -4,15 +4,16 @@
 #     /scan 은 launch 의 pointcloud_to_laserscan 이 3D 점군에서 만든다(NVIDIA 예제와 같음).
 #   - 속도 상한 v 0.8 · ω 0.7 은 NVIDIA 값 그대로(우리 사람 · 자동 교사 상한과 같음). 가감속 한도는 키보드 램프 · 자동 교사와 같게.
 #   - AMCL 초기 자세 = 실제 맵 r3 기준선 출발점(씬 시작 자세). launch 의 localization:=gt 이면 AMCL 대신 정답 map → odom.
-#   - 10.13 시험: 정답 위치(gt)로는 r3 기준선 한 바퀴 완주. AMCL 은 25 m 쯤 잘 따라가다 8 m 튀는 일이 있어 조정 중(sim/README.md).
+#   - AMCL(10.14 조정): 위치 추정용 지도는 화단을 채우지 않은 map.yaml(/map), 경로 계획 · 비용 지도는 화단 채운 /map_nav.
+#     녹화 재생으로 설정을 비교해 고름(logs/nav2/amcl_tune) — r3 양방향 2바퀴 위치 오차 중앙 0.11 · 최대 0.24 m, 튐 0.
 
 amcl:
   ros__parameters:
     use_sim_time: True
-    alpha1: 0.05   # FD: 오도메트리 잡음 가정 0.2 → 0.05 — 시뮬 odom 은 오차가 거의 없음(정답과 0.35° 안). 0.2 면 입자가 금세 퍼져
-    alpha2: 0.05   #     직선 주행만으로 방향이 1°/갱신씩 틀어짐, 0.05 면 25 m 동안 0.1~0.36 m 로 따라감(10.13 r3)
-    alpha3: 0.05
-    alpha4: 0.05
+    alpha1: 0.02   # FD: 오도메트리 잡음 가정 0.2 → 0.02 — 시뮬 odom 은 정답과 0.35° 안(실제 로봇이면 다시 올릴 것)
+    alpha2: 0.02
+    alpha3: 0.02
+    alpha4: 0.02
     alpha5: 0.2
     base_frame_id: "base_link"
     beam_skip_distance: 0.5
@@ -25,7 +26,7 @@ amcl:
     laser_max_range: 100.0
     laser_min_range: -1.0
     laser_model_type: "likelihood_field"
-    max_beams: 360
+    max_beams: 120   # FD: 360 → 120(60 · 360 과 차이 작음)
     max_particles: 2000
     min_particles: 500
     odom_frame_id: "odom"
@@ -33,17 +34,17 @@ amcl:
     pf_z: 0.99
     recovery_alpha_fast: 0.0
     recovery_alpha_slow: 0.0
-    resample_interval: 3
+    resample_interval: 1
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
     save_pose_rate: 0.5
-    sigma_hit: 0.2
+    sigma_hit: 0.1
     tf_broadcast: true
     transform_tolerance: 1.0
-    update_min_a: 0.2
-    update_min_d: 0.25
-    z_hit: 0.5
+    update_min_a: 0.1
+    update_min_d: 0.1   # FD: 0.25 → 0.1 · update_min_a 0.2 → 0.1 · resample_interval 3 → 1 — 자주 갱신
+    z_hit: 0.9   # FD: 0.5 → 0.9 · z_rand 0.5 → 0.1 · sigma_hit 0.2 → 0.1 — 점수를 날카롭게
     z_max: 0.05
-    z_rand: 0.5
+    z_rand: 0.1
     z_short: 0.05
     scan_topic: scan
     map_topic: map
@@ -216,6 +217,7 @@ local_costmap:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
         enabled: true
+        map_topic: /map_nav    # FD: 화단 채운 경로 계획용 지도(위치 추정용 /map 과 따로)
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
@@ -278,6 +280,7 @@ global_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
+        map_topic: /map_nav    # FD: 화단 채운 경로 계획용 지도
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 0.3

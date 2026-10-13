@@ -4,6 +4,9 @@
     source /opt/ros/jazzy/setup.bash && export ROS_DOMAIN_ID=43 RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
     ros2 launch sim/nav2/nav2.launch.py map:=$PWD/data/nav2/parking_v0.4b_r3/map.yaml [localization:=amcl|gt]
 
+지도 두 장 — map(형상 그대로, AMCL 위치 추정용 → /map) · nav_map(가운데 화단 채움, 경로 계획 · 비용 지도용 → /map_nav).
+nav_map 을 안 주면 map 옆의 map_keepout.yaml 을 쓰고, 그것도 없으면 map 을 같이 씀(make_map.py --keepout 이 둘 다 만듦).
+
 localization
   amcl (기본) — 3D LiDAR → /scan 으로 지도 위 위치를 추정(실제 로봇과 같은 방식, 10.13 멘토 의견). 초기 자세는 nav2_params.yaml.
   gt          — 추정 없이 정답 map → odom(시작 자세 x0 · y0 · yaw0 고정 변환). /chassis/odom 이 시뮬 정답 기반이라 지도 좌표가 정확함.
@@ -28,6 +31,8 @@ BRINGUP = os.path.join(get_package_share_directory("nav2_bringup"), "launch")
 def setup(context):
     lc = lambda k: LaunchConfiguration(k).perform(context)  # noqa: E731
     params, mapf, loc = lc("params_file"), lc("map"), lc("localization")
+    navf = lc("nav_map") or (os.path.join(os.path.dirname(mapf), "map_keepout.yaml")
+                             if os.path.exists(os.path.join(os.path.dirname(mapf), "map_keepout.yaml")) else mapf)
     # 설정 파일의 __FD_NAV2_DIR__ 를 이 폴더 절대 경로로 바꾼 사본을 씀(행동 트리 XML 경로)
     txt = open(params).read().replace("__FD_NAV2_DIR__", HERE)
     params = os.path.join(tempfile.gettempdir(), f"fd_nav2_params_{os.getpid()}.yaml")
@@ -40,6 +45,13 @@ def setup(context):
                           "angle_min": -math.pi / 2, "angle_max": math.pi / 2, "angle_increment": 0.0087, "scan_time": 0.1,
                           "range_min": 0.05, "range_max": float(lc("scan_range_max")), "use_inf": True, "inf_epsilon": 1.0,
                           "use_sim_time": True}]),
+    ]
+    # 경로 계획 · 비용 지도용 지도(/map_nav) — 위치 추정용 /map 과 따로
+    actions += [
+        Node(package="nav2_map_server", executable="map_server", name="map_server_nav", output="screen",
+             remappings=[("map", "map_nav")], parameters=[{"yaml_filename": navf, "topic_name": "map_nav", "use_sim_time": True}]),
+        Node(package="nav2_lifecycle_manager", executable="lifecycle_manager", name="lifecycle_manager_map_nav",
+             parameters=[{"use_sim_time": True, "autostart": True, "node_names": ["map_server_nav"]}]),
     ]
     if loc == "amcl":
         actions.append(IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(BRINGUP, "localization_launch.py")),
@@ -66,6 +78,7 @@ def setup(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("map", description="Nav2 지도 yaml — sim/nav2/make_map.py 로 만든 data/nav2/<씬>/map.yaml(절대 경로)"),
+        DeclareLaunchArgument("nav_map", default_value="", description="경로 계획용 지도 yaml(화단 채움) — 비우면 map 옆 map_keepout.yaml"),
         DeclareLaunchArgument("params_file", default_value=os.path.join(HERE, "nav2_params.yaml")),
         DeclareLaunchArgument("localization", default_value="amcl", description="amcl | gt"),
         DeclareLaunchArgument("navigation", default_value="true", description="false 면 위치 추정(+ /scan)만 — AMCL 시험용"),
