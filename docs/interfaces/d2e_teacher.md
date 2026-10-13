@@ -22,6 +22,7 @@
 ## 인계 방법
 
 - 실물 위치: server207 `$CD1/data/teacher/` — [`MANIFEST.md`](../../MANIFEST.md) 에 버전 기록
+- **1차 교사 데이터(10.13)**: `data/teacher/raw_v1/` — 묶음 폴더 9개(`<시각>_auto_<cw|ccw>/` 안에 MCAP 1개 · `meta.yaml` · `qc.txt` · `teacher/summary.json`(바퀴별 이탈 · 잡음 통계)). 실제 맵 r3, 기준선 화단 3 m 선, 45바퀴 · 시뮬 약 2시간. 카메라는 20 Hz로 녹화했으니 10 fps 샘플링은 E 쪽에서
 - 납기: 수집용 Proxy 씬 10.6 · Proxy 씬 10.11 · 캠퍼스 씬 11.16 (수행계획서 그림 2)
 - 토픽 · frame_id · 좌표계: [`topics.md`](topics.md)
 
@@ -33,3 +34,4 @@
 | 10.5 | v0 | 조작 신호 — 게임패드 보류, 키보드 + 가감속 램프로 결정하고 한도를 적음 (D) | |
 | 10.5 | v0 | 조작 신호 — 상한 제안 ω 1.0 → 0.7(v 0.8 과 함께 Nav2 기본 설정과 같게) (D) | |
 | 10.12 | v0 | 자동 교사 안 — 라벨 `/teacher/cmd_vel` · 상태 `/teacher/status` 추가, `/route_command` 를 녹화 때 냄, 원본 형식 비고 (D, 10.13 멘토 회의 질문 4) | |
+| 10.13 | v0 | 1차 교사 데이터 위치 · 구성 추가(`data/teacher/raw_v1/`, MANIFEST `parking_r3_auto` v1.0) (D) | |
