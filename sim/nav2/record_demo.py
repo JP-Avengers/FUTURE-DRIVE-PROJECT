@@ -48,6 +48,8 @@ LAYER = os.environ["FD_LAYER"]
 POSE = os.environ.get("FD_POSE", "")
 SPEED = int(os.environ.get("FD_SPEED", "3"))
 SCENE = os.environ.get("FD_SCENE", f"{CD1}/sim/scenes/parking/parking_v0.4b_r3.usda")
+NAV2_MAP = os.environ.get("FD_NAV2_MAP", f"{CD1}/data/nav2/parking_v0.4b_r3/map.yaml")   # 씬과 같은 판의 지도(make_map.py)
+MAPVER = os.environ.get("FD_MAPVER", "v0.4b r3")   # 화면에 적는 맵 판
 ODIR = os.path.splitext(OUT)[0] + "_logs"
 os.makedirs(ODIR, exist_ok=True)
 SC = yaml.safe_load(open(os.path.join(CD1, SCN), encoding="utf-8"))
@@ -177,7 +179,7 @@ def drive():
     open(f"{ODIR}/tap.py", "w").write(TAP_SRC)
     route_arg = "" if SEGMENT else f"--route {RT}"
     procs = {
-        "nav2": spawn(f"{ENV} && cd {CD1} && exec ros2 launch sim/nav2/nav2.launch.py map:={CD1}/data/nav2/parking_v0.4b_r3/map.yaml "
+        "nav2": spawn(f"{ENV} && cd {CD1} && exec ros2 launch sim/nav2/nav2.launch.py map:={NAV2_MAP} "
                       f"localization:=amcl cmd_vel_out:=nav2/cmd_vel {POSE}", f"{ODIR}/launch.log"),
         "bridge": spawn(f"{ENV} && cd {CD1} && exec /usr/bin/python3 -u sim/nav2/nav2_teacher.py --route {RT} --scenario {SCN} "
                         f"--summary {ODIR}/teacher.json", f"{ODIR}/teacher.log"),
@@ -332,17 +334,17 @@ def replay():
     rel_p = qmat(rq0).T @ (cp0 - rp0)
     dname = "시계" if DIR == "cw" else "반시계"
     what = f"구간 {SC['name'].replace('parking_r3_', '')}" if SEGMENT else "기준선 한 바퀴"
-    title = f"실제 주차장(맵 v0.4b r3) · Nav2 장애물 회피 — {what} ({dname} 방향, {SPEED}배속)"
-    notes = ["※ Nav2(ROS 2 표준 자율주행) — 3D LiDAR + 지도로 위치 추정(AMCL). 장애물은 지도에 없고, 달리면서 LiDAR로 보고 피함",
-             f"기준선(화단 3 m 선)에 4 m 간격 경유점 · 경로는 Nav2가 계획 · 상한 v 0.8 m/s · ω 0.7 rad/s · 장애물 {len(OBS)}개",
-             f"앞 카메라 영상 + Nav2 명령을 E2E 교사 데이터로 녹화(10.14 Nav2 교사 1차 21개) · C 맵 v0.4b r3 · {time.strftime('%Y.%m.%d')}"]
+    title = f"실제 주차장(맵 {MAPVER}) · Nav2 {'장애물 회피' if OBS else '주행'} — {what} ({dname} 방향, {SPEED}배속)"
+    notes = ["※ Nav2(ROS 2 표준 자율주행) — 3D LiDAR + 지도로 위치 추정(AMCL). " + ("장애물은 지도에 없고, 달리면서 LiDAR로 보고 피함" if OBS else "지도 위에서 경로를 계획해 따라감(학습 없는 규칙 기반)"),
+             f"기준선(화단 3 m 선)에 4 m 간격 경유점 · 경로는 Nav2가 계획 · 상한 v 0.8 m/s · ω 0.7 rad/s" + (f" · 장애물 {len(OBS)}개" if OBS else ""),
+             f"앞 카메라 영상 + Nav2 명령을 E2E 교사 데이터로 녹화(10.14 Nav2 교사 1차 21개) · C 맵 {MAPVER} · {time.strftime('%Y.%m.%d')}"]
     legend = "노랑 기준선 · 하늘색 Nav2 계획 경로 · 초록 지나온 길 · 빨강 장애물"
     for n_ in notes + [legend]:
         wpx = F["r20"].getlength(n_)
         print(f"TEXT_WIDTH {wpx:.0f}px{' WARN' if wpx > (1240 if n_ != legend else 610) else ''}", flush=True)
     passed = kv.get("pass") == "True"
     final = (f"{'완주' if passed else '판정 실패'} — 랩 {kv.get('lap_sim_s', '?')} s(시뮬) · 기준선 최대 이탈 {kv.get('max_cte', '?')} m · "
-             f"장애물과 최소 {kv.get('min_clearance', '-')} m · 충돌 {'없음' if kv.get('collision') in (None, 'False') else '있음'}") if kv else None
+             + (f"장애물과 최소 {kv.get('min_clearance', '-')} m · 충돌 {'없음' if kv.get('collision') in (None, 'False') else '있음'}" if OBS else f"평균 이탈 {kv.get('mean_cte', '?')} m · 복구 {kv.get('recoveries', '?')}회")) if kv else None
     writer = cv2.VideoWriter(OUT, cv2.VideoWriter_fourcc(*"mp4v"), FPS, (1920, 1080))
     t0, trail, frames, canvas, wall0 = rows[0]["t"], [], 0, None, time.time()
     for k, row in enumerate(rows):
@@ -409,7 +411,7 @@ def replay():
         end = canvas.copy()
         de = ImageDraw.Draw(end)
         de.rectangle((0, 330, 1280, 520), fill=(0, 0, 0))
-        de.text((40, 350), final.split(" — ")[0] + ("" if SEGMENT else f" — 장애물 {len(OBS)}개를 피해 한 바퀴"), font=F["b40"],
+        de.text((40, 350), final.split(" — ")[0] + ("" if SEGMENT or not OBS else f" — 장애물 {len(OBS)}개를 피해 한 바퀴"), font=F["b40"],
                 fill=(255, 210, 63))
         de.text((40, 420), final.split(" — ", 1)[-1], font=F["b30"], fill=(255, 255, 255))
         for _ in range(3 * FPS):

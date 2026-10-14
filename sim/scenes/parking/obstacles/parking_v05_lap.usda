@@ -1,0 +1,20 @@
+#usda 1.0
+(
+    customLayerData = {
+        string generated_by = "sim/make_obstacles.py"
+        string obstacles_json = "[]"
+        string scenario = "eval/scenarios/parking_v05_lap.yaml"
+        string start_json = "null"
+    }
+    doc = "시나리오 장애물 — parking_v05_lap (eval/scenarios/parking_v05_lap.yaml). FD_LAYERS 로 씬 위에 얹음"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def "World"
+{
+    def Xform "Obstacles"
+    {
+    }
+}
+
