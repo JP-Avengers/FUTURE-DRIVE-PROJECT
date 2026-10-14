@@ -37,10 +37,11 @@
 | `/tf` | `tf2_msgs/TFMessage` | 시뮬 | `odom` → `base_link` → 센서 | odom 한 번에 메시지 4개 | |
 | `/clock` | `rosgraph_msgs/Clock` | 시뮬 | — | 시뮬 스텝마다 — odom 과 같음 | |
 | `/ground_truth/tf` | `tf2_msgs/TFMessage` | 시뮬(`sim/scenes/proxy/ros.usda` 의 `ROS_GroundTruth`, 10.13) | `World` → `nova_carter`(로봇 몸체 = `/chassis/odom` 의 `base_link` 자리). 같은 메시지에 바퀴 링크 변환도 섞여 있으니 `header.frame_id == "World"` 인 것만 씀 | odom 과 같음(84 Hz) | **정답 위치** — 씬 월드 기준, x · y 는 B 맵 좌표(z 는 씬 기준). odom + 출발 자세와 1.4 cm · 0.8° 안에서 일치(10.13 r3 양방향). 학습 라벨 · 채점용 — **평가 때 모델 입력에는 쓰지 않음**(10.13 멘토: 평가는 센서로 구한 위치로) |
-| `/cmd_vel` | `geometry_msgs/Twist` | 교사 리그 **또는** 추론 노드 — **발행자는 항상 1개** | — | 10 Hz 이상 | `linear.x` = v (m/s) · `angular.z` = ω (rad/s). 나머지 성분은 0 |
-| `/route_command` | `std_msgs/UInt8` | 교사 리그(자동 교사 `sim/teacher.py` 는 경로 기하로 냄) · 평가 스크립트 | — | 10 Hz 이상(자동 교사 20 Hz) | **0 직진 · 1 좌회전 · 2 우회전** — 제안, E 확정. 자동 교사 규칙: 40° 넘게 꺾이는 곳의 꼭짓점 앞 5 m ~ 뒤 2 m |
-| `/teacher/cmd_vel` | `geometry_msgs/TwistStamped` | 자동 교사(`sim/teacher.py`) | `base_link` | 20 Hz(시뮬 시간, 헤더 = 시뮬 시각) | **자동 교사 녹화의 라벨** — 교사의 깨끗한 명령. 이때 `/cmd_vel` 은 실행 명령(라벨 + 조향 잡음)이라 라벨로 쓰지 않음. 사람 조작 녹화에는 없음(라벨 = `/cmd_vel`) — 10.12 제안, E 확정 |
-| `/teacher/status` | `std_msgs/String` (JSON 한 줄) | 자동 교사 | — | 20 Hz | `ph` 단계(ALIGN · FOLLOW · DWELL · DONE) · `lap` · `s`(진행 m) · `cte`(경로 이탈 m, 왼쪽 +) · `he`(방향 오차 °) · `cmd` · `vt`(목표 속도) · `vl` · `wl`(라벨) · `we`(실행 ω) · `nw`(실행 − 라벨) · `x` · `y`(맵) — 학습 때 거르기용(예: FOLLOW 만) |
+| `/cmd_vel` | `geometry_msgs/Twist` | 교사 리그 **또는** 추론 노드 — **발행자는 항상 1개**. Nav2 교사 녹화 때는 다리 `sim/nav2/nav2_teacher.py`(Nav2 는 `/nav2/cmd_vel` 로 냄) | — | 10 Hz 이상 | `linear.x` = v (m/s) · `angular.z` = ω (rad/s). 나머지 성분은 0 |
+| `/route_command` | `std_msgs/UInt8` | 교사 리그(자동 교사 `sim/teacher.py` · Nav2 다리 `sim/nav2/nav2_teacher.py` 는 경로 기하로 냄) · 평가 스크립트 | — | 10 Hz 이상(자동 교사 20 Hz) | **0 직진 · 1 좌회전 · 2 우회전** — 제안, E 확정. 자동 교사 규칙: 40° 넘게 꺾이는 곳의 꼭짓점 앞 5 m ~ 뒤 2 m |
+| `/teacher/cmd_vel` | `geometry_msgs/TwistStamped` | 자동 교사(`sim/teacher.py`) · Nav2 다리(`sim/nav2/nav2_teacher.py`, 10.14) | `base_link` | 20 Hz(시뮬 시간, 헤더 = 시뮬 시각) | **교사 녹화의 라벨** — 교사의 깨끗한 명령(Nav2 다리면 Nav2 최종 명령). 이때 `/cmd_vel` 은 실행 명령(라벨 + 조향 잡음)이라 라벨로 쓰지 않음. 사람 조작 녹화에는 없음(라벨 = `/cmd_vel`) — 10.12 제안, E 확정 |
+| `/teacher/status` | `std_msgs/String` (JSON 한 줄) | 자동 교사 · Nav2 다리 | — | 20 Hz | `ph` 단계(ALIGN · FOLLOW · DWELL · DONE) · `lap` · `s`(진행 m) · `cte`(경로 이탈 m, 왼쪽 +) · `he`(방향 오차 °) · `cmd` · `vt`(목표 속도) · `vl` · `wl`(라벨) · `we`(실행 ω) · `nw`(실행 − 라벨) · `x` · `y`(맵) — 학습 때 거르기용(예: FOLLOW 만). Nav2 다리는 같은 칸에 `src` "nav2" · `prog`(기준선 따라 나아간 m) · `od`(가장 가까운 장애물 가장자리까지 m, 장애물 시나리오) · `age`(Nav2 명령 나이 s)를 더하고, `ph` 는 WAIT · FOLLOW(Nav2 가 모는 중) · STOP, `vt` 는 Nav2 상한 0.8 |
+| `/nav2/cmd_vel` | `geometry_msgs/Twist` | Nav2 collision_monitor — 교사 녹화 때만(`nav2.launch.py cmd_vel_out:=nav2/cmd_vel`) | — | 20 Hz | Nav2 최종 명령. 다리가 받아 `/cmd_vel` · `/teacher/cmd_vel` 로 냄. 평소(비교군 주행)에는 Nav2 가 `/cmd_vel` 로 바로 냄 |
 | `/front_3d_lidar/lidar_points` | `sensor_msgs/PointCloud2` | 시뮬 | `front_3d_lidar` | 약 6.5 Hz | 수집·평가 설정에서는 끔 — `sim/run_proxy.sh` 가 기본으로 끔(`FD_LIDAR=1` 로 켬) |
 
 - **주기는 시뮬 시간(메시지 헤더 시각) 기준입니다** — 9.30 서버 실측, 물리 설정을 고친 뒤(CPU 물리 · 스텝 60 Hz, 팀 레포 `ea4cf1c`)입니다. 실제 시간 기준 주기는 RTF(시뮬 시간 ÷ 실제 시간)만큼 달라지고, RTF 는 실행 모드마다 다릅니다.
@@ -85,3 +86,4 @@
 | 10.1 | 스트리밍 + 클라이언트 RTF 0.97~0.99, 주의 추가 — Stop → Play 하면 시뮬 시간이 0 으로 | |
 | 10.5 | 속도 상한 제안을 Nav2 기본 설정과 같게 — v 0.8 유지, ω 1.0 → 0.7. 로봇 에셋 한도(v 1.0 · ω 1.2, 가감속 2.0 · 2.68) 추가 | |
 | 10.13 | `/ground_truth/tf` 추가 — 시뮬 정답 위치(World → 로봇 몸체), 학습 라벨 · 채점용. 출발 자세 없이 지도 좌표를 바로 얻음(무작위 시작 · 리셋 대비, E 요청) |
+| 10.14 | Nav2 교사 녹화 — 다리 `sim/nav2/nav2_teacher.py` 가 `/cmd_vel` · `/teacher/cmd_vel` · `/route_command` · `/teacher/status`(칸 추가 `src` · `prog` · `od` · `age`)를 냄, `/nav2/cmd_vel`(Nav2 최종 명령) 추가 | |

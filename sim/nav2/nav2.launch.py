@@ -14,6 +14,8 @@ localization
   gt          — 추정 없이 정답 map → odom(시작 자세 x0 · y0 · yaw0 고정 변환). /chassis/odom 이 시뮬 정답 기반이라 지도 좌표가 정확함.
                 Nav2 자체를 시험할 때만 — 비교 평가에는 amcl.
 /scan 은 3D 점군을 2D 로 눌러 만든다 — 앞 ±90°(뒤쪽은 로봇 몸체가 가림), NVIDIA carter_navigation 예제와 같은 설정.
+cmd_vel_out — Nav2 최종 명령(collision_monitor 출력) 토픽, 기본 cmd_vel(로봇이 바로 받음). 교사 녹화는 nav2/cmd_vel 로 돌리고
+sim/nav2/nav2_teacher.py 가 받아 /cmd_vel(실행) · /teacher/cmd_vel(라벨)로 다시 낸다(/cmd_vel 발행자 1개 규칙).
 """
 import math
 import os
@@ -25,7 +27,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import Node, SetRemap
 from ament_index_python.packages import get_package_share_directory
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -41,6 +43,7 @@ def setup(context):
     # 설정 파일의 __FD_NAV2_DIR__ 를 이 폴더 절대 경로로 바꾸고(행동 트리 XML 경로) AMCL 초기 자세를 시작 자세로 바꾼 사본을 씀
     P = yaml.safe_load(open(params).read().replace("__FD_NAV2_DIR__", HERE))
     P["amcl"]["ros__parameters"]["initial_pose"].update({"x": x0, "y": y0, "yaw": yaw0})
+    P["collision_monitor"]["ros__parameters"]["cmd_vel_out_topic"] = lc("cmd_vel_out")
     params = os.path.join(tempfile.gettempdir(), f"fd_nav2_params_{os.getpid()}.yaml")
     yaml.safe_dump(P, open(params, "w"), sort_keys=False, allow_unicode=True)
     actions = [
@@ -75,6 +78,8 @@ def setup(context):
     else:
         raise RuntimeError(f"localization 은 amcl 또는 gt: {loc}")
     if lc("navigation").lower() in ("true", "1"):
+        # docking_server(안 씀)도 /cmd_vel 발행자를 만들어 '발행자 1개' 점검(record_teacher.sh)에 걸림 → 그 노드만 옆으로 돌림(10.14)
+        actions.append(SetRemap("docking_server:cmd_vel", "docking_server/cmd_vel"))
         actions.append(IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(BRINGUP, "navigation_launch.py")),
                        launch_arguments={"params_file": params, "use_sim_time": "True", "autostart": "True"}.items()))
     return [GroupAction(actions)]
@@ -87,6 +92,8 @@ def generate_launch_description():
         DeclareLaunchArgument("params_file", default_value=os.path.join(HERE, "nav2_params.yaml")),
         DeclareLaunchArgument("localization", default_value="amcl", description="amcl | gt"),
         DeclareLaunchArgument("navigation", default_value="true", description="false 면 위치 추정(+ /scan)만 — AMCL 시험용"),
+        DeclareLaunchArgument("cmd_vel_out", default_value="cmd_vel",
+                              description="Nav2 최종 명령 토픽 — 교사 녹화는 nav2/cmd_vel(sim/nav2/nav2_teacher.py 가 /cmd_vel 로 이어 줌)"),
         # /scan 높이 띠(3D LiDAR 프레임 기준 — LiDAR 는 base_link(≈ 바닥) 위 0.526 m). NVIDIA 예제는 -0.4 ~ 1.5 지만, 지도 장애물 띠
         # (바닥 위 0.12 ~ 1.0 m, make_map.py) 안에 들게 줄여야 AMCL 이 안 흐트러짐 — 1.0 m 위 나무 가지 · 지붕, 경사진 바닥이 스캔에만 잡힘(10.13)
         DeclareLaunchArgument("scan_min_h", default_value="-0.30"),   # 바닥 위 약 0.23 m

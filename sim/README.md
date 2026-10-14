@@ -230,7 +230,7 @@ python3 eval/scenarios/plot_scenarios.py   # 시나리오 그림 → logs/nav2/s
   - 바퀴의 마지막 경유점은 결승 1 m 앞 — 출발점 바로 뒤(0.24 m)에 두면 안 움직이고 '목표 도착'으로 끝날 때가 있었음(10.14 반시계 3회, 6 s).
   - 구간이면 `start.s` → `goal.s` 만 돎. 출발 전에 AMCL 위치가 정답 위치 0.5 m 안인지 확인하고, 아니면 `/initialpose` 를 다시 보냄(그래도 안 맞으면 코드 3).
 - **AMCL 초기 자세**는 `nav2.launch.py` 의 `x0 · y0 · yaw0_deg`(설정 파일 initial_pose 를 덮어씀) — 스크립트가 보내는 `/initialpose` 만으로는 새로 뜬 AMCL 에 안 닿아, AMCL 이 r3 출발점에 머문 채 달린 일이 있었음(10.14 구간 시나리오, 이탈 5 ~ 13 m).
-- **`scenario_batch.sh`** — 항목마다 레이어를 만들고 씬 + Nav2(AMCL)를 새로 띄워 한 번. 준비 실패(코드 3)나 벽시계 15분 초과면 다시 띄워 한 번 더. 끝나면 Ctrl+C → TERM → KILL(INT · TERM 을 무시하고 남은 lifecycle_manager 가 다음 Nav2 와 이름이 겹친 일이 있음) · `fastdds shm clean`.
+- **`scenario_batch.sh`** — 항목마다 레이어를 만들고 씬 + Nav2(AMCL)를 새로 띄워 한 번. 준비 실패 — Nav2 lifecycle 3개(위치 추정 · 지도 · 주행) 중 덜 뜸(상태 전환 응답이 통신 지연으로 빠지면 Nav2 활성 대기에서 멈춤, 10.14) · nav2_route 코드 3 — 나 벽시계 15분 초과면 다시 띄움(최대 3번). 끝나면 Ctrl+C → TERM → KILL(INT · TERM 을 무시하고 남은 lifecycle_manager 가 다음 Nav2 와 이름이 겹친 일이 있음) · `fastdds shm clean`.
 - **10.14 결과**(Nav2 + AMCL, 경유점 4 m) — 장애물 8종 × 양방향 16가지 중 15가지 통과, 구간 5종 모두 통과(최대 이탈 직진 0.23 · 0.30 m, 곡선 0.64 ~ 1.73 m).
   - 실패 1종 — `obs_corner_exit` 시계 2회(최대 이탈 2.07 · 2.02 m). 남동 모서리를 도는 중(s 14)에 바로 뒤 상자(s 17.5)를 피하려 바깥으로 벌어짐. 장애물이 없어도 Nav2 는 모서리에서 1.4 ~ 1.9 m 벗어나므로(10.14 AMCL 확인), 모서리 근처 장애물이면 2.0 m 한도에 걸림.
   - `obs_south_box` 시계는 첫 회 남서 모서리(s 50)에서 2.04 m(복구 6회)로 실패, 다시 돌려 통과.
@@ -238,3 +238,18 @@ python3 eval/scenarios/plot_scenarios.py   # 시나리오 그림 → logs/nav2/s
   - 첫 결과(남쪽 변 상자 v0) — 카메라에는 8 m 앞부터 상자가 보이고, `/scan` 은 8 m 앞에서 스캔마다 9 ~ 21점이 상자에 맞음.
 - **녹화 주의** — 스크립트에서 `&` 로 띄운 `ros2 bag record` 는 SIGINT 를 무시함(비대화형 bash) → SIGTERM 으로 끔. `--compression-mode file` 은 멈출 때 파일 전체를 다시 압축해 오래 걸리니 `--storage-preset-profile zstd_fast`(청크 압축).
 
+
+### Nav2 교사 녹화 — `sim/nav2/nav2_teacher.py` (10.14)
+
+Nav2 가 모는 주행(장애물 회피 포함)을 자동 교사와 같은 형식으로 녹화 — 10.13 멘토: Nav2 주행도 교사 데이터로 씀.
+
+```bash
+FD_RECORD=1 sim/nav2/scenario_batch.sh eval/scenarios/parking_r3_obs_south_box.yaml:cw eval/scenarios/parking_r3_curve_se_ccw.yaml   # tmux 안
+# FD_TEACHER_DIR=저장 위치(기본 data/teacher/nav2_v1) · FD_NOISE=조향 잡음 비율(기본 0) · FD_OUT=판정 · 로그 폴더
+```
+
+- **연결** — Nav2 를 `cmd_vel_out:=nav2/cmd_vel` 로 띄우면 최종 명령(collision_monitor)이 `/nav2/cmd_vel` 로 나옴. 다리가 받아 즉시 `/cmd_vel`(실행) 로 내고, 시뮬 시간 20 Hz 로 `/teacher/cmd_vel`(라벨 = Nav2 명령) · `/route_command`(자동 교사와 같은 규칙) · `/teacher/status`(자동 교사 칸 + `src` · `prog` · `od` · `age`)를 냄. `/cmd_vel` 발행자는 다리 하나 — Nav2 의 docking_server(안 씀)도 `/cmd_vel` 발행자를 만들어 `nav2.launch.py` 가 옆으로 돌림.
+- **위치** — 지시 · 상태는 정답 위치 `/ground_truth/tf` 로 계산(라벨 쪽 정보, 모델 입력 아님). Nav2 자체는 AMCL 로 몲.
+- **녹화** — 항목마다 다리 → `sim/record_teacher.sh nav2 <방향> <이름>` → `nav2_route.py` → 녹화 닫기(QC) 순. 녹화 폴더 `teacher/` 에 다리 · 판정 로그와 JSON, 시나리오 · 기준선 파일, `meta.yaml` 에 `teacher:` 칸(시나리오 · 판정 `pass` · 잡음). 준비 실패로 다시 띄운 회차의 녹화는 지움.
+- **잡음**(`FD_NOISE`) — 자동 교사의 조향 잡음을 add 방식으로(Nav2 가 계속 고침). 출발 뒤 2 m · 장애물 가장자리 3 m 안에서는 새 펄스를 안 냄. 라벨은 늘 Nav2 의 깨끗한 명령.
+- **10.14 시험** — 녹화 4개(장애물 없는 바퀴 시계 · 남쪽 변 상자 시계 · 남동 모서리 곡선 구간 반시계 · 남쪽 변 상자 반시계 + 잡음 0.3) 모두 QC OK · Nav2 판정 통과(충돌 0, 최대 이탈 0.68 ~ 1.51 m). 잡음 없을 때 라벨과 실행 명령 차이는 중앙 0 · 95 % 0.03 안(20 Hz 틱 사이 시간차). 잡음 0.3 이면 주행 중 잡음 25 %, 기준선에서 0.3 m 넘게 벗어난 시간 39 %(잡음 없는 바퀴 23 · 31 %). 시뮬 1분에 0.35 GB(자동 교사와 같음). 시험 녹화는 서버 `data/teacher/nav2_dev/`(정식 수집 아님).
