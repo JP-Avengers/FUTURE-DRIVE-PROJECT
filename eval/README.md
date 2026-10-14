@@ -67,6 +67,7 @@ python3 eval/routes/make_refline.py eval/routes/parking_r3_island.yaml   # 꼭�
 | `parking_r3_curve_se_cw.yaml` | 구간 · 곡선 | 시계 s 3 → 21(남동 모서리 우회전) | 통과 |
 | `parking_r3_curve_se_ccw.yaml` | 구간 · 곡선 | 반시계 s 69 → 87(남동 모서리 좌회전) | 통과 |
 | `parking_r3_curve_west_cw.yaml` | 구간 · 곡선 | 시계 s 37 → 66(서쪽 끝 꺾임 연달아) | 통과 |
+| `parking_r3_obs_demo.yaml` | 장애물(시연) | 한 바퀴에 장애물 6개 — 출발 앞 상자 · 남쪽 엇갈린 상자 둘 · 북쪽 라바콘 둘 · 사람 원기둥(앞 시나리오에서 통과한 자리를 모음). 중간발표 시연 영상(`sim/nav2/record_demo.sh`)용 | 시계 통과(실시간 조건 2/2) |
 
 - 실행은 `sim/nav2/scenario_batch.sh`(항목마다 씬 + Nav2 를 새로 띄움), 판정 · 주의는 `sim/README.md` Nav2 절. 시나리오 그림은 `python3 eval/scenarios/plot_scenarios.py`(장애물 = 숫자, 구간 = 글자).
 - 장애물 자리는 기준선 길이 `s` 와 옆 오프셋 `lateral`(진행 방향 왼쪽 +)로 적습니다 — 기준선을 다시 만들어도 같은 뜻. `sim/make_obstacles.py` 가 월드 좌표와 바닥 높이를 붙여 USD 레이어로 만들고, 씬은 `FD_LAYERS` 로 얹어 띄웁니다.

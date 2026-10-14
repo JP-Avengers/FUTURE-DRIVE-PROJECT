@@ -1,0 +1,22 @@
+# 실제 주차장 r3 — 장애물 시나리오 parking_r3_obs_demo v1 (10.14, D). 형식은 Proxy 계획 9장 초안(eval/scenarios/*.yaml).
+# 장애물 자리 = 기준선 길이 s(시계 방향) · lateral(시계 방향 진행의 왼쪽 + — 화단 반대쪽, − 는 화단 쪽).
+# 기준선 직선: 동쪽 s 0~9.7 · 남쪽 15.2~40.5 · 서쪽 사선 51.5~60.0 · 북쪽 63.5~85.2(한 바퀴 90.0 m).
+# 시연용 — 한 바퀴에 장애물 6개(앞의 시나리오들에서 통과한 자리를 모음): 출발 앞 상자 · 남쪽 엇갈린 상자 둘 · 북쪽 라바콘 둘 · 사람 크기 원기둥.
+# 모서리 직후 상자(obs_corner_exit)는 모서리 이탈과 겹쳐 2.0 m 한도 근처라 넣지 않음. 중간발표 시연 영상(sim/nav2/record_demo.sh)용.
+name: parking_r3_obs_demo
+version: v1
+scene: sim/scenes/parking/parking_v0.4b_r3.usda
+route: eval/routes/parking_r3_cw.csv      # s 를 재는 기준(시계 방향). 반시계로 돌아도 장애물 자리는 같음
+directions: [cw, ccw]
+start: {x: -1.756, y: -7.621, yaw_deg: -96.0}   # 씬 시작 자세 = 기준선 출발점
+goal: {lap: 1, radius_m: 1.0}                   # 한 바퀴 돌아 마지막 경유점(결승 1 m 앞) 1.0 m 안
+obstacles:
+  - {name: box_east, type: box, s: 4.75, lateral: 0.0, size: [0.6, 0.6, 0.8], yaw_deg: 0.0, color: [0.55, 0.38, 0.22]}
+  - {name: box_slalom_1, type: box, s: 22.0, lateral: -0.5, size: [0.6, 0.6, 0.8], yaw_deg: 0.0, color: [0.55, 0.38, 0.22]}
+  - {name: box_slalom_2, type: box, s: 32.0, lateral: 0.5, size: [0.6, 0.6, 0.8], yaw_deg: 0.0, color: [0.55, 0.38, 0.22]}
+  - {name: cone_1, type: cone, s: 67.0, lateral: 0.0, size: [0.4, 0.7], color: [0.95, 0.40, 0.05]}
+  - {name: cone_2, type: cone, s: 67.0, lateral: -0.7, size: [0.4, 0.7], color: [0.95, 0.40, 0.05]}
+  - {name: ped_north, type: cylinder, s: 77.0, lateral: 0.0, size: [0.5, 1.7], color: [0.20, 0.30, 0.55]}
+deviation_limit_m: 2.0    # 수행계획서 2.4 — 넘으면 개입(자동 종료 · 리셋)
+stall_limit_s: 10         # 수행계획서 2.4
+timeout_s: 300            # 임시값(한 바퀴 약 130 s)

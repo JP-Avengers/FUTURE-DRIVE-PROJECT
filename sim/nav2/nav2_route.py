@@ -28,6 +28,7 @@ from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from nav_msgs.msg import OccupancyGrid
+from sensor_msgs.msg import LaserScan
 from tf2_msgs.msg import TFMessage
 
 ap = argparse.ArgumentParser()
@@ -183,6 +184,16 @@ while time.time() - _t < 20 and not (_gm and _gm[-1] >= 500):
 if not (_gm and _gm[-1] >= 500):
     print(f"NAV2_ROUTE_NO_MAP 전역 비용 지도 폭 {_gm[-1] if _gm else '없음'} — 지도를 못 받음", flush=True)
     raise SystemExit(3)
+# 센서 예열 — Nav2 가 막 켜졌으면 전역 비용 지도(1 Hz 갱신)에 LiDAR 장애물이 아직 없어 첫 경로가 장애물을 가로지르고, 지역 비용
+# 지도(로봇 둘레 6 × 6 m)는 3 m 밖을 못 봄 → 출발 4.75 m 앞 상자에 부딪힘(10.14 시연 녹화, Nav2 켠 지 2.2 s 만에 출발).
+# /scan 20개(약 3 s)와 전역 비용 지도 갱신 3번을 받은 뒤 출발(최대 20 s — 못 채워도 출발)
+_scan, _gm0 = [0], len(_gm)
+nav.create_subscription(LaserScan, "/scan", lambda m: _scan.__setitem__(0, _scan[0] + 1),
+                        QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT))
+_t = time.time()
+while time.time() - _t < 20 and not (_scan[0] >= 20 and len(_gm) - _gm0 >= 3):
+    rclpy.spin_once(nav, timeout_sec=0.2)
+print(f"NAV2_ROUTE_WARMUP /scan {_scan[0]}개 · 전역 비용 지도 갱신 {len(_gm) - _gm0}번 · {time.time() - _t:.1f} s", flush=True)
 
 if SEGMENT:
     s0_, s1_ = float(SC["start"]["s"]), float(SC["goal"]["s"])
