@@ -23,6 +23,7 @@ import time
 import numpy as np
 import rclpy
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from lifecycle_msgs.srv import GetState
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -150,8 +151,27 @@ else:
     P0 = (R[0, 0], R[0, 1], heading(0))
 if a.initial_pose:
     nav.setInitialPose(pose(*P0))
-# AMCL 활성 확인은 lifecycle_manager 가 이미 함 — BasicNavigator 의 amcl/get_state 대기가 가끔 서비스를 못 찾아 멈춰서(10.13) 건너뜀
-nav.waitUntilNav2Active(localizer="robot_localization")
+
+
+def wait_nav2_active(limit=90.0):
+    """bt_navigator 가 active 인지 — BasicNavigator.waitUntilNav2Active 는 시간 제한이 없어, 상태 응답이 통신 지연으로 빠지면 끝없이
+    기다림(10.14 라바콘 반시계 15분). 응답 하나를 3 s 까지만 기다리며 되묻고, limit 안에 못 받으면 False. AMCL 활성은 lifecycle_manager
+    가 이미 확인함(BasicNavigator 의 amcl/get_state 대기도 가끔 멈춰서 안 씀, 10.13)."""
+    cli = nav.create_client(GetState, "bt_navigator/get_state")
+    t0 = time.time()
+    while time.time() - t0 < limit:
+        if cli.wait_for_service(timeout_sec=1.0):
+            fut = cli.call_async(GetState.Request())
+            rclpy.spin_until_future_complete(nav, fut, timeout_sec=3.0)
+            if fut.done() and fut.result() is not None and fut.result().current_state.label == "active":
+                return True
+        rclpy.spin_once(nav, timeout_sec=0.5)
+    return False
+
+
+if not wait_nav2_active():
+    print("NAV2_ROUTE_NO_NAV2 bt_navigator 상태를 90 s 안에 못 받음", flush=True)
+    raise SystemExit(3)
 # 전역 비용 지도가 지도(/map_nav)를 받았는지 — 가끔 map_server_nav 활성화 응답이 늦어 지도 없이 뜸(10.14 east_start 1회).
 # 그러면 '로봇이 비용 지도 밖' 으로 계획이 전부 실패하므로, 출발 전에 확인하고 없으면 코드 3 으로 끝냄(일괄 스크립트가 다시 띄움)
 _gm = []
@@ -206,6 +226,9 @@ if amcl_err() > 0.5:
     print("NAV2_ROUTE_NO_AMCL AMCL 위치가 출발 자리와 안 맞음", flush=True)
     raise SystemExit(3)
 amcl_start_err = round(amcl_err(), 3)
+if not nav.nav_through_poses_client.wait_for_server(timeout_sec=30.0):   # goThroughPoses 의 대기도 끝이 없음
+    print("NAV2_ROUTE_NO_NAV2 NavigateThroughPoses 액션 서버를 30 s 안에 못 찾음", flush=True)
+    raise SystemExit(3)
 t_goal = track[-1][0]   # 목표를 보낸 시뮬 시각 — 랩 · 정지 · 제한 시간은 여기부터
 nav.goThroughPoses(goals)
 t0w, last = time.time(), 0.0

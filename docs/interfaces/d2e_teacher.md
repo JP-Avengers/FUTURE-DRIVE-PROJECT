@@ -25,6 +25,7 @@
 - **1차 교사 데이터(10.13)**: `data/teacher/raw_v1/` — 묶음 폴더 9개(`<시각>_auto_<cw|ccw>/` 안에 MCAP 1개 · `meta.yaml` · `qc.txt` · `teacher/summary.json`(바퀴별 이탈 · 잡음 통계)). 실제 맵 r3, 기준선 화단 3 m 선, 45바퀴 · 시뮬 약 2시간. 카메라는 20 Hz로 녹화했으니 10 fps 샘플링은 E 쪽에서
 - **정답 위치(10.13~)**: 다음 녹화부터 `/ground_truth/tf`([topics.md](topics.md))가 들어감. 1차 데이터(`raw_v1`)엔 없으니 `/chassis/odom` + 출발 자세(`teacher/summary.json` 의 `start_pose` — 9개 모두 (−1.756, −7.621, −96.0°))로 계산(topics.md 변환식). `/teacher/status` 에도 map x · y 가 20 Hz로 있음
 - **E2E 학습 · 추론 환경(서버)**: `envs/ml_env` — [server207.md](../server207.md)
+- **Nav2 교사 데이터 1차(10.14)**: `data/teacher/nav2_v1/` — 녹화 21개(장애물 8종 × 양방향 16 · 구간 5), 시뮬 40.7분 · 14 GB, 잡음 0.3, Nav2 판정 21/21 통과 · QC 21/21 OK. 시나리오는 `meta.yaml` 의 `teacher.scenario`, 장애물 근처 장면은 `/teacher/status` 의 `od`(장애물 가장자리까지 m)로 고름. MANIFEST `parking_r3_nav2` v1.0
 - **Nav2 교사 녹화(10.14~)**: `FD_RECORD=1 sim/nav2/scenario_batch.sh <시나리오>[:cw|ccw] …` — 장애물 · 구간 시나리오를 Nav2 + AMCL 이 몰고, 다리(`sim/nav2/nav2_teacher.py`)가 자동 교사와 같은 토픽을 냄. 저장 `data/teacher/nav2_v1/<시각>_nav2_<방향>/`(자동 교사와 같은 구성 + `teacher/` 에 시나리오 · 판정 JSON), `meta.yaml` 의 `teacher.node` · `teacher.scenario` · `teacher.pass` 로 구별 · 거름. 상태 `ph` 는 WAIT · FOLLOW · STOP(FOLLOW 만 쓰면 됨). 잡음은 기본 끔(`FD_NOISE`)
 - 납기: 수집용 Proxy 씬 10.6 · Proxy 씬 10.11 · 캠퍼스 씬 11.16 (수행계획서 그림 2)
 - 토픽 · frame_id · 좌표계: [`topics.md`](topics.md)
@@ -41,3 +42,4 @@
 | 10.13 | v0 | 원본 형식 — 멘토 회의 결론(자동 교사 · Nav2 주행 · 특수 상황은 사람 조작), 기준선(화단 3 m 선) 채택 (D) | |
 | 10.13 | v0 | 정답 위치 `/ground_truth/tf`(다음 녹화부터) · 1차 데이터 지도 좌표 구하는 법 · 서버 학습 · 추론 환경(`ml_env`) (D) | |
 | 10.14 | v0 | Nav2 교사 녹화 — 라벨 · 지시 · 상태를 자동 교사와 같은 토픽으로(다리 `sim/nav2/nav2_teacher.py`), 저장 위치 · 구별법 (D) | |
+| 10.14 | v0 | Nav2 교사 데이터 1차 위치 · 구성(`data/teacher/nav2_v1/`, MANIFEST `parking_r3_nav2` v1.0) (D) | |

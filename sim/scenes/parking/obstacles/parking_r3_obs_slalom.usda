@@ -4,6 +4,7 @@
         string generated_by = "sim/make_obstacles.py"
         string obstacles_json = '[{"name": "box_slalom_1", "type": "box", "x": -12.819, "y": -18.517, "z_floor": 0.098, "yaw_deg": 167.07, "size": [0.6, 0.6, 0.8], "s": 22.0, "lateral": -0.5}, {"name": "box_slalom_2", "type": "box", "x": -22.79, "y": -17.257, "z_floor": 0.131, "yaw_deg": 167.07, "size": [0.6, 0.6, 0.8], "s": 32.0, "lateral": 0.5}]'
         string scenario = "eval/scenarios/parking_r3_obs_slalom.yaml"
+        string start_json = "null"
     }
     doc = "시나리오 장애물 — parking_r3_obs_slalom (eval/scenarios/parking_r3_obs_slalom.yaml). FD_LAYERS 로 씬 위에 얹음"
     metersPerUnit = 1

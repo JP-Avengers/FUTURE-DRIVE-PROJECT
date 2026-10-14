@@ -4,6 +4,7 @@
         string generated_by = "sim/make_obstacles.py"
         string obstacles_json = '[{"name": "ped_north", "type": "cylinder", "x": -15.195, "y": -1.842, "z_floor": -0.052, "yaw_deg": -12.98, "size": [0.5, 1.7], "s": 74.2, "lateral": 0.0}]'
         string scenario = "eval/scenarios/parking_r3_obs_north_ped.yaml"
+        string start_json = "null"
     }
     doc = "시나리오 장애물 — parking_r3_obs_north_ped (eval/scenarios/parking_r3_obs_north_ped.yaml). FD_LAYERS 로 씬 위에 얹음"
     metersPerUnit = 1
