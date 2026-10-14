@@ -232,6 +232,9 @@ def main():
         # 충돌 바닥 = 스캔 범위 ∪ 보이는 바닥 범위, 1 m 넓게 (보이는 바닥이 스캔 정점보다 넓게 깔린 곳도 덮게)
         col_xy = np.vstack([np.asarray(scene.vertices)[:, :2], np.asarray(floor_vis.vertices)[:, :2]])
         floor_col = Footprint(col_xy, sf["collision_cell_m"], margin=sf["collision_margin_m"]).plane(0.0, ground=ground)
+        if sf.get("collision_floor_min_tris"):   # 범위 가장자리에서 떨어져 나온 바닥 섬 (연석 단차 위아래에 걸리면 '바닥 위 납작한 조각')
+            floor_col, st = cleanup(floor_col, sf["collision_floor_min_tris"])
+            report["single_floor"]["collision_floor_islands_removed"] = st["small_clusters"]
         report["fill"]["floor_area_m2"] = round(fp.area(), 1)
         report["single_floor"].update(floor_tris=len(floor_vis.triangles), collision_floor_tris=len(floor_col.triangles))
         o3d.io.write_triangle_mesh(os.path.join(out, "floor.ply"), floor_vis)
@@ -271,7 +274,8 @@ def main():
         print(f"[5/8] 시각용: 경량화 안 함 (삼각형 {len(visual.triangles):,})")
 
     if floor_col is not None:         # 충돌 = 바닥 한 장(굵은 격자) + 물체만 줄인 것 — 바닥이 겹치지 않게 따로 만들어 합침
-        obj_col = objects.simplify_quadric_decimation(target_number_of_triangles=max(d["collider_tris"] - len(floor_col.triangles), 10000))
+        n_obj = sf.get("collision_object_tris") or max(d["collider_tris"] - len(floor_col.triangles), 10000)   # 물체 몫 (바닥 격자가 촘촘하면 따로 정함)
+        obj_col = objects.simplify_quadric_decimation(target_number_of_triangles=n_obj)
         if sf.get("collision_low_h_m"):   # 바닥 판과 겹치는 낮은 조각·물체 밑동의 수평면 (D 10.13: 서쪽 끝 납작한 조각에서 PhysX 멈춤)
             obj_col, n_low, n_drop = drop_low_pieces(obj_col, ground, sf["collision_low_h_m"], sf["collision_flat_h_m"])
             report["single_floor"].update(collision_low_pieces=n_low, collision_low_tris=n_drop)

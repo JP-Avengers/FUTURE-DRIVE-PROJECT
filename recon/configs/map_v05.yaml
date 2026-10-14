@@ -59,7 +59,9 @@ single_floor:                          # 바닥 한 장 (D 10.12: 바닥이 겹�
   flat_h_m: 0.10                       # 두께와 상관없이 가장 높은 곳이 이 안인 조각도 지움 (바닥 판과 겹친 납작한 조각 — D 10.13 PhysX 멈춤)
   corridor_m: 0.4                      # 차가 실제 지나간 경로에서 이 안에 절반 넘게 걸친
   corridor_h_m: 0.4                    # 이보다 낮은 조각 = 잡음 (차가 지나간 자리라 물체가 있을 수 없음)
-  collision_cell_m: 0.25               # 충돌 바닥 격자
+  collision_cell_m: 0.1                # 충돌 바닥 격자 = B 바닥 지도 칸 (25 cm 면 연석 단차가 경사로가 되어 가장자리 오차 최대 33 cm — 10.14)
+  collision_floor_min_tris: 200        # 이보다 작은 충돌 바닥 섬은 지움 (범위 가장자리 1~9삼각형 섬 8개가 D 도구에 '납작한 조각'으로 잡힘)
+  collision_object_tris: 120000        # 충돌 물체 줄이는 목표 (바닥 격자가 촘촘해져 decimate.collider_tris 에서 빼는 대신 따로)
   collision_margin_m: 1.0              # 충돌 바닥은 스캔 범위보다 이만큼 넓게 (안 보임)
   collision_low_h_m: 0.15              # 충돌 물체(줄인 뒤): 조각 전체가 바닥 위 이 안이면 지움 (작은 잡음 덩어리 — 걸림 · PhysX 멈춤)
   collision_flat_h_m: 0.10             # 충돌 물체: 바닥 위 이 안의 거의 수평인 면 지움 (물체 밑동의 두 번째 바닥)

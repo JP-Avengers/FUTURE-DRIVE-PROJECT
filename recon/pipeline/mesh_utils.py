@@ -331,24 +331,30 @@ def split_floor(mesh, ground, band=0.06, debris_h=0.12, debris_extent=0.08, corr
 
 def drop_low_pieces(mesh, ground, low_h=0.15, flat_h=0.10, flat_nz=0.7):
     """충돌용 물체 메쉬에서 바닥 판과 겹칠 수 있는 낮은 부분을 지운다 (줄인 뒤에 — 줄이면서 새 조각이 생김).
-    - 이어진 조각 전체가 바닥 위 low_h 안 (작은 잡음 덩어리·납작한 조각 → 바퀴가 밟으면 PhysX 멈춤·걸림)
-    - 세 꼭짓점이 모두 바닥 위 flat_h 안이고 거의 수평인 면 (물체 밑동의 '두 번째 바닥')
+    1) 세 꼭짓점이 모두 바닥 위 flat_h 안이고 거의 수평인 면 (물체 밑동의 '두 번째 바닥')
+    2) 그다음 이어진 조각 전체가 바닥 위 low_h 안 (작은 잡음 덩어리·납작한 조각 → 바퀴가 밟으면 PhysX 멈춤·걸림)
+    순서가 중요: 1) 을 먼저 지워야 거기 붙어 있다 떨어져 나온 1~2삼각형 조각까지 2) 에서 지워짐 (v0.5 에서 5개 남았음)
     반환: (메쉬, 지운 조각 수, 지운 삼각형 수)"""
     v, tri = np.asarray(mesh.vertices), np.asarray(mesh.triangles)
     if len(tri) == 0:
         return mesh, 0, 0
     h = v[:, 2] - ground.height(v[:, :2])
-    ids, cnt, _ = mesh.cluster_connected_triangles()
-    ids, cnt = np.asarray(ids), np.asarray(cnt)
-    hmax = np.full(len(cnt), -np.inf)
-    np.maximum.at(hmax, ids, h[tri].max(axis=1))
-    low = hmax < low_h
     e1, e2 = v[tri[:, 1]] - v[tri[:, 0]], v[tri[:, 2]] - v[tri[:, 0]]
     n = np.cross(e1, e2)
     nz = np.abs(n[:, 2]) / np.maximum(np.linalg.norm(n, axis=1), 1e-12)
     flat = (h[tri].max(axis=1) < flat_h) & (nz > flat_nz)
-    drop = low[ids] | flat
     out = o3d.geometry.TriangleMesh(mesh)
-    out.remove_triangles_by_mask(drop)
+    out.remove_triangles_by_mask(flat)
     out.remove_unreferenced_vertices()
-    return out, int(low.sum()), int(drop.sum())
+    v, tri = np.asarray(out.vertices), np.asarray(out.triangles)
+    if len(tri) == 0:
+        return out, 0, int(flat.sum())
+    h = v[:, 2] - ground.height(v[:, :2])
+    ids, cnt, _ = out.cluster_connected_triangles()
+    ids, cnt = np.asarray(ids), np.asarray(cnt)
+    hmax = np.full(len(cnt), -np.inf)
+    np.maximum.at(hmax, ids, h[tri].max(axis=1))
+    low = hmax < low_h
+    out.remove_triangles_by_mask(low[ids])
+    out.remove_unreferenced_vertices()
+    return out, int(low.sum()), int(flat.sum() + low[ids].sum())
