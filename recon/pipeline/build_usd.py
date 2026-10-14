@@ -199,10 +199,13 @@ def main():
     if sf and ground is not None:     # 바닥 한 장: 스캔의 바닥 층(여러 날 조각이 겹침)을 빼고, 바닥 높이 지도로 매끈한 한 장을 새로 깜
         paths = fill_path_xy(cfg, poses, T)
         cams = np.array([P[:3, 3] for P in poses])
-        ground = Ground.from_mesh(scene, cams - [0, 0, report["ground"]["camera_height_m"]], sf["cell_m"],
-                                  cfg["ground"]["band_m"]).smoothed(sf.get("smooth", 3))
-        if sf.get("road_smooth_m"):   # 주행 통로 노면은 넓게 다듬음 (겹친 바닥 때문에 생기는 계단 없애기)
-            ground = ground.smoothed_near(paths, sf["road_smooth_m"])
+        if sf.get("ground_map"):      # 받은 바닥 높이 지도 (B v0.5~: 본네트 여러 회차로 만든 것, 차로는 B 가 이미 다듬음)
+            ground = Ground.from_map(os.path.join(os.path.expanduser(cfg["input"]["root"]), sf["ground_map"]), T)
+        else:                         # 스캔 메쉬에서 뽑음 — 칸마다 바닥 정점이 3개 이상 있어야 해서 5 cm 안팎 메쉬에 맞음
+            ground = Ground.from_mesh(scene, cams - [0, 0, report["ground"]["camera_height_m"]], sf["cell_m"],
+                                      cfg["ground"]["band_m"]).smoothed(sf.get("smooth", 3))
+            if sf.get("road_smooth_m"):   # 주행 통로 노면은 넓게 다듬음 (겹친 바닥 때문에 생기는 계단 없애기)
+                ground = ground.smoothed_near(paths, sf["road_smooth_m"])
         ground.save(os.path.join(out, "ground.npz"))
         v = np.asarray(scene.vertices)
         on_floor = np.abs(v[:, 2] - ground.height(v[:, :2])) < sf["band_m"]

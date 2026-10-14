@@ -9,6 +9,7 @@ from scipy.spatial import cKDTree
 class Ground:
     """위에서 본 격자마다 바닥 높이. 실외처럼 바닥이 평평하지 않을 때 z=0 평면 대신 쓴다 (기본 = 어디나 0).
 
+    from_map: 받은 바닥 높이 지도 그대로 (B v0.5~ floor_height.npz).
     from_mesh: 카메라 경로 바로 아래 지면(카메라 z − 장착 높이)을 이은 대략적인 면에서 band 안의 위 향한 정점 = 바닥
     (연석·보도는 들어가고 차 보닛·지붕은 빠짐) → 칸마다 중앙값 → 빈 칸(구멍, 차 밑)은 둘레 칸들로 선형 보간.
     선형 보간 = 둘레 바닥 점들을 잇는 평면 조각이라 B 가 권한 '구멍 둘레로 평면 맞춤'과 같은 효과."""
@@ -39,6 +40,17 @@ class Ground:
         grid[~ok] = _interp_xy(np.argwhere(ok).astype(float), grid[ok])(np.argwhere(~ok).astype(float))
         g = cls(grid, lo, cell)
         g.stats = dict(cell_m=cell, band_m=band, floor_vertices=int(len(cand)), measured_cells=int(ok.sum()))
+        return g
+
+    @classmethod
+    def from_map(cls, path, T):
+        """받은 바닥 높이 지도 (npz: grid[ix, iy] · lo · cell, 입력 맵 좌표 — B v0.5 floor_height.npz) → 씬 좌표.
+        맵 → 씬 변환이 z 이동뿐일 때만 (orient level false · origin keep 이면 그렇다)."""
+        z = np.load(path)
+        if not np.allclose(T[:3, :3], np.eye(3), atol=1e-6) or abs(T[0, 3]) > 1e-6 or abs(T[1, 3]) > 1e-6:
+            raise SystemExit("바닥 높이 지도: 맵 → 씬 변환에 회전·수평 이동이 있으면 아직 지원 안 함 (orient level false · origin keep 필요)")
+        g = cls(z["grid"] + T[2, 3], z["lo"], float(z["cell"]))
+        g.stats = dict(source="map", cell_m=float(z["cell"]))
         return g
 
     def smoothed(self, size=3):
