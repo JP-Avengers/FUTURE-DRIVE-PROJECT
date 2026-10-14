@@ -2,7 +2,7 @@
 
     python3 eval/scenarios/plot_scenarios.py [eval/scenarios/parking_r3_*.yaml ...] --map data/nav2/parking_v0.4b_r3/map_keepout.yaml --out <png>
 장애물 자리는 sim/make_obstacles.py 와 같은 계산(기준선 길이 s · 옆 오프셋 lateral). 구간은 기준선 바깥으로 띄운 굵은 선 + 화살표
-(출발 점 → 목표), 겹치지 않게 1.3 · 2.1 · 2.9 · 3.7 m 로 번갈아 띄움.
+(출발 점 → 목표) — 1.3 m 부터, 앞서 그린 구간과 겹치면(시계 s 로 2 m 여유) 0.8 m 씩 더 띄움.
 """
 import argparse
 import csv
@@ -54,6 +54,7 @@ route = None
 legend = []   # (글, 색)
 SEGCOL = [(40, 90, 200), (30, 150, 70), (130, 60, 170), (0, 140, 140), (200, 120, 0)]
 k = n_seg = 0
+drawn = []   # 그린 구간((시계 s 시작, 끝), 단계) — 겹치면 다음 단계로 띄움
 for f in files:
     sc = yaml.safe_load(open(f))
     R = np.array([(float(r["s"]), float(r["x"]), float(r["y"])) for r in csv.DictReader(open(sc["route"])) if r.get("run", "0") == "0"])
@@ -66,7 +67,13 @@ for f in files:
         d.text((sx + 12, sy - 14), "출발", font=small, fill=(205, 40, 40))
     if "s" in (sc.get("goal") or {}):   # 구간 시나리오 — 시계는 진행 방향 왼쪽(+), 반시계는 오른쪽(−)이 바깥
         lab, col = chr(ord("A") + n_seg), SEGCOL[n_seg % len(SEGCOL)]
-        off = (1.3 + 0.8 * (n_seg % 4)) * (1 if sc.get("direction", "cw") == "cw" else -1)
+        cw = sc.get("direction", "cw") == "cw"
+        sa, sb = float(sc["start"]["s"]), float(sc["goal"]["s"])
+        if not cw:   # 반시계 s → 시계 s
+            sa, sb = R[-1, 0] - sb, R[-1, 0] - sa
+        lvl = min(lv for lv in range(10) if not any(m == lv and sa < b + 2 and a < sb + 2 for (a, b), m in drawn))
+        drawn.append(((sa, sb), lvl))
+        off = (1.3 + 0.8 * lvl) * (1 if cw else -1)
         P = R[(R[:, 0] >= float(sc["start"]["s"])) & (R[:, 0] <= float(sc["goal"]["s"]))]
         th = np.arctan2(np.gradient(P[:, 2]), np.gradient(P[:, 1]))
         pts = [px(x - off * math.sin(q), y + off * math.cos(q)) for (_, x, y), q in zip(P, th)]
