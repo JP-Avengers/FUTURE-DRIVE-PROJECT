@@ -80,3 +80,4 @@ lightning_logs/
 .idea/
 *.swp
 /sim/scenes/parking/parking_v0.4b_r4_nofar.usda
+/sim/scenes/parking/parking_v0.5_nofar.usda

@@ -1,0 +1,43 @@
+#usda 1.0
+(
+    customLayerData = {
+        string lights = "돔 880 (하늘 텍스처 위 반구 평균 밝기로 나눠 텍스처 없는 돔 600 과 같은 밝기) · 해 0. 하늘을 끄려면 sky.usda 줄을 빼고 600"
+        string map = "data/usd/parking_v0.5/ — C 이진우 10.14: B 맵 v0.5(B 형상 정리판) + B 바닥 높이 지도로 바닥 한 장, 충돌 바닥 10 cm 격자, 먼 구역 3D(VisualFar, 충돌 없음) + 하늘 돔 텍스처"
+        string start_pose = "기준선 eval/routes/parking_r3_cw.yaml 출발점 (D 10.13 그대로). v0.5 바닥 −0.061 + 0.022 = −0.039 (r4 는 −0.035)"
+    }
+    defaultPrim = "World"
+    doc = "실제 주차장 씬(맵 v0.5) 루트 제안 — D 의 parking_v0.4b_r4.usda 에서 경로만 v0.5 로, 로봇 시작 z 만 새 바닥에 맞춤. 좌표는 B 맵 좌표(ENU 아님)"
+    metersPerUnit = 1
+    subLayers = [
+        @../proxy/sensors.usda@,
+        @../proxy/ros.usda@,
+        @../proxy/robot.usda@,
+        @../../../data/usd/parking_v0.5/usd/sky.usda@,
+        @../../../data/usd/parking_v0.5/usd/parking_scene.usda@,
+        @../proxy/world.usda@
+    ]
+    timeCodesPerSecond = 60
+    upAxis = "Z"
+)
+
+over "World"
+{
+    over "Nova_Carter_ROS"
+    {
+        float xformOp:rotateZ = -96.0
+        double3 xformOp:translate = (-1.756, -7.621, -0.039)
+    }
+
+    over "Lights"
+    {
+        over "Dome"
+        {
+            float inputs:intensity = 880
+        }
+
+        over "Sun"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}

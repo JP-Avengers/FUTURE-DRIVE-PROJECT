@@ -22,7 +22,7 @@ t0 = time.time()
 try:
     while time.time() - t0 < DUR:
         rclpy.spin_once(n, timeout_sec=0.1)
-except Exception:   # Ctrl+C → rclpy 가 ExternalShutdownException 으로 바꿔 던짐
+except (Exception, KeyboardInterrupt):   # Ctrl+C → rclpy 가 ExternalShutdownException 으로 바꿔 던지거나, 기다리는 중이면 KeyboardInterrupt 그대로(10.14)
     pass
 gt.sort(); ts = [g[0] for g in gt]; rows = []
 for s, x, y, th in am:
