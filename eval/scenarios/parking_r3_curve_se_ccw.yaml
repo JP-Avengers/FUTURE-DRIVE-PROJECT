@@ -1,0 +1,16 @@
+# 실제 주차장 r3 — 구간 시나리오 parking_r3_curve_se_ccw v1 (10.14, D). 형식은 Proxy 계획 9장 초안(eval/scenarios/*.yaml) — 평가 4종 중 '곡선'.
+# 남동 모서리(반시계, 좌회전) — 남쪽 변에서 출발해 모서리를 돌아 동쪽 변으로. CIL 좌회전 지시 평가용.
+# 출발 자세는 기준선 위 start.s(진행 방향을 봄) — sim/make_obstacles.py 레이어가 로봇 출발 자세를 덮어써 그 자리에서 띄운다.
+# 기준선 직선(시계 s): 동쪽 0~9.7 · 남쪽 15.2~40.5 · 서쪽 사선 51.5~60.0 · 북쪽 63.5~85.2. 반시계 s = 90.0 − 시계 s.
+name: parking_r3_curve_se_ccw
+version: v1
+scene: sim/scenes/parking/parking_v0.4b_r3.usda
+route: eval/routes/parking_r3_ccw.csv
+direction: ccw
+start: {s: 69.0}
+goal: {s: 87.0, radius_m: 1.0}            # 수행계획서 2.4 — 목표 반경 1.0 m
+commands: [straight, left, straight]
+obstacles: []
+deviation_limit_m: 2.0    # 수행계획서 2.4
+stall_limit_s: 10
+timeout_s: 120

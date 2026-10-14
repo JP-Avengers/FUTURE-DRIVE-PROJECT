@@ -8,7 +8,9 @@
 nav_map 을 안 주면 map 옆의 map_keepout.yaml 을 쓰고, 그것도 없으면 map 을 같이 씀(make_map.py --keepout 이 둘 다 만듦).
 
 localization
-  amcl (기본) — 3D LiDAR → /scan 으로 지도 위 위치를 추정(실제 로봇과 같은 방식, 10.13 멘토 의견). 초기 자세는 nav2_params.yaml.
+  amcl (기본) — 3D LiDAR → /scan 으로 지도 위 위치를 추정(실제 로봇과 같은 방식, 10.13 멘토 의견). 초기 자세는 시작 자세
+                x0 · y0 · yaw0_deg(기본 = r3 기준선 출발점) — 설정 파일의 initial_pose 를 덮어씀. 다른 자리에서 띄우는 구간 시나리오는
+                여기로 넘김(10.14: 스크립트가 보낸 /initialpose 는 새로 뜬 AMCL 에 안 닿을 때가 있음).
   gt          — 추정 없이 정답 map → odom(시작 자세 x0 · y0 · yaw0 고정 변환). /chassis/odom 이 시뮬 정답 기반이라 지도 좌표가 정확함.
                 Nav2 자체를 시험할 때만 — 비교 평가에는 amcl.
 /scan 은 3D 점군을 2D 로 눌러 만든다 — 앞 ±90°(뒤쪽은 로봇 몸체가 가림), NVIDIA carter_navigation 예제와 같은 설정.
@@ -16,6 +18,8 @@ localization
 import math
 import os
 import tempfile
+
+import yaml
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, OpaqueFunction
@@ -33,10 +37,12 @@ def setup(context):
     params, mapf, loc = lc("params_file"), lc("map"), lc("localization")
     navf = lc("nav_map") or (os.path.join(os.path.dirname(mapf), "map_keepout.yaml")
                              if os.path.exists(os.path.join(os.path.dirname(mapf), "map_keepout.yaml")) else mapf)
-    # 설정 파일의 __FD_NAV2_DIR__ 를 이 폴더 절대 경로로 바꾼 사본을 씀(행동 트리 XML 경로)
-    txt = open(params).read().replace("__FD_NAV2_DIR__", HERE)
+    x0, y0, yaw0 = float(lc("x0")), float(lc("y0")), math.radians(float(lc("yaw0_deg")))
+    # 설정 파일의 __FD_NAV2_DIR__ 를 이 폴더 절대 경로로 바꾸고(행동 트리 XML 경로) AMCL 초기 자세를 시작 자세로 바꾼 사본을 씀
+    P = yaml.safe_load(open(params).read().replace("__FD_NAV2_DIR__", HERE))
+    P["amcl"]["ros__parameters"]["initial_pose"].update({"x": x0, "y": y0, "yaw": yaw0})
     params = os.path.join(tempfile.gettempdir(), f"fd_nav2_params_{os.getpid()}.yaml")
-    open(params, "w").write(txt)
+    yaml.safe_dump(P, open(params, "w"), sort_keys=False, allow_unicode=True)
     actions = [
         Node(package="pointcloud_to_laserscan", executable="pointcloud_to_laserscan_node", name="pointcloud_to_laserscan",
              remappings=[("cloud_in", "/front_3d_lidar/lidar_points"), ("scan", "/scan")],
@@ -57,7 +63,6 @@ def setup(context):
         actions.append(IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(BRINGUP, "localization_launch.py")),
                        launch_arguments={"map": mapf, "params_file": params, "use_sim_time": "True", "autostart": "True"}.items()))
     elif loc == "gt":
-        x0, y0, yaw0 = float(lc("x0")), float(lc("y0")), math.radians(float(lc("yaw0_deg")))
         actions += [
             Node(package="nav2_map_server", executable="map_server", name="map_server", output="screen",
                  parameters=[params, {"yaml_filename": mapf, "use_sim_time": True}]),
@@ -87,7 +92,8 @@ def generate_launch_description():
         DeclareLaunchArgument("scan_min_h", default_value="-0.30"),   # 바닥 위 약 0.23 m
         DeclareLaunchArgument("scan_max_h", default_value="0.47"),    # 바닥 위 약 1.0 m
         DeclareLaunchArgument("scan_range_max", default_value="25.0"),
-        DeclareLaunchArgument("x0", default_value="-1.756"),       # 실제 맵 r3 기준선 출발점(씬 시작 자세)
+        # 시작 자세 — amcl 이면 초기 자세, gt 면 map → odom. 기본 = 실제 맵 r3 기준선 출발점(씬 시작 자세)
+        DeclareLaunchArgument("x0", default_value="-1.756"),
         DeclareLaunchArgument("y0", default_value="-7.621"),
         DeclareLaunchArgument("yaw0_deg", default_value="-96.0"),
         OpaqueFunction(function=setup),

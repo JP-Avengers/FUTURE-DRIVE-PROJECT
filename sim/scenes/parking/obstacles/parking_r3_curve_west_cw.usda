@@ -1,0 +1,26 @@
+#usda 1.0
+(
+    customLayerData = {
+        string generated_by = "sim/make_obstacles.py"
+        string obstacles_json = "[]"
+        string scenario = "eval/scenarios/parking_r3_curve_west_cw.yaml"
+        string start_json = '{"x": -27.552, "y": -15.652, "z": 0.129, "yaw_deg": 167.25, "s": 37.0}'
+    }
+    doc = "시나리오 장애물 — parking_r3_curve_west_cw (eval/scenarios/parking_r3_curve_west_cw.yaml). FD_LAYERS 로 씬 위에 얹음"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def "World"
+{
+    def Xform "Obstacles"
+    {
+    }
+
+    over "Nova_Carter_ROS"
+    {
+        custom float xformOp:rotateZ = 167.2467
+        custom double3 xformOp:translate = (-27.551552, -15.65248, 0.12928171434598554)
+    }
+}
+

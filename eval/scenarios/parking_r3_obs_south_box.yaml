@@ -1,8 +1,9 @@
-# 실제 주차장 r3 — 장애물 회피 시나리오 v0 (10.14, D). 형식은 Proxy 계획 9장 초안(eval/scenarios/*.yaml)을 따름.
-# 기준선(화단 3 m 선)에서 가장 긴 직선(남쪽 변, 시계 방향 s ≈ 15.5 ~ 40.5 m)의 가운데에 상자 하나 — 피하고 돌아올 공간이 가장 넓은 곳.
-# 장애물 위치는 기준선의 길이 s · 옆 오프셋(왼쪽 +)으로 적고, sim/make_obstacles.py 가 월드 좌표 · 바닥 높이를 붙여 USD 레이어로 만든다.
-name: parking_r3_obstacle
-version: v0
+# 실제 주차장 r3 — 장애물 시나리오 parking_r3_obs_south_box v1 (10.14, D). 형식은 Proxy 계획 9장 초안(eval/scenarios/*.yaml).
+# 장애물 자리 = 기준선 길이 s(시계 방향) · lateral(시계 방향 진행의 왼쪽 + — 화단 반대쪽, − 는 화단 쪽).
+# 기준선 직선: 동쪽 s 0~9.7 · 남쪽 15.2~40.5 · 서쪽 사선 51.5~60.0 · 북쪽 63.5~85.2(한 바퀴 90.0 m).
+# 남쪽 변 가운데 상자 하나(10.14 v0 의 parking_r3_obstacle 을 이름만 바꿈) — 기본 회피.
+name: parking_r3_obs_south_box
+version: v1
 scene: sim/scenes/parking/parking_v0.4b_r3.usda
 route: eval/routes/parking_r3_cw.csv      # s 를 재는 기준(시계 방향). 반시계로 돌아도 장애물 자리는 같음
 directions: [cw, ccw]

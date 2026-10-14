@@ -208,24 +208,33 @@ python3 sim/nav2/nav2_route.py --route eval/routes/parking_r3_cw.csv --out logs/
   - tmux 세션 이름 앞부분이 겹치면 다른 세션을 끔(`-t nav2` 가 `nav2sim` 도 잡음) — 겹치지 않는 이름이나 `-t "=이름"`.
   - 설정 파일에 map_server 의 `yaml_filename` 을 적으면 launch 의 `map` 인자를 덮어써 지도가 빔.
 
-### 장애물 시나리오 — `eval/scenarios/` · `sim/make_obstacles.py` (10.14)
+### 시나리오 — `eval/scenarios/` · `sim/make_obstacles.py` · `sim/nav2/scenario_batch.sh` (10.14)
+
+장애물 시나리오 8종(한 바퀴, 시계 · 반시계)과 구간 시나리오 5종(직진 · 곡선, 기준선의 한 구간) — 목록은 `eval/README.md` 시나리오 절.
 
 ```bash
-envs/isaacsim_env/bin/python sim/make_obstacles.py eval/scenarios/parking_r3_obstacle.yaml sim/scenes/parking/obstacles/parking_r3_obstacle.usda
-FD_LAYERS=sim/scenes/parking/obstacles/parking_r3_obstacle.usda FD_LIDAR=1 FD_DOMAIN=43 FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/run_proxy.sh headless
-python3 sim/nav2/nav2_route.py --route eval/routes/parking_r3_cw.csv --scenario eval/scenarios/parking_r3_obstacle.yaml --out logs/nav2/<이름>.json
+sim/nav2/scenario_batch.sh eval/scenarios/parking_r3_obs_cones.yaml:ccw eval/scenarios/parking_r3_straight_south.yaml   # 일괄(tmux 안), FD_OUT=결과 폴더
+# 하나씩 할 때
+envs/isaacsim_env/bin/python sim/make_obstacles.py eval/scenarios/parking_r3_obs_south_box.yaml sim/scenes/parking/obstacles/parking_r3_obs_south_box.usda
+FD_LAYERS=sim/scenes/parking/obstacles/parking_r3_obs_south_box.usda FD_LIDAR=1 FD_DOMAIN=43 FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/run_proxy.sh headless
+ros2 launch sim/nav2/nav2.launch.py map:=$PWD/data/nav2/parking_v0.4b_r3/map.yaml [x0:=… y0:=… yaw0_deg:=…]   # 구간이면 make_obstacles 의 START 자세
+python3 sim/nav2/nav2_route.py --route eval/routes/parking_r3_cw.csv --scenario eval/scenarios/parking_r3_obs_south_box.yaml --out logs/nav2/<이름>.json
+python3 eval/scenarios/plot_scenarios.py   # 시나리오 그림 → logs/nav2/scenarios_r3.png
 ```
 
-- **장애물 레이어** — `make_obstacles.py` 가 시나리오의 장애물(기준선 길이 s · 옆 오프셋)을 월드 좌표로 바꾸고 바닥 높이를 충돌 메쉬에서 재서, 정적 충돌 상자(UsdPreviewSurface 재질 — 카메라 · 3D LiDAR 에 보임) USD 레이어로 씀.
+- **레이어**(`make_obstacles.py`) — 시나리오의 장애물(기준선 길이 s · 옆 오프셋)을 월드 좌표로 바꾸고 바닥 높이를 충돌 메쉬에서 재서, 정적 충돌 물체(상자 · 원기둥 · 원뿔, UsdPreviewSurface 재질 — 카메라 · 3D LiDAR 에 보임) USD 레이어로 씀. 구간 시나리오(`start.s`)면 로봇 출발 자세도 덮어씀(기준선 위, 진행 방향을 봄 — 로그 `START`).
 - **`FD_LAYERS`**(`sim/proxy_play.py`) — 콜론으로 이은 레이어들을 세션 레이어 밑에 얹고 Play. 씬 파일 · 씬 루트를 늘리지 않고 시나리오마다 다른 것을 넣음. 로그 `PROXY_LAYERS`.
-- **`nav2_route.py --scenario`** — 장애물 가장자리 1.5 m 안의 기준선 경유점은 뺌(교사는 장애물 자리를 알아도 됨). 로봇 발자국과 상자 사이 최소 거리 · 충돌 · 가장 긴 정지를 재고, 수행계획서 2.4 판정(`pass`: 완주 · 이탈 2.0 m 안 · 충돌 없음 · 10 s 넘는 정지 없음)을 붙임.
-- **10.14 결과**(r3 남쪽 변 가운데 상자 0.6×0.6×0.8 m, Nav2 + AMCL)
-
-  | 방향 | 판정 | 랩(시뮬) | 최대 이탈(상자 둘레) | 상자와 최소 거리 | 가장 긴 정지 | 복구 |
-  | --- | --- | --- | --- | --- | --- | --- |
-  | 시계 | **통과** | 132 s | 1.36 m | 0.77 m | 3.2 s | 1(전역 비용 지도 비우고 다시 계획) |
-  | 반시계 | **통과** | 134 s | 1.45 m(랩 최대 1.55 m) | 0.83 m | 5.3 s | 3 |
-
-  카메라에는 8 m 앞부터 상자가 보이고, `/scan` 은 8 m 앞에서 스캔마다 9 ~ 21점이 상자에 맞음.
+- **`nav2_route.py --scenario`**
+  - 장애물 가장자리 1.5 m 안의 기준선 경유점은 뺌(교사는 장애물 자리를 알아도 됨). 로봇 발자국과 장애물 사이 최소 거리 · 충돌 · 가장 긴 정지를 잼.
+  - 판정 `pass`(수행계획서 2.4) — 완주 · 이탈 2.0 m 안 · 충돌 없음 · 10 s 넘는 정지 없음 · 마지막 경유점 1.0 m 안 · 달린 거리가 경로 길이의 80 % 이상.
+  - 바퀴의 마지막 경유점은 결승 1 m 앞 — 출발점 바로 뒤(0.24 m)에 두면 안 움직이고 '목표 도착'으로 끝날 때가 있었음(10.14 반시계 3회, 6 s).
+  - 구간이면 `start.s` → `goal.s` 만 돎. 출발 전에 AMCL 위치가 정답 위치 0.5 m 안인지 확인하고, 아니면 `/initialpose` 를 다시 보냄(그래도 안 맞으면 코드 3).
+- **AMCL 초기 자세**는 `nav2.launch.py` 의 `x0 · y0 · yaw0_deg`(설정 파일 initial_pose 를 덮어씀) — 스크립트가 보내는 `/initialpose` 만으로는 새로 뜬 AMCL 에 안 닿아, AMCL 이 r3 출발점에 머문 채 달린 일이 있었음(10.14 구간 시나리오, 이탈 5 ~ 13 m).
+- **`scenario_batch.sh`** — 항목마다 레이어를 만들고 씬 + Nav2(AMCL)를 새로 띄워 한 번. 준비 실패(코드 3)나 벽시계 15분 초과면 다시 띄워 한 번 더. 끝나면 Ctrl+C → TERM → KILL(INT · TERM 을 무시하고 남은 lifecycle_manager 가 다음 Nav2 와 이름이 겹친 일이 있음) · `fastdds shm clean`.
+- **10.14 결과**(Nav2 + AMCL, 경유점 4 m) — 장애물 8종 × 양방향 16가지 중 15가지 통과, 구간 5종 모두 통과(최대 이탈 직진 0.23 · 0.30 m, 곡선 0.64 ~ 1.73 m).
+  - 실패 1종 — `obs_corner_exit` 시계 2회(최대 이탈 2.07 · 2.02 m). 남동 모서리를 도는 중(s 14)에 바로 뒤 상자(s 17.5)를 피하려 바깥으로 벌어짐. 장애물이 없어도 Nav2 는 모서리에서 1.4 ~ 1.9 m 벗어나므로(10.14 AMCL 확인), 모서리 근처 장애물이면 2.0 m 한도에 걸림.
+  - `obs_south_box` 시계는 첫 회 남서 모서리(s 50)에서 2.04 m(복구 6회)로 실패, 다시 돌려 통과.
+  - 장애물과 최소 거리 0.69 ~ 0.93 m, 충돌 0, 움직이기 시작한 뒤 가장 긴 정지 2.8 s 이하. 16가지 중 9가지는 최대 이탈이 장애물이 아니라 모서리에서 남. 결과 서버 `logs/nav2/obstacle/v1` · `scenario_v1b` · `scenario_v2`.
+  - 첫 결과(남쪽 변 상자 v0) — 카메라에는 8 m 앞부터 상자가 보이고, `/scan` 은 8 m 앞에서 스캔마다 9 ~ 21점이 상자에 맞음.
 - **녹화 주의** — 스크립트에서 `&` 로 띄운 `ros2 bag record` 는 SIGINT 를 무시함(비대화형 bash) → SIGTERM 으로 끔. `--compression-mode file` 은 멈출 때 파일 전체를 다시 압축해 오래 걸리니 `--storage-preset-profile zstd_fast`(청크 압축).
 

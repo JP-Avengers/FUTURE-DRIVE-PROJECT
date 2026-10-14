@@ -1,0 +1,45 @@
+#usda 1.0
+(
+    customLayerData = {
+        string generated_by = "sim/make_obstacles.py"
+        string obstacles_json = '[{"name": "box_corner", "type": "box", "x": -8.545, "y": -20.011, "z_floor": 0.063, "yaw_deg": 167.07, "size": [0.6, 0.6, 0.8], "s": 17.5, "lateral": 0.0}]'
+        string scenario = "eval/scenarios/parking_r3_obs_corner_exit.yaml"
+        string start_json = "null"
+    }
+    doc = "시나리오 장애물 — parking_r3_obs_corner_exit (eval/scenarios/parking_r3_obs_corner_exit.yaml). FD_LAYERS 로 씬 위에 얹음"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def "World"
+{
+    def Xform "Obstacles"
+    {
+        def Cube "box_corner" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsCollisionAPI"]
+        )
+        {
+            rel material:binding = </World/Obstacles/box_corner_mat>
+            color3f[] primvars:displayColor = [(0.55, 0.38, 0.22)]
+            double size = 1
+            float3 xformOp:rotateXYZ = (0, 0, 167.074)
+            float3 xformOp:scale = (0.6, 0.6, 0.8)
+            double3 xformOp:translate = (-8.544808, -20.011208000000003, 0.4632078305249767)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+        }
+
+        def Material "box_corner_mat"
+        {
+            token outputs:surface.connect = </World/Obstacles/box_corner_mat/shader.outputs:surface>
+
+            def Shader "shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.55, 0.38, 0.22)
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+    }
+}
+

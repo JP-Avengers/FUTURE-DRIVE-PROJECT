@@ -1,0 +1,71 @@
+#usda 1.0
+(
+    customLayerData = {
+        string generated_by = "sim/make_obstacles.py"
+        string obstacles_json = '[{"name": "cone_1", "type": "cone", "x": -21.239, "y": -0.46, "z_floor": -0.076, "yaw_deg": -12.93, "size": [0.4, 0.7], "s": 68.0, "lateral": 0.0}, {"name": "cone_2", "type": "cone", "x": -21.395, "y": -1.142, "z_floor": -0.063, "yaw_deg": -12.93, "size": [0.4, 0.7], "s": 68.0, "lateral": -0.7}]'
+        string scenario = "eval/scenarios/parking_r3_obs_cones.yaml"
+        string start_json = "null"
+    }
+    doc = "시나리오 장애물 — parking_r3_obs_cones (eval/scenarios/parking_r3_obs_cones.yaml). FD_LAYERS 로 씬 위에 얹음"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def "World"
+{
+    def Xform "Obstacles"
+    {
+        def Cone "cone_1" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsCollisionAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.7
+            rel material:binding = </World/Obstacles/cone_1_mat>
+            color3f[] primvars:displayColor = [(0.95, 0.4, 0.05)]
+            double radius = 0.2
+            double3 xformOp:translate = (-21.23872, -0.45972000000000024, 0.274302419344121)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Material "cone_1_mat"
+        {
+            token outputs:surface.connect = </World/Obstacles/cone_1_mat/shader.outputs:surface>
+
+            def Shader "shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.95, 0.4, 0.05)
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+
+        def Cone "cone_2" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsCollisionAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.7
+            rel material:binding = </World/Obstacles/cone_2_mat>
+            color3f[] primvars:displayColor = [(0.95, 0.4, 0.05)]
+            double radius = 0.2
+            double3 xformOp:translate = (-21.395304687503216, -1.1419818526925862, 0.28688627306537295)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Material "cone_2_mat"
+        {
+            token outputs:surface.connect = </World/Obstacles/cone_2_mat/shader.outputs:surface>
+
+            def Shader "shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.95, 0.4, 0.05)
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+    }
+}
+

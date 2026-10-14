@@ -1,0 +1,44 @@
+#usda 1.0
+(
+    customLayerData = {
+        string generated_by = "sim/make_obstacles.py"
+        string obstacles_json = '[{"name": "box_south_out", "type": "box", "x": -18.913, "y": -18.249, "z_floor": 0.108, "yaw_deg": 167.07, "size": [0.6, 0.6, 0.8], "s": 28.0, "lateral": 0.6}]'
+        string scenario = "eval/scenarios/parking_r3_obs_south_left.yaml"
+    }
+    doc = "시나리오 장애물 — parking_r3_obs_south_left (eval/scenarios/parking_r3_obs_south_left.yaml). FD_LAYERS 로 씬 위에 얹음"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def "World"
+{
+    def Xform "Obstacles"
+    {
+        def Cube "box_south_out" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsCollisionAPI"]
+        )
+        {
+            rel material:binding = </World/Obstacles/box_south_out_mat>
+            color3f[] primvars:displayColor = [(0.55, 0.38, 0.22)]
+            double size = 1
+            float3 xformOp:rotateXYZ = (0, 0, 167.074)
+            float3 xformOp:scale = (0.6, 0.6, 0.8)
+            double3 xformOp:translate = (-18.91292744643133, -18.249107873736506, 0.5084630346324679)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+        }
+
+        def Material "box_south_out_mat"
+        {
+            token outputs:surface.connect = </World/Obstacles/box_south_out_mat/shader.outputs:surface>
+
+            def Shader "shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.55, 0.38, 0.22)
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+    }
+}
+
