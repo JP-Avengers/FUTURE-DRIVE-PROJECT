@@ -1,0 +1,14 @@
+# 실제 주차장 v0.6 — 장애물 없는 기준선 한 바퀴 parking_v06_lap v1 (10.30, D). 형식은 eval/scenarios/parking_r3_*.yaml 과 같음.
+# 시연용 — X-Mobility 기준선 주행(장애물 없음)과 나란히 놓을 Nav2 주행 영상(sim/nav2/record_demo.sh, FD_SCENE · FD_NAV2_MAP 로 v0.6 씬 · v0.5 지도(충돌 같음)).
+# 좌표 · 기준선은 r3 와 같음(v0.6 도 B 맵 좌표 그대로).
+name: parking_v06_lap
+version: v1
+scene: sim/scenes/parking/parking_v0.6.usda
+route: eval/routes/parking_r3_cw.csv
+directions: [cw, ccw]
+start: {x: -1.756, y: -7.621, yaw_deg: -96.0}   # 씬 시작 자세 = 기준선 출발점
+goal: {lap: 1, radius_m: 1.0}
+obstacles: []
+deviation_limit_m: 2.0    # 수행계획서 2.4
+stall_limit_s: 10         # 수행계획서 2.4
+timeout_s: 300
