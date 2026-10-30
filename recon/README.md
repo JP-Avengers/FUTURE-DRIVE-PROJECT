@@ -33,6 +33,7 @@ Windows 에서는 `py -3.12 -m venv ~/o3d_env` 로 만들고, 아래 명령의 `
 recon/configs/<이름>.yaml         설정 (입력 형식, voxel, 깊이 한계, 목표 삼각형 수 …)
 recon/pipeline/io_rgbd.py         입력 읽기: open3d_lounge(시험용) · tum · rtabmap_keyframes(B 맵 v0.2)
 recon/pipeline/color_utils.py     키프레임 RGB → 메쉬 정점 색 투영 (가림 처리) + 키프레임 정합 점검
+recon/pipeline/floor_texture.py   바닥 한 장에 키프레임 사진을 1 cm 텍스처로 굽기 · 밝기 보정 · 주차칸 채우기 (v0.6)
 recon/pipeline/tsdf.py            RGB-D 프레임 + pose → TSDF → mesh_raw.ply (근거리) + mesh_far_raw.ply (원거리, 배경용)
 recon/pipeline/build_usd.py       정리 → 바닥 평면으로 Z-up·원점 → 구멍 메우기 → 경량화 → 충돌 메쉬 → 구역(바깥·배경·경계) → USD → 검증
 recon/pipeline/mesh_utils.py      공용: 지도 범위(footprint)와 평면·벽, 작은 구멍 메우기, 바닥 채우기
@@ -59,6 +60,7 @@ OUT=~/recon_out/lounge        # 결과를 둘 폴더 — 원하는 곳으로
 
   | USD prim (`/World/<이름>/…`) | 내용 | 보임 | 충돌 |
   | --- | --- | --- | --- |
+  | `Floor` | 바닥 한 장 + 사진 텍스처 재질 (`floor_texture:` 켠 경우, v0.6~) — 이때 `Visual` 은 바닥을 뺀 물체만 | O | |
   | `Visual` | 근거리 메쉬 (깊이 `depth_trunc`, 구멍 메우기 포함) | O | |
   | `VisualFar` | 원거리 메쉬 중 근거리 지도 밖 부분 — 잡음이 있어 충돌에는 안 넣음 | O | |
   | `GroundFar` | 근거리 지도 밖 바닥 평면 (가까운 바닥 색) — 바깥 구역 바닥 구멍 가림 | O | |
@@ -91,6 +93,14 @@ B 가 형상 메쉬(원본 depth TSDF, 색 없음)와 키프레임을 넘기므�
   - 색: TSDF 평균색은 흐려서 한 번 잘게 나눈 뒤 키프레임 사진을 다시 투영 (지붕 카메라 먼저)
 - **하늘** (`sky:`, `pipeline/sky.py`): 지붕 키프레임의 하늘 화소를 높이각별로 평균한 latlong 텍스처를 씬 돔 조명에 얹는 `usd/sky.usda` (+ `usd/textures/sky.png`). 세기는 텍스처 평균 밝기로 나눠 텍스처 없는 돔과 같은 밝기. 씬 루트 subLayers 에서 Proxy `world.usda` 보다 위에
 - **정점 색은 선형으로** USD 에 씀 (`usd_utils.srgb_to_linear`) — 사진값(sRGB) 그대로면 Isaac Sim 에서 2~3배 밝음. PLY 는 사진값 그대로
+- **바닥 텍스처** (`floor_texture:`, `pipeline/floor_texture.py`, v0.6~): 정점 색(바닥 꼭짓점 5 cm 마다 색 하나)은 15 cm 주차선이 뭉개짐 → 바닥 한 장에 키프레임 사진을 `cell_m`(1 cm) 텍스처로 구워 `Floor` prim 에 UsdPreviewSurface 로 붙임 (색 텍스처는 sRGB 그대로 — 렌더러가 선형으로 바꿈)
+  - 굽기: 텍셀마다 가장 가까이·정면에서 본 키프레임 위주 (`top_k` 장을 `power` 로 섞음 — 똑같이 평균하면 자세 오차 3~4 cm 로 선이 두 줄). 묶음 순서·제외 구역은 `colorize` 와 같음
+  - 밝기 모형 (`photometric_groups`): 같은 카메라끼리 키프레임 이득 + 비네팅 + 보는 각도를 희소 최소제곱으로 한 번에 — 이어 붙인 자리 얼룩 · 10/9 ↔ 10/10 밝기 차. 잔차가 `photometric_max_rms` 넘으면 그 묶음은 보정 안 함 (지붕 카메라)
+  - `flatten`: 촬영 때 그림자·햇빛의 넓은 밝기 차이만 약하게 (아스팔트에만)
+  - `fill_stalls`: 차가 서 있던 주차칸(B `outer/objects.csv`) · 그 그림자 · 안 찍힌 곳을 주행 도로에서 가장 선명하게 찍힌 깨끗한 아스팔트 조각으로 채움. B `ground_zones` 아스팔트 안만, 찍힌 흰 주차선은 남김
+  - `material`: 표면 요철(노멀)·거칠기 맵만 `tile_m` 마다 반복 — **ambientCG [Asphalt031](https://ambientcg.com/view?id=Asphalt031) 2K-JPG (CC0)** 을 받아 `NormalGL` · `Roughness` 경로를 적음 (레포에는 안 넣음). 없으면 색 텍스처만
+  - 굽기는 키프레임 1,773장에 20~30분 → `reuse_bake: true` 면 같은 설정·입력으로 구운 `floor_tex/bake_raw.png` 를 다시 쓰고 마무리(`flatten` · `fill_stalls`)만 다시 함
+  - 보기: `floor_textured/floor.obj` (텍스처째, Open3D 로 열림 — 요철·거칠기는 USD 에만)
 - **v0.4**: B 가 두 판(a = v0.3 바닥 + 빈 곳 채움, b = 본네트 카메라 바닥 기준)을 보냄 → `map_v04a.yaml`, `map_v04b.yaml`. 바닥 고르기·색 정합이 나은 b 권장
 - **새 판(v0.n)을 받으면**: 영문 경로로 복사 → 체크섬 확인 → 직전 config 를 `map_v0n.yaml` 로 복사해 `root`·`out`·B 인계서의 새 조건만 바꿈
 
@@ -105,6 +115,9 @@ B 가 형상 메쉬(원본 depth TSDF, 색 없음)와 키프레임을 넘기므�
 | `mesh_raw.ply` · `mesh_far_raw.ply` | 정리·좌표 변환 전 TSDF 원본 (근거리 · 원거리) | 〃 |
 | `visual_far.ply` · `backdrop.ply` · `boundary.ply` | 바깥 구역 · 배경 벽 · 경계벽 (아래 구역 설명) | 〃 |
 | `floor_patch.ply` | 바닥 채우기로 넣은 평면 조각 (의자·테이블 밑 등 바닥이 빈 곳) | 〃 |
+| `floor_tex/` | 바닥 텍스처: `floor_color.jpg`(최종) · `bake_raw.png`(마무리 전) · `fill_mask_4cm.png`(채운 주차칸) · `bake_stats.json` | 이미지 뷰어 |
+| `floor_textured/floor.obj` | 텍스처 바닥 (보기용) | `view_ply.bat`, MeshLab |
+| `usd/textures/` | USD 가 쓰는 텍스처 (바닥 색 · 요철 · 거칠기, 하늘) — `usd/` 를 통째로 옮겨야 함 | 이미지 뷰어 |
 | `transform.json` | `mesh_raw` → 씬 좌표 4×4 변환 (c2d_usd.md 변경 이력용) | 텍스트 편집기 |
 | `tsdf_meta.json` | TSDF 설정·프레임 수·시간·대략적인 위쪽 방향 | 텍스트 편집기 |
 | `visibility/summary.json` | 통로에서 보이는 구멍 비율 (`holes_visible_pct`), 분류별 비율, 바닥 구멍 중 지도 안/가장자리 너머 | 텍스트 편집기 |

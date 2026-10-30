@@ -15,6 +15,7 @@ import open3d as o3d
 import yaml
 
 import far_zone
+import floor_texture
 import io_rgbd
 import sky
 import usd_utils
@@ -196,6 +197,7 @@ def main():
     report["fill"] = {}
     sf = cfg.get("single_floor")
     floor_col = objects = None
+    n_floor_tris = 0                  # 바닥 한 장 삼각형 수 — scene = 바닥 + 물체 순서라 앞쪽 n 개가 바닥 (바닥 텍스처에서 나눔)
     if sf and ground is not None:     # 바닥 한 장: 스캔의 바닥 층(여러 날 조각이 겹침)을 빼고, 바닥 높이 지도로 매끈한 한 장을 새로 깜
         paths = fill_path_xy(cfg, poses, T)
         cams = np.array([P[:3, 3] for P in poses])
@@ -238,6 +240,7 @@ def main():
         report["fill"]["floor_area_m2"] = round(fp.area(), 1)
         report["single_floor"].update(floor_tris=len(floor_vis.triangles), collision_floor_tris=len(floor_col.triangles))
         o3d.io.write_triangle_mesh(os.path.join(out, "floor.ply"), floor_vis)
+        n_floor_tris = len(floor_vis.triangles)
         scene = floor_vis + objects
         scene.compute_vertex_normals()
         sfr = report["single_floor"]
@@ -261,6 +264,23 @@ def main():
         print(f"      색 투영: 주 키프레임 {report['colorize']['keyframes']}장 (바닥 올림 {report['colorize']['floor_lift_m'] * 100:.1f} cm)"
               f" | 색이 보인 정점 {report['colorize']['seen_pct']}%"
               f" | 키프레임 depth ↔ 메쉬 차이 중앙 {report['colorize']['depth_vs_mesh_median_cm']} cm")
+
+    tex_info = None
+    if cfg.get("floor_texture") and n_floor_tris and fr is not None:   # 바닥 한 장에 키프레임 사진을 텍스처로 (v0.6)
+        if cfg["decimate"].get("visual_tris"):
+            raise SystemExit("floor_texture 는 decimate.visual_tris: 0 이어야 함 (줄이면 바닥 삼각형 순서가 바뀜)")
+        lifts = {s["name"]: s["floor_lift_m"] for s in report.get("colorize", {}).get("sources", [])}
+        sets = [("main", fr, poses, lifts.get("main", 0.0), [])]
+        for name, inp, exclude in extra_sources(cfg):
+            f2 = io_rgbd.load(inp)
+            sets.append((name, f2, [T @ P for P in f2.poses], lifts.get(name, 0.0), exclude))
+        floor_mesh = split_first(scene, n_floor_tris)[0]
+        tex_info, report["floor_texture"] = floor_texture.run(cfg, out, floor_mesh, scene, ground, sets)
+        floor_texture.write_obj(os.path.join(out, "floor_textured"), floor_mesh, tex_info)   # 보기용 (view_ply 로 텍스처째)
+        ftr = report["floor_texture"]
+        print(f"      바닥 텍스처: 사진으로 칠한 텍셀 {ftr['seen_pct']}% · 화소 크기 중앙 {ftr['gsd_cm_p10_50_90'][1]} cm"
+              f" | 주차칸 채움 {ftr['finish'].get('filled_m2', 0)} m² (차 {ftr['finish'].get('cars', 0)}대)")
+        del sets
 
     d = cfg["decimate"]
     if d.get("visual_tris") and len(scene.triangles) > d["visual_tris"]:
@@ -325,6 +345,9 @@ def main():
 
     # visual.ply = 보이는 부분 전부 (점검·보기용), 부분별 파일도 따로
     o3d.io.write_triangle_mesh(os.path.join(out, "visual.ply"), merge(visuals.values()))
+    if tex_info:                      # 바닥은 텍스처 재질을 쓰는 따로 된 prim (Floor), 물체는 Visual 에 정점 색 그대로
+        fl, ob = split_first(visual, n_floor_tris)
+        visuals = {"Floor": fl, "Visual": ob, **{k: m for k, m in visuals.items() if k != "Visual"}}
     o3d.io.write_triangle_mesh(os.path.join(out, "collider.ply"), colliders["Collision"])
     for name, fname in (("VisualFar", "visual_far.ply"), ("Backdrop", "backdrop.ply"), ("Boundary", "boundary.ply")):
         path = os.path.join(out, fname)
@@ -336,7 +359,8 @@ def main():
         os.path.join(out, "usd"), cfg["name"], visuals, colliders,
         info=dict(config=os.path.basename(args.config), transform="../transform.json",
                   **{f"{k}_tris": len(m.triangles) for k, m in {**visuals, **colliders}.items()}),
-        double_sided=tuple(cfg.get("usd", {}).get("double_sided", ["Backdrop"])))
+        double_sided=tuple(cfg.get("usd", {}).get("double_sided", ["Backdrop"])),
+        materials={"Floor": tex_info} if tex_info else None)
     sk = cfg.get("sky")
     if sk and sets:   # 하늘 돔 텍스처 (지붕 키프레임 하늘 화소) — 씬의 돔 조명에 얹는 덮어쓰기 레이어 usd/sky.usda
         prof, max_el = sky.profile([(sets[k], [T @ P for P in sets[k].poses]) for k in sk["sets"] if k in sets], cfg["far_tsdf"])
@@ -423,6 +447,21 @@ def colorize(cfg, out, scene, ground, fr, poses, T):
     return dict(keyframes=len(rows), seen_pct=round(100 * float(seen.mean()), 1), floor_lift_m=lift, sources=sources,
                 depth_vs_mesh_median_cm=round(float(np.median(med)), 1), depth_vs_mesh_bias_cm=round(float(np.median(bias)), 1),
                 worst_keyframes=[dict(id=r["id"], x=r["x"], y=r["y"], median_abs_cm=r["median_abs_cm"]) for r in worst])
+
+
+def split_first(mesh, n_tris):
+    """앞쪽 n_tris 개 삼각형 / 나머지 로 나눈 두 메쉬 (정점 색·법선 유지)."""
+    t = np.asarray(mesh.triangles)
+    out = []
+    for sel in (t[:n_tris], t[n_tris:]):
+        m = o3d.geometry.TriangleMesh(mesh.vertices, o3d.utility.Vector3iVector(sel))
+        if mesh.has_vertex_colors():
+            m.vertex_colors = mesh.vertex_colors
+        if mesh.has_vertex_normals():
+            m.vertex_normals = mesh.vertex_normals
+        m.remove_unreferenced_vertices()
+        out.append(m)
+    return out
 
 
 def merge(meshes):
