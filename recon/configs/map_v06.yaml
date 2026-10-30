@@ -163,6 +163,7 @@ floor_texture:                         # 바닥 텍스처 (pipeline/floor_textur
     low: 0.35                          # 대상 = 바닥 위 회색 계열 칸 중 밝기가 아스팔트 중앙의 0.35~1.6 배 (페인트 · 깊은 그림자 뺌)
     high: 1.6
     range: [0.6, 1.6]                  # 칸마다 곱하는 값 한계
+  unseen_seam_m: 0.15                  # 사진이 안 닿은 곳(바닥 정점 색) 경계 둘레를 넓게 섞음 — 계단처럼 끊겨 보였음 (D 10.30 영상, 섬 가장자리)
   fill_stalls:                         # 차가 서 있던 주차칸 → 주행 도로의 깨끗한 아스팔트 조각으로 (흰 주차선은 남김)
     objects: outer/objects.csv         # input.root 기준 — B 주차 차 33대 (위치·방향·길이·폭)
     zones: outer/ground_zones.npz      # B 바닥 구역 (아스팔트 안만, 풀·붉은 보도 둘레 30 cm 는 안 채움)
@@ -175,5 +176,10 @@ floor_texture:                         # 바닥 텍스처 (pipeline/floor_textur
   material:                            # 표면 요철·거칠기만 (색은 사진). ambientCG Asphalt031 2K (CC0) — 레포에는 안 넣음, recon/README 참고
     normal: ~/jinwoo/data/cc0/Asphalt031/Asphalt031_2K-JPG_NormalGL.jpg
     roughness: ~/jinwoo/data/cc0/Asphalt031/Asphalt031_2K-JPG_Roughness.jpg
-    tile_m: 1.0                        # 1 m 마다 반복
+    tile_m: 2.0                        # 2 m 마다 반복 — 1 m 면 골재가 실제 노면보다 작게 보이고 로봇 카메라 화소 안에서 평균돼 요철이 안 보임 (D 10.30 영상)
+    normal_strength: 1.5               # 요철 기울기 배율 (돔 조명만 있는 씬에서도 보이게)
+  detail:                              # 잔무늬 되살리기 — 1~4 cm 무늬 밝기 대비가 실제 사진만큼 되게 모자란 만큼만 CC0 색 사진 무늬로
+    color: ~/jinwoo/data/cc0/Asphalt031/Asphalt031_2K-JPG_Color.jpg
+    tile_m: 2.0
+    target_rel_std: 0.022              # 본네트 사진 2 m 앞 노면 실측 2.2% (텍스처는 섞고 통일하며 1.1~1.2% 로 약해짐, 10.30)
   jpeg_quality: 92

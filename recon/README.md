@@ -96,9 +96,11 @@ B 가 형상 메쉬(원본 depth TSDF, 색 없음)와 키프레임을 넘기므�
 - **바닥 텍스처** (`floor_texture:`, `pipeline/floor_texture.py`, v0.6~): 정점 색(바닥 꼭짓점 5 cm 마다 색 하나)은 15 cm 주차선이 뭉개짐 → 바닥 한 장에 키프레임 사진을 `cell_m`(1 cm) 텍스처로 구워 `Floor` prim 에 UsdPreviewSurface 로 붙임 (색 텍스처는 sRGB 그대로 — 렌더러가 선형으로 바꿈)
   - 굽기: 텍셀마다 가장 가까이·정면에서 본 키프레임 위주 (`top_k` 장을 `power` 로 섞음 — 똑같이 평균하면 자세 오차 3~4 cm 로 선이 두 줄). 묶음 순서·제외 구역은 `colorize` 와 같음
   - 밝기 모형 (`photometric_groups`): 같은 카메라끼리 키프레임 이득 + 비네팅 + 보는 각도를 희소 최소제곱으로 한 번에 — 이어 붙인 자리 얼룩 · 10/9 ↔ 10/10 밝기 차. 잔차가 `photometric_max_rms` 넘으면 그 묶음은 보정 안 함 (지붕 카메라)
-  - `flatten`: 촬영 때 그림자·햇빛의 넓은 밝기 차이만 약하게 (아스팔트에만)
+  - `flatten` (`mode: local`): 아스팔트 색을 한 가지로 — `sigma_m`(30 cm) 보다 넓은 밝기 차이(회차 · 해 방향 · 날짜 · 그림자)는 아스팔트 중앙 색으로, 작은 무늬만 사진 그대로
+  - `detail`: 섞고 통일하며 약해진 1~4 cm 잔무늬를 실제 사진의 밝기 대비(`target_rel_std`, 본네트 사진 실측 2.2%)까지만 CC0 색 사진 무늬로 채움
+  - `unseen_seam_m`: 사진이 안 닿은 곳(바닥 정점 색) 경계를 넓게 섞음
   - `fill_stalls`: 차가 서 있던 주차칸(B `outer/objects.csv`) · 그 그림자 · 안 찍힌 곳을 주행 도로에서 가장 선명하게 찍힌 깨끗한 아스팔트 조각으로 채움. B `ground_zones` 아스팔트 안만, 찍힌 흰 주차선은 남김
-  - `material`: 표면 요철(노멀)·거칠기 맵만 `tile_m` 마다 반복 — **ambientCG [Asphalt031](https://ambientcg.com/view?id=Asphalt031) 2K-JPG (CC0)** 을 받아 `NormalGL` · `Roughness` 경로를 적음 (레포에는 안 넣음). 없으면 색 텍스처만
+  - `material`: 표면 요철(노멀)·거칠기 맵만 `tile_m` 마다 반복, `normal_strength` 배로 기울기를 키움 — **ambientCG [Asphalt031](https://ambientcg.com/view?id=Asphalt031) 2K-JPG (CC0)** 을 받아 `NormalGL` · `Roughness` · `Color`(detail 용) 경로를 적음 (레포에는 안 넣음). 없으면 색 텍스처만
   - 굽기는 키프레임 1,773장에 20~30분 → `reuse_bake: true` 면 같은 설정·입력으로 구운 `floor_tex/bake_raw.png` 를 다시 쓰고 마무리(`flatten` · `fill_stalls`)만 다시 함
   - 보기: `floor_textured/floor.obj` (텍스처째, Open3D 로 열림 — 요철·거칠기는 USD 에만)
 - **v0.4**: B 가 두 판(a = v0.3 바닥 + 빈 곳 채움, b = 본네트 카메라 바닥 기준)을 보냄 → `map_v04a.yaml`, `map_v04b.yaml`. 바닥 고르기·색 정합이 나은 b 권장

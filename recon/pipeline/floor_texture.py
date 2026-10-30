@@ -350,6 +350,21 @@ def finish(out_dir, floor, c, root):
         med = coarse(lum, np.median)
     st = dict(flatten_ratio_p5_p95=np.percentile(ratio[::k, ::k], [5, 95]).round(3).tolist())
 
+    # (3b) 사진이 안 닿은 곳(바닥 정점 색) 다듬기: 정점 색은 5 cm 격자로 각지고, 사진 범위 경계는 키프레임 화각 모서리라
+    #      계단처럼 끊겨 보임 (D 10.30 영상, 섬 가장자리) → 안쪽은 3 cm 흐리고 경계 둘레 seam_m 은 넓게 섞음
+    seam = c.get("unseen_seam_m", 0.0)
+    if seam and (src < 0).any():
+        unseen = src < 0
+        r = seam / cell
+        band = ((ndimage.distance_transform_edt(unseen) < r) & unseen) | ((ndimage.distance_transform_edt(~unseen) < r) & ~unseen)
+        for ch in range(3):
+            soft3 = ndimage.gaussian_filter(img[..., ch], 0.03 / cell)
+            wide = ndimage.gaussian_filter(img[..., ch], r / 2)
+            img[..., ch] = np.where(band, wide, np.where(unseen, soft3, img[..., ch]))
+        del band, soft3, wide
+        lum = img @ LUMA
+        st["unseen_seam_m"] = seam
+
     # (4) 주차칸 채우기
     obj_path = os.path.join(root, fs["objects"]) if fs.get("objects") else None
     if obj_path and os.path.exists(obj_path):
@@ -385,6 +400,26 @@ def finish(out_dir, floor, c, root):
         st.update(cars=len(cars), filled_m2=round(float(fill.sum()) * cell * cell, 1),
                   filled_in_cars_m2=round(float((fill & rect).sum()) * cell * cell, 1), patches=n_patch)
     st["floor_m2"] = round(float(on_floor.sum()) * cell * cell, 1)
+
+    # (5) 잔무늬 되살리기: 여러 장을 섞고 색을 통일하며 1~4 cm 알갱이 무늬가 실제 사진의 절반으로 약해짐
+    #     (밝기 대비 표준편차: 본네트 사진 2 m 앞 2.2% · 텍스처 1.1~1.2%, 10.30) → 모자란 만큼만 CC0 색 사진의 같은 크기 무늬로 채움
+    dt = c.get("detail") or {}
+    dpath = os.path.expanduser(dt["color"]) if dt.get("color") else None
+    if dpath and os.path.exists(dpath):
+        def band(a):                                            # 1~4 텍셀 크기 무늬 (σ 0.7 ↔ 4 차이)
+            return ndimage.gaussian_filter(a, 0.7) - ndimage.gaussian_filter(a, 4)
+        n = int(round(dt.get("tile_m", 2.0) / cell))
+        ref = np.asarray(Image.open(dpath).convert("L").resize((n, n), Image.LANCZOS)).astype(np.float32)
+        ref = band(np.tile(ref, (3, 3)))[n:2 * n, n:2 * n]      # 반복 경계가 끊기지 않게 3×3 으로 이어 걸러서 가운데만
+        ref /= ref.std()
+        cur_rel = np.sqrt(ndimage.gaussian_filter(band(lum) ** 2, 0.5 / cell)) / np.maximum(ndimage.gaussian_filter(lum, 0.5 / cell), 1e-3)
+        mask = up(ndimage.gaussian_filter(asph_c.astype(np.float32), 2)) * (lum < 1.3 * up(np.where(asph_c, med, gl)))   # 아스팔트에만, 페인트 빼고
+        add = np.sqrt(np.clip(dt.get("target_rel_std", 0.022) ** 2 - cur_rel ** 2, 0, None)) * np.clip(mask, 0, 1)
+        iy0, ix0 = int(np.floor(y0 / cell)), int(np.floor(x0 / cell))   # 세계 좌표에 고정 (판마다 같은 자리에 같은 무늬)
+        D = ref[((np.arange(H) + iy0) % n)[:, None], ((np.arange(W) + ix0) % n)[None, :]]
+        img = np.clip(img * (1 + add * D)[..., None], 0, 1)
+        st["detail"] = dict(before_rel_std_p50=round(float(np.median(cur_rel[::50, ::50][mask[::50, ::50] > 0.5])) * 100, 2),
+                            added_rel_std_p50=round(float(np.median(add[::50, ::50][mask[::50, ::50] > 0.5])) * 100, 2))
     path = os.path.join(out_dir, "floor_color.jpg")
     _save(img, path, quality=c.get("jpeg_quality", 92))
     return path, st
@@ -487,7 +522,7 @@ def run(cfg, out, floor, occ_mesh, ground, sets):
     color, fst = finish(d, floor, c, root)
     st["finish"] = fst
     m = c.get("material", {})
-    info = dict(color=color, region=region, tile_m=m.get("tile_m", 1.0),
+    info = dict(color=color, region=region, tile_m=m.get("tile_m", 1.0), normal_strength=m.get("normal_strength", 1.0),
                 normal=os.path.expanduser(m["normal"]) if m.get("normal") else None,
                 roughness=os.path.expanduser(m["roughness"]) if m.get("roughness") else None)
     for k_ in ("normal", "roughness"):

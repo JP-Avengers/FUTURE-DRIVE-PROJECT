@@ -80,9 +80,10 @@ def add_texture_material(stage, mesh_prim, mat_path, mesh, tex, usd_dir):
         texture("ColorTex", tex["color"], st, "sRGB", "clamp", "rgb", Sdf.ValueTypeNames.Float3))
     if tex.get("normal") or tex.get("roughness"):
         st_tile = reader("ReadSTTile", "st_tile")
-        if tex.get("normal"):      # 노멀 맵 0~1 → −1~1 (OpenGL 방식 NormalGL)
+        if tex.get("normal"):      # 노멀 맵 0~1 → −1~1 (OpenGL 방식 NormalGL). strength 배로 기울기(x · y)를 키움
+            s = tex.get("normal_strength", 1.0)
             surf.CreateInput("normal", Sdf.ValueTypeNames.Normal3f).ConnectToSource(
-                texture("NormalTex", tex["normal"], st_tile, "raw", "repeat", "rgb", Sdf.ValueTypeNames.Float3, (2, 2, 2, 1), (-1, -1, -1, 0)))
+                texture("NormalTex", tex["normal"], st_tile, "raw", "repeat", "rgb", Sdf.ValueTypeNames.Float3, (2 * s, 2 * s, 2, 1), (-s, -s, -1, 0)))
         if tex.get("roughness"):
             surf.CreateInput("roughness", Sdf.ValueTypeNames.Float).ConnectToSource(
                 texture("RoughTex", tex["roughness"], st_tile, "raw", "repeat", "r", Sdf.ValueTypeNames.Float))
