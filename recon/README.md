@@ -2,6 +2,7 @@
 
 - **담당**: C · 이진우
 - **목적**: Point Cloud 를 정제해 Open3D 메쉬로 만들고, 경량화·Collider 를 거쳐 Isaac Sim 용 USD 로 변환한다.
+- **전체 순서 · 기준**: [`docs/guides/digital_twin_map.md`](../docs/guides/digital_twin_map.md) (촬영 → SLAM → 이 폴더 → Isaac Sim, 판마다 점검 기준)
 
 ## 간트 작업
 

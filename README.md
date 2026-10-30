@@ -25,6 +25,7 @@ NVIDIA Isaac Sim으로 옮겨 ROS2 기반 자율주행(카메라 기반 E2E 모�
 sensor/  slam/  recon/  sim/  e2e/  eval/   파트별 코드·설정 (각 폴더 README 참고)
 ros2_ws/src/                               ROS 2 패키지 (전부 여기)
 docs/interfaces/                           파트 간 인계 규약
+docs/guides/                               디지털 트윈 3D 맵 만들기 가이드라인 (촬영 → SLAM → USD → 점검)
 docs/                                      환경·서버 문서
 scripts/                                   공용 도구
 MANIFEST.md                                대용량 산출물 버전 목록
