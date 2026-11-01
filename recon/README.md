@@ -35,6 +35,7 @@ recon/configs/<이름>.yaml         설정 (입력 형식, voxel, 깊이 한계,
 recon/pipeline/io_rgbd.py         입력 읽기: open3d_lounge(시험용) · tum · rtabmap_keyframes(B 맵 v0.2)
 recon/pipeline/color_utils.py     키프레임 RGB → 메쉬 정점 색 투영 (가림 처리) + 키프레임 정합 점검
 recon/pipeline/floor_texture.py   바닥 한 장에 키프레임 사진을 1 cm 텍스처로 굽기 · 밝기 보정 · 주차칸 채우기 (v0.6)
+recon/pipeline/edge_finish.py     테두리 마감: 경계 밖 정리 · 연석 · 인도 · 잔디 · 섬 화단 · 나무 (v0.7)
 recon/pipeline/tsdf.py            RGB-D 프레임 + pose → TSDF → mesh_raw.ply (근거리) + mesh_far_raw.ply (원거리, 배경용)
 recon/pipeline/build_usd.py       정리 → 바닥 평면으로 Z-up·원점 → 구멍 메우기 → 경량화 → 충돌 메쉬 → 구역(바깥·배경·경계) → USD → 검증
 recon/pipeline/mesh_utils.py      공용: 지도 범위(footprint)와 평면·벽, 작은 구멍 메우기, 바닥 채우기
@@ -63,6 +64,7 @@ OUT=~/recon_out/lounge        # 결과를 둘 폴더 — 원하는 곳으로
   | --- | --- | --- | --- |
   | `Floor` | 바닥 한 장 + 사진 텍스처 재질 (`floor_texture:` 켠 경우, v0.6~) — 이때 `Visual` 은 바닥을 뺀 물체만 | O | |
   | `Visual` | 근거리 메쉬 (깊이 `depth_trunc`, 구멍 메우기 포함) | O | |
+  | `Curb` · `Sidewalk` · `Grass` · `Island` · `Trees` | 테두리 마감 (`edge:` 켠 경우, v0.7~) — 연석 · 인도 · 바깥 잔디 · 가운데 섬 화단 · 나무, 텍스처는 CC0 반복 재질 | O | 연석 · 인도 · 섬 · 줄기 |
   | `VisualFar` | 원거리 메쉬 중 근거리 지도 밖 부분 — 잡음이 있어 충돌에는 안 넣음 | O | |
   | `GroundFar` | 근거리 지도 밖 바닥 평면 (가까운 바닥 색) — 바깥 구역 바닥 구멍 가림 | O | |
   | `Backdrop` | 전체 지도 + `ground_margin_m` 테두리의 배경 벽 (단색) | O | |
@@ -104,6 +106,12 @@ B 가 형상 메쉬(원본 depth TSDF, 색 없음)와 키프레임을 넘기므�
   - `material`: 표면 요철(노멀)·거칠기 맵만 `tile_m` 마다 반복, `normal_strength` 배로 기울기를 키움 — **ambientCG [Asphalt031](https://ambientcg.com/view?id=Asphalt031) 2K-JPG (CC0)** 을 받아 `NormalGL` · `Roughness` · `Color`(detail 용) 경로를 적음 (레포에는 안 넣음). 없으면 색 텍스처만
   - 굽기는 키프레임 1,773장에 20~30분 → `reuse_bake: true` 면 같은 설정·입력으로 구운 `floor_tex/bake_raw.png` 를 다시 쓰고 마무리(`flatten` · `fill_stalls`)만 다시 함
   - 보기: `floor_textured/floor.obj` (텍스처째, Open3D 로 열림 — 요철·거칠기는 USD 에만)
+- **테두리 마감** (`edge:`, `pipeline/edge_finish.py`, v0.7~): 10/30 팀 결정 — 원경(`far_tsdf`)은 건물처럼 보이지 않고 잡음이라 끄고, 맵 테두리를 깔끔하게 마무리 (10/7 '인위적 마감 없이'를 바꿈)
+  - 경계 = 바닥 범위를 `smooth_m`(1 m) 다듬은 선. 경계 밖 바닥 · 스캔 조각은 지움 (B 차 자리는 남김), B 나무 자리 · 경계 안쪽 `tall_band_m` 의 `tall_cut_m` 넘는 스캔 조각(나무 · 덤불 잔해)도 지움
+  - 경계선을 따라 연석(`curb_h_m` 15 cm), 밖으로 인도 띠(`sidewalk_m` 2 m), 그 밖은 잔디(`outer_m` 40 m 까지), B 나무 자리에 줄기 + 수관 모델
+  - 가운데 섬(`island`): 바닥 범위 안 구멍을 `margin_m` 넓혀(둘레의 안 찍힌 계단 바닥까지) 연석 + 화단, 섬 쪽 주차 차 자리는 뺌
+  - 재질: ambientCG Concrete034 · PavingStones128 · Grass004 2K (CC0) 를 받아 `edge.materials` 에 경로 (레포에는 안 넣음)
+  - 모두 '보완(만든 것)' — 위치는 측정, 모양 · 재질은 만든 것
 - **v0.4**: B 가 두 판(a = v0.3 바닥 + 빈 곳 채움, b = 본네트 카메라 바닥 기준)을 보냄 → `map_v04a.yaml`, `map_v04b.yaml`. 바닥 고르기·색 정합이 나은 b 권장
 - **새 판(v0.n)을 받으면**: 영문 경로로 복사 → 체크섬 확인 → 직전 config 를 `map_v0n.yaml` 로 복사해 `root`·`out`·B 인계서의 새 조건만 바꿈
 

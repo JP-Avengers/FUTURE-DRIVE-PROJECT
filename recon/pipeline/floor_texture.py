@@ -302,8 +302,9 @@ def finish(out_dir, floor, c, root):
         zj = np.clip(((ys - z["lo"][1]) / float(z["cell"])).astype(int), 0, z["zone"].shape[1] - 1)
         asphalt = ndimage.binary_dilation(z["zone"] == 1, iterations=2)[zi[None, :], zj[:, None]]   # 10 cm 구역 경계가 거칠어 20 cm 넓게
         other = ndimage.binary_dilation(np.isin(z["zone"], [2, 3]), iterations=3)[zi[None, :], zj[:, None]]
+        red = ndimage.binary_dilation(z["zone"] == 3, iterations=3)[zi[None, :], zj[:, None]]
     else:
-        asphalt, other = np.ones((H, W), bool), np.zeros((H, W), bool)
+        asphalt, other, red = np.ones((H, W), bool), np.zeros((H, W), bool), np.zeros((H, W), bool)
     fv, g5 = np.asarray(floor.vertices), 0.05
     fp5 = np.zeros((int(np.ceil((y1 - y0) / g5)) + 1, int(np.ceil((x1 - x0) / g5)) + 1), bool)
     fp5[np.clip(((fv[:, 1] - y0) / g5).astype(int), 0, fp5.shape[0] - 1), np.clip(((fv[:, 0] - x0) / g5).astype(int), 0, fp5.shape[1] - 1)] = True
@@ -392,6 +393,8 @@ def finish(out_dir, floor, c, root):
         dark = ((lum < 0.8 * local) & (sat < 0.1)) | (lum < 0.5 * local)    # 회색 계열로 어둡거나 아주 어두운 곳 (차 그림자 · 차 밑)
         paint = (lum > 1.3 * local) & (sat < 0.15) & (gsd < 0.08) & (src >= 0)   # 찍힌 흰 페인트 (길에서 먼 주차선은 gsd 3~8 cm)
         fillable = asphalt & ~other & on_floor                  # 풀·붉은 보도 둘레 30 cm 는 안 채움 (구역이 색으로 나눈 대략값)
+        # 차 자리 · 차 둘레의 안 찍힌 바닥은 B 구역과 상관없이 (붉은 보도만 빼고) — 차는 포장 바닥에 섬. 섬 쪽 주차칸이 '풀'로 분류돼 빠졌음 (11.01)
+        fillable |= (rect | (near_unseen & (src < 0))) & on_floor & ~red
         fill = (rect | (near_car & dark) | (near_unseen & (src < 0))) & fillable
         fill &= ~ndimage.binary_dilation(paint, iterations=3)   # 흰 주차선은 차 사각형 안이어도 남김
         fill = ndimage.binary_opening(ndimage.binary_closing(fill, structure=np.ones((5, 5))), structure=np.ones((3, 3))) & fillable

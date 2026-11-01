@@ -14,6 +14,7 @@ import numpy as np
 import open3d as o3d
 import yaml
 
+import edge_finish
 import far_zone
 import floor_texture
 import io_rgbd
@@ -343,11 +344,19 @@ def main():
     else:
         print("[7/8] 구역: 끔 (config 에 zones 없음)")
 
-    # visual.ply = 보이는 부분 전부 (점검·보기용), 부분별 파일도 따로
-    o3d.io.write_triangle_mesh(os.path.join(out, "visual.ply"), merge(visuals.values()))
     if tex_info:                      # 바닥은 텍스처 재질을 쓰는 따로 된 prim (Floor), 물체는 Visual 에 정점 색 그대로
         fl, ob = split_first(visual, n_floor_tris)
         visuals = {"Floor": fl, "Visual": ob, **{k: m for k, m in visuals.items() if k != "Visual"}}
+    materials = {"Floor": tex_info} if tex_info else {}
+    if cfg.get("edge"):               # 테두리 마감 (v0.7): 경계 밖 정리 + 연석 · 인도 · 잔디 · 나무
+        edge_mats, report["edge"] = edge_finish.run(cfg, os.path.expanduser(cfg["input"]["root"]), visuals, colliders,
+                                                   ground or Ground())
+        materials.update(edge_mats)
+        er = report["edge"]
+        print(f"      테두리: 경계선 {er['outline_m']} m · 연석 {er['curb_h_m'] * 100:g} cm · 인도 {er['sidewalk_m']} m · 나무 {er['trees']}그루"
+              f" | 경계 밖 지운 삼각형 바닥 {er.get('floor_tris_removed', 0):,} · 물체 {er.get('visual_tris_removed', 0):,}")
+    # visual.ply = 보이는 부분 전부 (점검·보기용), 부분별 파일도 따로
+    o3d.io.write_triangle_mesh(os.path.join(out, "visual.ply"), merge(visuals.values()))
     o3d.io.write_triangle_mesh(os.path.join(out, "collider.ply"), colliders["Collision"])
     for name, fname in (("VisualFar", "visual_far.ply"), ("Backdrop", "backdrop.ply"), ("Boundary", "boundary.ply")):
         path = os.path.join(out, fname)
@@ -360,10 +369,11 @@ def main():
         info=dict(config=os.path.basename(args.config), transform="../transform.json",
                   **{f"{k}_tris": len(m.triangles) for k, m in {**visuals, **colliders}.items()}),
         double_sided=tuple(cfg.get("usd", {}).get("double_sided", ["Backdrop"])),
-        materials={"Floor": tex_info} if tex_info else None)
+        materials=materials)
     sk = cfg.get("sky")
     if sk and sets:   # 하늘 돔 텍스처 (지붕 키프레임 하늘 화소) — 씬의 돔 조명에 얹는 덮어쓰기 레이어 usd/sky.usda
-        prof, max_el = sky.profile([(sets[k], [T @ P for P in sets[k].poses]) for k in sk["sets"] if k in sets], cfg["far_tsdf"])
+        # 하늘 화소 기준(sky_*)은 far_tsdf 에 (v0.6 까지) 또는 sky 에 (v0.7~ 먼 구역 끔)
+        prof, max_el = sky.profile([(sets[k], [T @ P for P in sets[k].poses]) for k in sk["sets"] if k in sets], cfg.get("far_tsdf") or sk)
         nz = np.asarray(visual.vertex_normals)[:, 2] > 0.9
         gcol = np.median(np.asarray(visual.vertex_colors)[nz], axis=0) * 0.8 if visual.has_vertex_colors() else [0.4] * 3
         sky_path, sky_int = sky.write(os.path.join(out, "usd"), prof, gcol, sk["dome_intensity"])

@@ -37,15 +37,17 @@ def add_mesh(stage, path, mesh, with_color=True, double_sided=False, linear_colo
 
 
 def add_texture_material(stage, mesh_prim, mat_path, mesh, tex, usd_dir):
-    """바닥 텍스처 재질 (UsdPreviewSurface). tex = floor_texture.run 의 dict:
-    color (구운 사진, sRGB — 렌더러가 선형으로 바꿈) 은 st = 영역 안 위치 (0~1),
+    """텍스처 재질 (UsdPreviewSurface). tex = floor_texture.run · edge_finish.run 의 dict:
+    region 이 있으면 color (구운 사진, sRGB — 렌더러가 선형으로 바꿈) 는 st = 영역 안 위치 (0~1) — 바닥,
+    없으면 color 도 반복 재질 — 연석 · 인도 · 잔디.
     normal · roughness (CC0 재질, raw) 는 st_tile = 세계 xy / tile_m 로 반복. 텍스처는 usd/textures/ 로 복사."""
     os.makedirs(os.path.join(usd_dir, "textures"), exist_ok=True)
     v = np.asarray(mesh.vertices)
-    x0, x1, y0, y1 = tex["region"]
     pv = UsdGeom.PrimvarsAPI(mesh_prim)
-    pv.CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex).Set(
-        Vt.Vec2fArray.FromNumpy(np.c_[(v[:, 0] - x0) / (x1 - x0), (v[:, 1] - y0) / (y1 - y0)].astype(np.float32)))
+    if tex.get("region"):
+        x0, x1, y0, y1 = tex["region"]
+        pv.CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex).Set(
+            Vt.Vec2fArray.FromNumpy(np.c_[(v[:, 0] - x0) / (x1 - x0), (v[:, 1] - y0) / (y1 - y0)].astype(np.float32)))
     pv.CreatePrimvar("st_tile", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex).Set(
         Vt.Vec2fArray.FromNumpy((v[:, :2] / tex["tile_m"]).astype(np.float32)))
     mat = UsdShade.Material.Define(stage, mat_path)
@@ -75,11 +77,14 @@ def add_texture_material(stage, mesh_prim, mat_path, mesh, tex, usd_dir):
             t.CreateInput("bias", Sdf.ValueTypeNames.Float4).Set(Gf.Vec4f(*bias))
         return t.CreateOutput(out, out_type)
 
-    st = reader("ReadST", "st")
-    surf.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
-        texture("ColorTex", tex["color"], st, "sRGB", "clamp", "rgb", Sdf.ValueTypeNames.Float3))
+    st_tile = reader("ReadSTTile", "st_tile")
+    if tex.get("region"):
+        surf.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
+            texture("ColorTex", tex["color"], reader("ReadST", "st"), "sRGB", "clamp", "rgb", Sdf.ValueTypeNames.Float3))
+    else:
+        surf.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
+            texture("ColorTex", tex["color"], st_tile, "sRGB", "repeat", "rgb", Sdf.ValueTypeNames.Float3))
     if tex.get("normal") or tex.get("roughness"):
-        st_tile = reader("ReadSTTile", "st_tile")
         if tex.get("normal"):      # 노멀 맵 0~1 → −1~1 (OpenGL 방식 NormalGL). strength 배로 기울기(x · y)를 키움
             s = tex.get("normal_strength", 1.0)
             surf.CreateInput("normal", Sdf.ValueTypeNames.Normal3f).ConnectToSource(
