@@ -169,9 +169,12 @@ def run(cfg, root, visuals, colliders, ground):
     if e.get("objects") and os.path.exists(os.path.join(root, e["objects"])):
         rows = list(csv.DictReader(open(os.path.join(root, e["objects"]), encoding="utf-8")))
     trees = [r for r in rows if r["type"] == "tree"]
-    # 가운데 섬 = 바닥 범위 안의 구멍(화단) — margin_m 넓혀 둘레의 사진 안 닿은 계단 바닥까지 덮음 (구멍 둘레 3 m 는 99% 안 찍힘).
-    # 섬 쪽에 주차된 차 자리(+ car_gap_m)는 화단에서 뺌 — 차가 화단에 묻히지 않게
+    # 가운데 섬 = 바닥 범위 안의 구멍 — margin_m 넓혀 둘레의 사진 안 닿은 계단 바닥까지 (구멍 둘레 3 m 는 99% 안 찍힘).
+    #   mode floor (v0.7 r2~): 주변 도로와 같은 아스팔트 바닥으로 메움 — 구멍에 바닥을 깔고 섬 안 스캔 조각을 지움.
+    #     아스팔트 색은 floor_texture fill_stalls.holes 가 같은 자리를 채움 (11.01: 연석 + 화단은 어색함)
+    #   mode curb: 연석 + 화단, 섬 쪽에 주차된 차 자리(+ car_gap_m)는 화단에서 뺌
     isl = e.get("island") or {}
+    island_floor = isl.get("mode", "curb") == "floor"
     island = np.zeros(mask.shape, bool)
     if isl:
         hole = ndimage.binary_fill_holes(fp) & ~fp & mask
@@ -180,7 +183,8 @@ def run(cfg, root, visuals, colliders, ground):
         grow = ndimage.binary_dilation(big, iterations=int(isl.get("margin_m", 1.0) / cell))
         ii, jj = np.nonzero(grow)
         cars_g = np.zeros(mask.shape, bool)
-        cars_g[ii, jj] = _car_rects(rows, lo + (np.c_[ii, jj] + 0.5) * cell, margin=isl.get("car_gap_m", 0.5))
+        if not island_floor:
+            cars_g[ii, jj] = _car_rects(rows, lo + (np.c_[ii, jj] + 0.5) * cell, margin=isl.get("car_gap_m", 0.5))
         island = ndimage.gaussian_filter((grow & ~cars_g).astype(np.float32), isl.get("smooth_m", 0.8) / cell) > 0.5
         lab, nlab = ndimage.label(island)                                 # 차를 빼고 떨어져 나온 작은 조각은 버림
         if nlab:
@@ -200,7 +204,9 @@ def run(cfg, root, visuals, colliders, ground):
     for name in [k for k in ("Floor", "Visual") if k in visuals]:
         m = visuals[name]
         c = np.asarray(m.vertices)[np.asarray(m.triangles)].mean(1)
-        keep = (d_out(c[:, :2]) <= tol) & (look(dist_isl, c[:, :2]) <= tol)
+        keep = d_out(c[:, :2]) <= tol
+        if name == "Visual" or not island_floor:                        # 섬을 바닥으로 메울 땐 바닥은 그대로 두고 스캔 조각만 지움
+            keep &= look(dist_isl, c[:, :2]) <= tol
         if name == "Visual":
             cars = _car_rects(rows, c[:, :2])
             keep |= cars                                               # 경계 · 섬에 걸친 주차 차는 남김
@@ -221,7 +227,8 @@ def run(cfg, root, visuals, colliders, ground):
         covered = np.zeros(mask.shape, bool)                            # 실제 바닥 삼각형이 있는 칸 (fp 는 메워서 30 cm 틈이 빠짐)
         ij = np.clip(((fc - lo) / cell).astype(int), 0, shape - 1)
         covered[ij[:, 0], ij[:, 1]] = True
-        gap = ndimage.binary_dilation(mask & ~covered & ~island) & mask & ~island   # 한 칸 넓혀 원래 바닥 밑으로 2 mm 겹침 (이음새 틈)
+        skip = np.zeros(mask.shape, bool) if island_floor else island    # 섬을 바닥으로 메우면 섬 구멍도 여기서 깖
+        gap = ndimage.binary_dilation(mask & ~covered & ~skip) & mask & ~skip   # 한 칸 넓혀 원래 바닥 밑으로 2 mm 겹침 (이음새 틈)
         patch = grid_mesh(gap, lo, cell, lambda xy: ground.height(xy) - 0.002)
         if len(patch.triangles):
             fv = visuals["Floor"]
@@ -242,7 +249,7 @@ def run(cfg, root, visuals, colliders, ground):
     curb += curb_mesh(p, -n, ground, h, top_w)                         # 차로는 안쪽
     outline_m = len(p) * 0.2
     island_mesh = o3d.geometry.TriangleMesh()
-    if island.any():
+    if island.any() and not island_floor:
         for q, nq in outlines(island, lo, cell):                       # nq = 섬 바깥쪽 = 차로 쪽
             curb += curb_mesh(q, nq, ground, h, top_w)
             outline_m += len(q) * 0.2
@@ -267,7 +274,7 @@ def run(cfg, root, visuals, colliders, ground):
     # 4) 나무
     rng = np.random.default_rng(0)
     tvis, tcol = o3d.geometry.TriangleMesh(), o3d.geometry.TriangleMesh()
-    for r in trees:
+    for r in (trees if e.get("tree_models", True) else []):          # 11.01: 모델이 너무 인위적 → 끔 (스캔 나무 덩어리는 위에서 지움)
         x, y = float(r["x"]), float(r["y"])
         xy = np.array([[x, y]])
         z = float(ground.height(xy)[0]) + (h if d_out(xy)[0] > 0 or look(island, xy)[0] else 0)
@@ -283,14 +290,15 @@ def run(cfg, root, visuals, colliders, ground):
     col.compute_vertex_normals()
     colliders["Collision"] = col
     st.update(outline_m=round(float(outline_m), 1), curb_h_m=h, sidewalk_m=sw, sidewalk_tris=len(sidewalk.triangles),
-              grass_tris=len(grass.triangles), trees=len(trees), tree_tris=len(tvis.triangles))
+              grass_tris=len(grass.triangles), trees=len(trees) if e.get("tree_models", True) else 0, tree_tris=len(tvis.triangles),
+              island_mode=isl.get("mode", "curb") if isl else None)
 
     mats = {}
     for part, key in (("Curb", "curb"), ("Sidewalk", "sidewalk"), ("Grass", "grass"), ("Island", "grass")):
         mm = (e.get("materials") or {}).get(key)
         if not mm:
             continue
-        t = dict(tile_m=mm.get("tile_m", 1.0), normal_strength=mm.get("normal_strength", 1.0))
+        t = dict(tile_m=mm.get("tile_m", 1.0), normal_strength=mm.get("normal_strength", 1.0), roughness_range=mm.get("roughness_range"))
         for k_ in ("color", "normal", "roughness"):
             path = os.path.expanduser(mm[k_]) if mm.get(k_) else None
             t[k_] = path if path and os.path.exists(path) else None

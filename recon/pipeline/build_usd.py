@@ -277,7 +277,6 @@ def main():
             sets.append((name, f2, [T @ P for P in f2.poses], lifts.get(name, 0.0), exclude))
         floor_mesh = split_first(scene, n_floor_tris)[0]
         tex_info, report["floor_texture"] = floor_texture.run(cfg, out, floor_mesh, scene, ground, sets)
-        floor_texture.write_obj(os.path.join(out, "floor_textured"), floor_mesh, tex_info)   # 보기용 (view_ply 로 텍스처째)
         ftr = report["floor_texture"]
         print(f"      바닥 텍스처: 사진으로 칠한 텍셀 {ftr['seen_pct']}% · 화소 크기 중앙 {ftr['gsd_cm_p10_50_90'][1]} cm"
               f" | 주차칸 채움 {ftr['finish'].get('filled_m2', 0)} m² (차 {ftr['finish'].get('cars', 0)}대)")
@@ -355,6 +354,12 @@ def main():
         er = report["edge"]
         print(f"      테두리: 경계선 {er['outline_m']} m · 연석 {er['curb_h_m'] * 100:g} cm · 인도 {er['sidewalk_m']} m · 나무 {er['trees']}그루"
               f" | 경계 밖 지운 삼각형 바닥 {er.get('floor_tris_removed', 0):,} · 물체 {er.get('visual_tris_removed', 0):,}")
+    if materials:                     # 보기용 텍스처 메쉬 (view_ply 로 텍스처째, 요철 · 거칠기는 USD 에만) — 바닥 + 테두리
+        import shutil
+        shutil.rmtree(os.path.join(out, "floor_textured"), ignore_errors=True)
+        for part, tex in materials.items():
+            if part in visuals and tex.get("color"):
+                floor_texture.write_obj(os.path.join(out, "floor_textured"), visuals[part], tex, name=part.lower())
     # visual.ply = 보이는 부분 전부 (점검·보기용), 부분별 파일도 따로
     o3d.io.write_triangle_mesh(os.path.join(out, "visual.ply"), merge(visuals.values()))
     o3d.io.write_triangle_mesh(os.path.join(out, "collider.ply"), colliders["Collision"])
@@ -364,6 +369,8 @@ def main():
             o3d.io.write_triangle_mesh(path, visuals[name] if name in visuals else colliders[name])
         elif os.path.exists(path):
             os.remove(path)
+    import shutil
+    shutil.rmtree(os.path.join(out, "usd"), ignore_errors=True)   # 이전 실행의 텍스처가 남지 않게 (재질을 바꾸면 쓰지 않는 파일이 쌓였음)
     scene_usd, mesh_usd = usd_utils.write_scene(
         os.path.join(out, "usd"), cfg["name"], visuals, colliders,
         info=dict(config=os.path.basename(args.config), transform="../transform.json",

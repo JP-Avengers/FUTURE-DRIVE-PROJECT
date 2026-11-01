@@ -65,7 +65,7 @@ python recon/pipeline/check_visibility.py --config recon/configs/<장소>.yaml -
 | 색 | 키프레임 사진을 메쉬에 투영 (가림 처리, 여러 묶음 우선순위) | `colorize` | |
 | **바닥 텍스처** (v0.6) | 바닥에 사진을 1 cm 텍스처로 굽기 · 밝기 맞추기 · 아스팔트 색 통일 · 주차칸 채우기 · 잔무늬 · CC0 요철 | `floor_texture` | 정점 색(5 cm)은 주차선이 뭉개짐 |
 | 충돌 | 바닥 10 cm 격자 + 물체 줄인 것, 바닥 근처 납작한 조각 삭제 | `single_floor.collision_*` | 연석이 경사로가 되지 않게, PhysX 멈춤 방지 |
-| 테두리 마감 (v0.7) | 바닥 범위를 1 m 다듬은 경계 밖 정리 + 연석 · 인도 띠 · 바깥 잔디 · 나무(B 위치), 가운데 섬은 연석 + 화단 | `edge` | 원경(스캔 밖 depth 3D)은 건물처럼 보이지 않고 잡음이라 뺌 — 켜면 X-Mobility 평균 이탈 0.80 → 1.59 m (10.30 팀 결정, `far_tsdf` 끔) |
+| 테두리 마감 (v0.7) | 바닥 범위를 1 m 다듬은 경계 밖 정리 + 연석 · 인도 띠 · 바깥 땅, 가운데 섬은 주변 아스팔트로 메움 (나무 모델 · 넓은 잔디 · 섬 화단은 어색해서 뺌, 11.01) | `edge` | 원경(스캔 밖 depth 3D)은 건물처럼 보이지 않고 잡음이라 뺌 — 켜면 X-Mobility 평균 이탈 0.80 → 1.59 m (10.30 팀 결정, `far_tsdf` 끔) |
 | 하늘 | 지붕 키프레임 하늘 화소로 돔 텍스처 | `sky` | |
 | USD | `Floor` · `Visual` · `VisualFar` · `Collision`(안 보임) · `Boundary`(경계벽), m · Z-up, 씬 .usda + 메쉬 .usdc | `usd` | 부분마다 끄고 켜서 비교 |
 
@@ -78,7 +78,7 @@ python recon/pipeline/check_visibility.py --config recon/configs/<장소>.yaml -
 | 측정 그대로 | 형상 · 높이 · 연석, 주차선 위치, 노면 무늬 · 얼룩 (1 cm) |
 | 측정에서 조명만 뺌 | 아스팔트 색 통일 — 촬영 때 해 방향 · 그림자 · 날짜 차이 (시뮬레이터는 자기 조명을 따로 비춤) |
 | 보완 (추정) | 차 밑 주차칸 · 차 둘레 안 찍힌 바닥 약 470 m² (`floor_tex/fill_mask_4cm.png`), 1~4 cm 잔무늬 일부 · mm 요철 (CC0 Asphalt031) |
-| 보완 (만든 것) | 연석 · 인도 · 잔디 · 섬 화단 · 나무 모델 — 위치는 측정(바닥 경계 · B 나무 20그루 · 연석 실측), 모양 · 재질은 만든 것 (CC0 Concrete034 · PavingStones128 · Grass004) |
+| 보완 (만든 것) | 연석 · 인도 · 바깥 땅 · 섬 아스팔트 — 위치는 측정(바닥 경계 · 연석 실측), 모양 · 재질은 만든 것 (CC0 Concrete034 · PavingStones128 · Ground037) |
 
 보완 단계는 설정에서 끌 수 있습니다 (`flatten` · `fill_stalls` · `detail` · `material` · `edge`). 끄면 측정 그대로의 판.
 
@@ -100,7 +100,7 @@ python recon/pipeline/check_visibility.py --config recon/configs/<장소>.yaml -
 | 바닥 텍스처 | 사진으로 칠한 비율, 화소 크기(gsd), 잔무늬 대비(실제 사진과 비슷하게) | `floor_tex/bake_stats.json` |
 | 크기 | 실측과 비교 (주차칸 · 차로 폭) | 3D 에서 두 점 거리 vs 줄자 |
 | 주행 | 자동 교사 · X-Mobility · Nav2 한 바퀴 완주, 평균 이탈 · 멈춤 | D (예: v0.6 X-Mobility 0.63 m, Nav2 0.24 m) |
-| 화면 | 로봇 카메라 높이에서 바닥 · 주차선 · 얼룩 | D 영상 · C 간이 렌더 |
+| 화면 · 재질 | 로봇 카메라 높이에서 바닥 · 주차선 · 얼룩, 해가 있을 때 번들거리지 않는지 | `recon/tools/preview_blender.py` (Blender, 흐린 날 · 해) → D 영상으로 최종 확인 |
 
 결과는 `out/versions/VERSIONS.md` 에 판마다 같은 표로 쌓습니다.
 
@@ -125,7 +125,7 @@ python recon/pipeline/check_visibility.py --config recon/configs/<장소>.yaml -
 
 ## 7. 알려진 한계
 
-- 촬영 범위 밖은 연석 · 인도 · 잔디 · 나무로 마감하고 그 너머는 하늘 (실제 건물은 없음 — 10.30 결정)
+- 촬영 범위 밖은 연석 · 인도 · 바깥 땅으로 마감하고 그 너머는 하늘 (실제 건물 · 나무는 없음 — 10.30 · 11.01 결정)
 - 스캔된 주차 차는 그대로라 거칠게 보임 (차 모델로 바꿀지는 따로 결정)
 - 촬영 때 30 cm 보다 좁은 그림자 · 햇빛 줄은 바닥 텍스처에 남음
 - 사진이 안 닿은 바닥 가장자리는 정점 색이라 계단 모양 경계가 일부 남음

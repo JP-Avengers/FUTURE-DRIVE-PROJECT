@@ -398,6 +398,17 @@ def finish(out_dir, floor, c, root):
         fill = (rect | (near_car & dark) | (near_unseen & (src < 0))) & fillable
         fill &= ~ndimage.binary_dilation(paint, iterations=3)   # 흰 주차선은 차 사각형 안이어도 남김
         fill = ndimage.binary_opening(ndimage.binary_closing(fill, structure=np.ones((5, 5))), structure=np.ones((3, 3))) & fillable
+        fh = fs.get("holes") or {}
+        if fh:   # 바닥 범위 안 큰 구멍(가운데 섬) + 둘레 margin_m 의 안 찍힌 바닥도 아스팔트로 — 테두리 마감이 그 자리에 바닥을 깖 (11.01)
+            hole = ndimage.binary_fill_holes(ndimage.binary_closing(fp5, iterations=2)) & ~ndimage.binary_closing(fp5, iterations=2)
+            lab, nlab = ndimage.label(hole)
+            big = np.isin(lab, 1 + np.nonzero(ndimage.sum(hole, lab, range(1, nlab + 1)) * g5 * g5 >= fh.get("min_area_m2", 4.0))[0])
+            ring = ndimage.binary_dilation(big, iterations=int(fh.get("margin_m", 3.0) / g5))
+            ring_t = ring[((ys - y0) / g5).astype(int)[:, None], ((xs - x0) / g5).astype(int)[None, :]]
+            hole_t = big[((ys - y0) / g5).astype(int)[:, None], ((xs - x0) / g5).astype(int)[None, :]]
+            bad = hole_t | (ring_t & ((src < 0) | dark))               # 구멍 + 둘레의 안 찍히거나 어둡게 찍힌 바닥 (지붕 카메라 · 그림자)
+            fill |= bad & ~rect & ~ndimage.binary_dilation(paint, iterations=3)
+            st["holes_filled_m2"] = round(float(bad.sum()) * cell * cell, 1)
         img, n_patch = _fill_asphalt(img, fill, src, gsd, asphalt, local, lum, asph_c, coarse, up, smooth_valid, k, cell, fs)
         _save(fill.astype(np.float32)[::4, ::4], os.path.join(out_dir, "fill_mask_4cm.png"))
         st.update(cars=len(cars), filled_m2=round(float(fill.sum()) * cell * cell, 1),
@@ -479,20 +490,25 @@ def _fill_asphalt(img, fill, src, gsd, asphalt, local, lum, asph_c, coarse, up, 
     return img, len(patches)
 
 
-def write_obj(d, floor, tex):
-    """보기용 텍스처 메쉬 floor.obj + floor.mtl + 색 텍스처 (Open3D · view_ply 로 열림). 요철·거칠기는 USD 에만."""
+def write_obj(d, mesh, tex, name="floor"):
+    """보기용 텍스처 메쉬 <name>.obj + .mtl + 색 텍스처 (Open3D · view_ply 로 열림). 요철·거칠기는 USD 에만.
+    tex 에 region 이 있으면 영역 UV (바닥 사진), 없으면 세계 xy / tile_m (반복 재질 — 연석 · 인도 · 잔디)."""
     import shutil
     os.makedirs(d, exist_ok=True)
-    v, t = np.asarray(floor.vertices), np.asarray(floor.triangles) + 1
-    x0, x1, y0, y1 = tex["region"]
-    name = os.path.basename(tex["color"])
-    with open(os.path.join(d, "floor.obj"), "w") as fh:
-        fh.write("mtllib floor.mtl\nusemtl floor\n")
+    v, t = np.asarray(mesh.vertices), np.asarray(mesh.triangles) + 1
+    if tex.get("region"):
+        x0, x1, y0, y1 = tex["region"]
+        uv = np.c_[(v[:, 0] - x0) / (x1 - x0), (v[:, 1] - y0) / (y1 - y0)]
+    else:
+        uv = v[:, :2] / tex["tile_m"]
+    img = f"{name}_{os.path.basename(tex['color'])}"
+    with open(os.path.join(d, f"{name}.obj"), "w") as fh:
+        fh.write(f"mtllib {name}.mtl\nusemtl {name}\n")
         np.savetxt(fh, v, fmt="v %.4f %.4f %.4f")
-        np.savetxt(fh, np.c_[(v[:, 0] - x0) / (x1 - x0), (v[:, 1] - y0) / (y1 - y0)], fmt="vt %.6f %.6f")
+        np.savetxt(fh, uv, fmt="vt %.6f %.6f")
         np.savetxt(fh, np.repeat(t, 2, axis=1), fmt="f %d/%d %d/%d %d/%d")
-    open(os.path.join(d, "floor.mtl"), "w").write(f"newmtl floor\nKa 1 1 1\nKd 1 1 1\nmap_Kd {name}\n")
-    shutil.copyfile(tex["color"], os.path.join(d, name))
+    open(os.path.join(d, f"{name}.mtl"), "w").write(f"newmtl {name}\nKa 1 1 1\nKd 1 1 1\nmap_Kd {img}\n")
+    shutil.copyfile(tex["color"], os.path.join(d, img))
 
 
 def run(cfg, out, floor, occ_mesh, ground, sets):
@@ -526,6 +542,7 @@ def run(cfg, out, floor, occ_mesh, ground, sets):
     st["finish"] = fst
     m = c.get("material", {})
     info = dict(color=color, region=region, tile_m=m.get("tile_m", 1.0), normal_strength=m.get("normal_strength", 1.0),
+                roughness_range=m.get("roughness_range"),
                 normal=os.path.expanduser(m["normal"]) if m.get("normal") else None,
                 roughness=os.path.expanduser(m["roughness"]) if m.get("roughness") else None)
     for k_ in ("normal", "roughness"):

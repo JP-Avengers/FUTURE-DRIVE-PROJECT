@@ -62,9 +62,15 @@ def add_texture_material(stage, mesh_prim, mat_path, mesh, tex, usd_dir):
         r.CreateInput("varname", Sdf.ValueTypeNames.Token).Set(var)
         return r.CreateOutput("result", Sdf.ValueTypeNames.Float2)
 
-    def texture(name, src, st, color_space, wrap, out, out_type, scale=None, bias=None):
-        dst = f"textures/{os.path.basename(src)}"
-        shutil.copyfile(src, os.path.join(usd_dir, dst))
+    def texture(name, src, st, color_space, wrap, out, out_type, scale=None, bias=None, convert=None, tag=""):
+        base, ext = os.path.splitext(os.path.basename(src))
+        dst = f"textures/{base}{tag}{ext}"
+        if convert is None:
+            shutil.copyfile(src, os.path.join(usd_dir, dst))
+        else:                      # 값을 바꾼 사본 (렌더러마다 scale · bias 처리가 달라서 텍스처 자체에 반영 — Blender 미리보기 = Isaac Sim)
+            from PIL import Image
+            a = np.asarray(Image.open(src).convert("RGB" if out == "rgb" else "L")).astype(np.float32) / 255
+            Image.fromarray((np.clip(convert(a), 0, 1) * 255 + 0.5).astype(np.uint8)).save(os.path.join(usd_dir, dst), quality=95)
         t = UsdShade.Shader.Define(stage, f"{mat_path}/{name}")
         t.CreateIdAttr("UsdUVTexture")
         t.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(f"./{dst}")
@@ -85,13 +91,22 @@ def add_texture_material(stage, mesh_prim, mat_path, mesh, tex, usd_dir):
         surf.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
             texture("ColorTex", tex["color"], st_tile, "sRGB", "repeat", "rgb", Sdf.ValueTypeNames.Float3))
     if tex.get("normal") or tex.get("roughness"):
-        if tex.get("normal"):      # 노멀 맵 0~1 → −1~1 (OpenGL 방식 NormalGL). strength 배로 기울기(x · y)를 키움
-            s = tex.get("normal_strength", 1.0)
+        if tex.get("normal"):      # 노멀 맵 0~1 → −1~1 (OpenGL 방식 NormalGL). strength 배로 기울기(x · y)를 키운 사본
+            k = tex.get("normal_strength", 1.0)
+
+            def strengthen(a):
+                n = a * 2 - 1
+                n[..., :2] *= k
+                n /= np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-6)
+                return (n + 1) / 2
             surf.CreateInput("normal", Sdf.ValueTypeNames.Normal3f).ConnectToSource(
-                texture("NormalTex", tex["normal"], st_tile, "raw", "repeat", "rgb", Sdf.ValueTypeNames.Float3, (2 * s, 2 * s, 2, 1), (-s, -s, -1, 0)))
-        if tex.get("roughness"):
+                texture("NormalTex", tex["normal"], st_tile, "raw", "repeat", "rgb", Sdf.ValueTypeNames.Float3, (2, 2, 2, 1), (-1, -1, -1, 0),
+                        convert=strengthen if k != 1.0 else None, tag=f"_x{k:g}" if k != 1.0 else ""))
+        if tex.get("roughness"):   # roughness_range [lo, hi] 로 다시 맞춘 사본 (CC0 아스팔트 거칠기가 낮아 햇빛에 젖은 노면처럼 번들거림, 11.01)
+            rr = tex.get("roughness_range")
             surf.CreateInput("roughness", Sdf.ValueTypeNames.Float).ConnectToSource(
-                texture("RoughTex", tex["roughness"], st_tile, "raw", "repeat", "r", Sdf.ValueTypeNames.Float))
+                texture("RoughTex", tex["roughness"], st_tile, "raw", "repeat", "r", Sdf.ValueTypeNames.Float,
+                        convert=(lambda a: rr[0] + (rr[1] - rr[0]) * a) if rr else None, tag=f"_r{rr[0]:g}-{rr[1]:g}" if rr else ""))
     UsdShade.MaterialBindingAPI.Apply(mesh_prim.GetPrim()).Bind(mat)
     return mat
 

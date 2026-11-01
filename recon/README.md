@@ -35,7 +35,8 @@ recon/configs/<이름>.yaml         설정 (입력 형식, voxel, 깊이 한계,
 recon/pipeline/io_rgbd.py         입력 읽기: open3d_lounge(시험용) · tum · rtabmap_keyframes(B 맵 v0.2)
 recon/pipeline/color_utils.py     키프레임 RGB → 메쉬 정점 색 투영 (가림 처리) + 키프레임 정합 점검
 recon/pipeline/floor_texture.py   바닥 한 장에 키프레임 사진을 1 cm 텍스처로 굽기 · 밝기 보정 · 주차칸 채우기 (v0.6)
-recon/pipeline/edge_finish.py     테두리 마감: 경계 밖 정리 · 연석 · 인도 · 잔디 · 섬 화단 · 나무 (v0.7)
+recon/pipeline/edge_finish.py     테두리 마감: 경계 밖 정리 · 연석 · 인도 · 바깥 땅 · 섬 메우기 (v0.7)
+recon/tools/preview_blender.py    씬 USD 를 Blender 로 열어 로봇 카메라 높이 렌더 (흐린 날 · 해) — Isaac Sim 없이 재질 확인
 recon/pipeline/tsdf.py            RGB-D 프레임 + pose → TSDF → mesh_raw.ply (근거리) + mesh_far_raw.ply (원거리, 배경용)
 recon/pipeline/build_usd.py       정리 → 바닥 평면으로 Z-up·원점 → 구멍 메우기 → 경량화 → 충돌 메쉬 → 구역(바깥·배경·경계) → USD → 검증
 recon/pipeline/mesh_utils.py      공용: 지도 범위(footprint)와 평면·벽, 작은 구멍 메우기, 바닥 채우기
@@ -108,12 +109,22 @@ B 가 형상 메쉬(원본 depth TSDF, 색 없음)와 키프레임을 넘기므�
   - 보기: `floor_textured/floor.obj` (텍스처째, Open3D 로 열림 — 요철·거칠기는 USD 에만)
 - **테두리 마감** (`edge:`, `pipeline/edge_finish.py`, v0.7~): 10/30 팀 결정 — 원경(`far_tsdf`)은 건물처럼 보이지 않고 잡음이라 끄고, 맵 테두리를 깔끔하게 마무리 (10/7 '인위적 마감 없이'를 바꿈)
   - 경계 = 바닥 범위를 `smooth_m`(1 m) 다듬은 선. 경계 밖 바닥 · 스캔 조각은 지움 (B 차 자리는 남김), B 나무 자리 · 경계 안쪽 `tall_band_m` 의 `tall_cut_m` 넘는 스캔 조각(나무 · 덤불 잔해)도 지움
-  - 경계선을 따라 연석(`curb_h_m` 15 cm), 밖으로 인도 띠(`sidewalk_m` 2 m), 그 밖은 잔디(`outer_m` 40 m 까지), B 나무 자리에 줄기 + 수관 모델
-  - 가운데 섬(`island`): 바닥 범위 안 구멍을 `margin_m` 넓혀(둘레의 안 찍힌 계단 바닥까지) 연석 + 화단, 섬 쪽 주차 차 자리는 뺌
-  - 재질: ambientCG Concrete034 · PavingStones128 · Grass004 2K (CC0) 를 받아 `edge.materials` 에 경로 (레포에는 안 넣음)
+  - 경계선을 따라 연석(`curb_h_m` 15 cm), 밖으로 인도 띠(`sidewalk_m` 2 m), 그 밖은 바깥 땅(`outer_m` 8 m 까지). 나무 모델(`tree_models`)은 너무 인위적이라 끔 (11.01)
+  - 가운데 섬(`island`): 바닥 범위 안 구멍 둘레의 스캔 조각을 지우고 `mode: floor` = 주변과 같은 아스팔트로 메움 (텍스처는 `floor_texture.fill_stalls.holes`), `mode: curb` = 연석 + 화단
+  - 재질: ambientCG Concrete034 · PavingStones128 · Ground037 2K (CC0) 를 받아 `edge.materials` 에 경로 (레포에는 안 넣음). `roughness_range` · `normal_strength` 는 텍스처 사본에 반영 (렌더러마다 scale · bias 처리가 달라서)
   - 모두 '보완(만든 것)' — 위치는 측정, 모양 · 재질은 만든 것
 - **v0.4**: B 가 두 판(a = v0.3 바닥 + 빈 곳 채움, b = 본네트 카메라 바닥 기준)을 보냄 → `map_v04a.yaml`, `map_v04b.yaml`. 바닥 고르기·색 정합이 나은 b 권장
 - **새 판(v0.n)을 받으면**: 영문 경로로 복사 → 체크섬 확인 → 직전 config 를 `map_v0n.yaml` 로 복사해 `root`·`out`·B 인계서의 새 조건만 바꿈
+
+### 재질 미리보기 — Blender (Isaac Sim 없이)
+
+Blender(4.5 LTS, 무료)의 USD 가져오기는 UsdPreviewSurface · 텍스처 · UV 를 그대로 읽는다. EEVEE 는 Isaac Sim(RTX)과 다른 렌더러지만 같은 물리 기반 재질 규칙이라 재질 느낌은 거의 같다.
+
+```bash
+blender -b -P recon/tools/preview_blender.py -- --usd $OUT/usd/parking_scene.usda --route eval/routes/parking_r3_cw.csv --out $OUT/preview --views 6 --light both --overview
+```
+
+기준선 위 6곳의 로봇 카메라(0.35 m · 90°) 시점을 흐린 날(돔 조명만 — D 씬 기본)과 해(비스듬한 햇빛 — 요철 · 거칠기) 두 조명으로 렌더 (10장에 1분 안팎, Intel Arc). 정점 색만 있는 스캔 물체는 displayColor 재질을 붙여 그린다.
 
 ### 결과 확인 — `$OUT/`
 
@@ -157,6 +168,16 @@ OUT=~/recon_out/rehearsal     # 결과를 둘 폴더 — 원하는 곳으로
 # 2) OBJ → USD (/World/VisualMesh + /World/ColliderMesh, Z-up · m)
 ~/o3d_env/bin/python recon/rehearsal/to_usd.py --out $OUT
 ```
+
+### 재질 미리보기 — Blender (Isaac Sim 없이)
+
+Blender(4.5 LTS, 무료)의 USD 가져오기는 UsdPreviewSurface · 텍스처 · UV 를 그대로 읽는다. EEVEE 는 Isaac Sim(RTX)과 다른 렌더러지만 같은 물리 기반 재질 규칙이라 재질 느낌은 거의 같다.
+
+```bash
+blender -b -P recon/tools/preview_blender.py -- --usd $OUT/usd/parking_scene.usda --route eval/routes/parking_r3_cw.csv --out $OUT/preview --views 6 --light both --overview
+```
+
+기준선 위 6곳의 로봇 카메라(0.35 m · 90°) 시점을 흐린 날(돔 조명만 — D 씬 기본)과 해(비스듬한 햇빛 — 요철 · 거칠기) 두 조명으로 렌더 (10장에 1분 안팎, Intel Arc). 정점 색만 있는 스캔 물체는 displayColor 재질을 붙여 그린다.
 
 ### 결과 확인 — `$OUT/`
 
