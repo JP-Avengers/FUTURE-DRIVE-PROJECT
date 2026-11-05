@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>fd_xm_infer</name>
+  <version>0.0.0</version>
+  <description>X-Mobility 파인튜닝 체크포인트(.ckpt) 추론 노드 — 카메라 · odom · 경로 → /cmd_vel (Isaac Sim Nova Carter). torch · gin · X-Mobility 레포는 rosdep 밖(envs/ml_env)</description>
+  <maintainer email="jdhyeon280812@gmail.com">donghyeon</maintainer>
+  <license>TODO: License declaration</license>
+
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>tf2_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>rcl_interfaces</depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-pil</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
