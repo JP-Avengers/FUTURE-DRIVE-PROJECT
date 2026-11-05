@@ -8,7 +8,7 @@ X-Mobility 레포(NVlabs/X-Mobility 5837aea)의 train.py 와 같은 학습 루�
      여기서는 gin 값으로 모델을 만들고 state_dict 만 넣은 뒤, 빠진(missing) · 남는(unexpected) 키를 출력한다.
      missing 이 하나라도 있으면 멈춘다(--allow-missing 으로만 통과). 우리 데이터엔 의미 분할이 없어
      ENABLE_SEMANTIC=False 이므로 사전학습 ckpt 의 model.semantic_decoder.* 가 unexpected 로 나오는 것은 정상.
-  2. gin 바인딩 오타 — 원본은 skip_unknown=True 라 틀린 이름이 조용히 무시된다. 여기서는 모르는 이름이면 멈춤.
+  2. gin 바인딩 오타 — 원본은 skip_unknown=True 라 틀린 이름이 조용히 무시된다. 여기서는 train · evaluate_* 만 건너뛰고 나머지 모르는 이름이면 멈춤.
   3. 기록 — 출력 폴더에 run_meta.json(이 레포 · X-Mobility 레포 커밋, ckpt sha256, 데이터 경로, 명령, 키 대조 결과)과
      gin_operative.txt 를 남긴다(MANIFEST 의 checkpoint 행 출처 칸에 그대로 옮김).
 
@@ -34,6 +34,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 # 사전학습 ckpt 에는 있지만 우리 설정(ENABLE_SEMANTIC=False)에는 없는 모듈 — unexpected 로 나와도 정상
 EXPECTED_UNEXPECTED = ("model.semantic_decoder.",)
+# base_train_config.gin 이 바인딩하지만 X-Mobility train.py · evaluate.py 에만 있는 configurable(여기선 import 안 함)
+GIN_SKIP = ("train", "evaluate_observation", "evaluate_prediction")
 
 
 def git_rev(path):
@@ -114,8 +116,17 @@ def main():
     def finetune(epochs, precision, freeze_prefixes=()):
         return epochs, precision, tuple(freeze_prefixes)
 
-    gin.add_config_file_search_path(xm)       # include 'configs/base_train_config.gin' 을 X-Mobility 레포 기준으로 찾음
-    gin.parse_config_files_and_bindings(cfgs, a.gin, skip_unknown=False)
+    # include 'configs/base_train_config.gin' 은 파싱하는 동안만 X-Mobility 레포로 cd 해서 찾게 함 — gin 0.5.0 은 현재 폴더에서
+    # 못 찾으면 'configs' 를 파이썬 패키지로 찾는데, sys.path 의 e2e/configs(패키지 아님)가 namespace 로 잡혀
+    # gin/resource_reader.py:89 에서 TypeError. base 설정의 train · evaluate_* 는 X-Mobility train.py · evaluate.py 의
+    # configurable 이라 여기선 등록 안 됨 → 그 이름만 건너뛰고, 나머지 모르는 이름(오타)은 그대로 멈춤.
+    gin.add_config_file_search_path(xm)
+    cwd = os.getcwd()
+    os.chdir(xm)
+    try:
+        gin.parse_config_files_and_bindings(cfgs, a.gin, skip_unknown=list(GIN_SKIP))
+    finally:
+        os.chdir(cwd)
     epochs, precision, freeze = finetune()
 
     model = XMobilityTrainer()                # lr · weight_decay · pct_start = gin 값

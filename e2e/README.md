@@ -31,6 +31,7 @@
 | --- | --- |
 | `check_xm_dataset.py` | 학습 형식(xm_v1) 점검 — X-Mobility 로더가 가정하는 폴더 구조 · 열 길이 · JPEG 512×320 · NaN · 명령 가운데 4칸 0 · 녹화 묶음 split 누수, split · 시나리오별 v · ω · 경로 지시 분포. 오류면 종료 코드 1 |
 | `finetune.py` | 파인튜닝 실행기 — X-Mobility `train.py` 와 같은 루프, 세 가지를 고침(아래) |
+| `eval_offline.py` | 오프라인(개루프) 평가 — test split 을 run 파일마다 처음부터 한 프레임씩, 배포 노드(`x_mobility_navigator`)와 같게 상태 · 직전 명령을 이어 가며 추론. 시나리오별 · 경로 지시별 · 장애물 근처 v · ω MAE, ω 부호 일치, 경로 ADE/FDE. 폐루프 주행 성능과는 다름 |
 | `kaggle_finetune.ipynb` | Kaggle 무료 GPU(T4 × 2)용 노트북 — 시험(40스텝, 스텝 시간 실측) → 본 학습(남은 시간에 맞춰 에폭 수 자동). 준비 순서는 노트북 첫 칸 |
 | `configs/finetune_parking_r3.gin` | 파인튜닝 설정 — X-Mobility `base_train_config.gin` 위에 `ENABLE_SEMANTIC=False` · 에폭 · lr · 배치만 바꿈 |
 
@@ -64,6 +65,15 @@ CUDA_VISIBLE_DEVICES=1 python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobil
 - `run_meta.json` 에 스텝 시간(`step_time_s`, 데이터 로딩 포함 중앙값) · 에폭당 스텝(`steps_per_epoch`) · GPU 최대 메모리가 남습니다 — 짧은 시험으로 본 학습 시간을 정할 때 씁니다.
 - GPU 0 은 Isaac Sim 고정이라 학습은 `CUDA_VISIBLE_DEVICES=1` 을 권합니다([`docs/server207.md`](../docs/server207.md)).
 - 같은 출력 폴더에 체크포인트가 있으면 덮어쓰지 않고 멈춥니다.
+
+### 오프라인 평가 (학습 뒤)
+
+```bash
+python e2e/eval_offline.py --xm-repo ~/xmobility_test/X-Mobility -c e2e/configs/finetune_parking_r3.gin \
+    -d data/teacher/xm_v1 -p data/checkpoints/xm_ft_v0.1/checkpoints/<best>.ckpt -o logs/xm_eval_v0.1
+# 비교용: 같은 명령에 -p <사전학습 ckpt> → 제로샷. --teacher-forcing 은 직전 명령을 교사 값으로(학습 때 조건)
+```
+→ `frames.csv`(프레임별) · `summary.json`(묶음별 지표) · `run_meta.json`. xm_v1 test 는 경로 지시에 좌회전이 없음(val/test 분할 문제, `resplit_xm.py` 참고).
 
 ## 검증 상태 (11.4)
 
