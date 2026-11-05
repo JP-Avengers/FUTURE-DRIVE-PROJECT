@@ -36,6 +36,8 @@ finetune.py 의 finetune 만 건너뜀(base_train_config.gin:16-26 에 있음). 
 
 출력(-o 폴더): frames.csv(프레임별) · summary.json(묶음별 지표) · run_meta.json(이 레포 · X-Mobility 커밋, ckpt sha256 12자리,
 gin, 명령, 키 대조, 프레임/초) · gin_operative.txt. summary.json 이 이미 있으면 멈춤(--overwrite).
+frames.csv 끝의 위치 열(route_s · map_x · map_y · map_yaw(map_pose 3칸) · lap)은 지표에 안 쓰고 기록만 함 — 기준선 구간별 약한
+곳 찾기(e2e/weak_segments.py)용. 데이터에 없거나 map_pose 길이가 3 이 아니면 NaN.
 
 사용(server207 등 X-Mobility 의존성이 깔린 python, GPU):
   python e2e/eval_offline.py --xm-repo ~/xmobility_test/X-Mobility \\
@@ -77,8 +79,10 @@ ROUTE_CMD_KO = {0: "직진", 1: "좌", 2: "우"}
 EXPECTED_UNEXPECTED = ("model.semantic_decoder.",)
 # gin 에서 건너뛸 configurable — 평가에서 import 하지 않는 train.py:31 · evaluate.py:29,52 와 e2e/finetune.py 의 finetune
 GIN_SKIP = ("train", "evaluate_observation", "evaluate_prediction", "finetune")
+LOCATION = ("route_s", "lap")                                                          # sim/export_xmobility.py:256-261
 COLUMNS = ["split", "scenario", "file", "idx", "acqtime", "route_command", "obstacle_dist", "cte", "teacher_noise",
-           "ego_speed", "v_teacher", "w_teacher", "v_pred", "w_pred", "ade_m", "fde_m"]
+           "ego_speed", "v_teacher", "w_teacher", "v_pred", "w_pred", "ade_m", "fde_m",
+           "route_s", "map_x", "map_y", "map_yaw", "lap"]
 
 
 # ---------------------------------------------------------------- 입력 만들기 (numpy)
@@ -218,9 +222,16 @@ def load_run(path):
                            ("route_poses", all(np.isfinite(r).all() for r in run["route"]))) if not ok]
     if bad:
         raise ValueError(f"{path}: {bad} 에 NaN/Inf — python3 e2e/check_xm_dataset.py 로 먼저 확인")
-    for c in ANALYSIS:
+    for c in ANALYSIS + LOCATION:
         run[c] = (pd.to_numeric(df[c], errors="coerce").to_numpy(np.float64) if c in df.columns
                   else np.full(n, np.nan))
+    pose = np.full((n, 3), np.nan)                       # map_pose = (x, y, yaw) — 기록용이라 틀린 행은 멈추지 않고 NaN
+    if "map_pose" in df.columns:
+        for i, x in enumerate(df["map_pose"]):
+            r = np.asarray(x if x is not None else [], np.float64).reshape(-1)
+            if r.size == 3:
+                pose[i] = r
+    run["map_pose"] = pose
     return run
 
 
@@ -246,14 +257,16 @@ def run_eval(files, predictor, split, teacher_forcing=False, log=print):
             pred_p[i] = np.asarray(p, np.float64).reshape(-1)
             prev = (run["action"][i] if teacher_forcing else pred_a[i]).astype(np.float32)
         ade, fde = path_ade_fde(pred_p, run["path"])
-        rc = run["route_command"]
+        rc, lap = run["route_command"], run["lap"]
         part = pd.DataFrame(dict(
             split=split, scenario=scenario, file=os.path.basename(path), idx=np.arange(n),
             acqtime=run["acqtime"],
             route_command=pd.array(np.where(np.isfinite(rc), np.round(rc), np.nan), dtype="Int64"),
             obstacle_dist=run["obstacle_dist"], cte=run["cte"], teacher_noise=run["teacher_noise"], ego_speed=run["speed"],
             v_teacher=run["action"][:, V_IDX], w_teacher=run["action"][:, W_IDX],
-            v_pred=pred_a[:, V_IDX], w_pred=pred_a[:, W_IDX], ade_m=ade, fde_m=fde), columns=COLUMNS)
+            v_pred=pred_a[:, V_IDX], w_pred=pred_a[:, W_IDX], ade_m=ade, fde_m=fde,
+            route_s=run["route_s"], map_x=run["map_pose"][:, 0], map_y=run["map_pose"][:, 1], map_yaw=run["map_pose"][:, 2],
+            lap=pd.array(np.where(np.isfinite(lap), np.round(lap), np.nan), dtype="Int64")), columns=COLUMNS)
         parts.append(part)
         stats["files"] += 1
         stats["frames"] += n

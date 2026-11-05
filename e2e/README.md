@@ -32,6 +32,8 @@
 | `check_xm_dataset.py` | 학습 형식(xm_v1) 점검 — X-Mobility 로더가 가정하는 폴더 구조 · 열 길이 · JPEG 512×320 · NaN · 명령 가운데 4칸 0 · 녹화 묶음 split 누수, split · 시나리오별 v · ω · 경로 지시 분포. 오류면 종료 코드 1 |
 | `finetune.py` | 파인튜닝 실행기 — X-Mobility `train.py` 와 같은 루프, 세 가지를 고침(아래) |
 | `eval_offline.py` | 오프라인(개루프) 평가 — test split 을 run 파일마다 처음부터 한 프레임씩, 배포 노드(`x_mobility_navigator`)와 같게 상태 · 직전 명령을 이어 가며 추론. 시나리오별 · 경로 지시별 · 장애물 근처 v · ω MAE, ω 부호 일치, 경로 ADE/FDE. 폐루프 주행 성능과는 다름 |
+| `weak_segments.py` | 약한 구간 — `eval_offline.py` 의 frames.csv 를 (시나리오 · 방향 · 기준선 s 2 m 구간)으로 묶어 ω MAE 등이 나쁜 구간 순위, 두 평가(제로샷 · FT) 비교 시 나빠진 구간 표시, 기준선 위 색 그림. 재학습용 추가 수집 자리 고르기(11.16–23) |
+| `fill_report.py` | 결과 → 보고서 표 — run_meta.json · 평가 summary.json → 표 E-14 · E-15 · MANIFEST checkpoint 행 초안 |
 | `plot_training.py` | 학습 곡선 — `<out>/csv/metrics.csv`(finetune.py 가 남김) → 에폭별 검증 표 `curves.md` · 그림 `curves.png`(matplotlib 있을 때). 보고서 표 E-14 |
 | `kaggle_finetune.ipynb` | Kaggle 무료 GPU(T4 × 2)용 노트북 — 시험(40배치 1에폭, 스텝 시간 실측) + 제로샷 오프라인 평가 → 본 학습(남은 시간에 맞춰 에폭 수 자동) + 학습 곡선 + 파인튜닝 오프라인 평가. 준비 순서는 노트북 첫 칸 |
 | `configs/finetune_parking_r3.gin` | 파인튜닝 설정 — X-Mobility `base_train_config.gin` 위에 `ENABLE_SEMANTIC=False` · 에폭 · lr · 배치만 바꿈 |
