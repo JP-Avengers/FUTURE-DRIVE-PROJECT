@@ -31,6 +31,7 @@
 | --- | --- |
 | `check_xm_dataset.py` | 학습 형식(xm_v1) 점검 — X-Mobility 로더가 가정하는 폴더 구조 · 열 길이 · JPEG 512×320 · NaN · 명령 가운데 4칸 0 · 녹화 묶음 split 누수, split · 시나리오별 v · ω · 경로 지시 분포. 오류면 종료 코드 1 |
 | `finetune.py` | 파인튜닝 실행기 — X-Mobility `train.py` 와 같은 루프, 세 가지를 고침(아래) |
+| `kaggle_finetune.ipynb` | Kaggle 무료 GPU(T4 × 2)용 노트북 — 시험(40스텝, 스텝 시간 실측) → 본 학습(남은 시간에 맞춰 에폭 수 자동). 준비 순서는 노트북 첫 칸 |
 | `configs/finetune_parking_r3.gin` | 파인튜닝 설정 — X-Mobility `base_train_config.gin` 위에 `ENABLE_SEMANTIC=False` · 에폭 · lr · 배치만 바꿈 |
 
 `finetune.py` 가 원본 `train.py` 와 다른 점:
@@ -59,6 +60,8 @@ CUDA_VISIBLE_DEVICES=1 python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobil
 
 - 설정 덧붙이기: `--gin "NUM_EPOCHS=3"` · `--gin "finetune.freeze_prefixes=['model.observation_encoder.image_encoder.']"`(DINOv2 고정).
 - W&B 는 기본 오프라인(출력 폴더 `wandb/`). 온라인은 `--wandb online` + `WANDB_API_KEY`.
+- 그 밖의 옵션: `--max-time DD:HH:MM:SS`(시간 상한, 닿으면 last.ckpt 저장 후 멈춤 — lr 스케줄이 끝까지 안 내려가므로 에폭 수를 시간에 맞추는 게 우선) · `--save-top-k 1`(디스크 절약) · `--ddp-backend gloo|nccl`(Windows 는 gloo 기본 — X-Mobility 로더가 DistributedSampler 를 써서 GPU 1장이어도 DDP 가 필요).
+- `run_meta.json` 에 스텝 시간(`step_time_s`, 데이터 로딩 포함 중앙값) · 에폭당 스텝(`steps_per_epoch`) · GPU 최대 메모리가 남습니다 — 짧은 시험으로 본 학습 시간을 정할 때 씁니다.
 - GPU 0 은 Isaac Sim 고정이라 학습은 `CUDA_VISIBLE_DEVICES=1` 을 권합니다([`docs/server207.md`](../docs/server207.md)).
 - 같은 출력 폴더에 체크포인트가 있으면 덮어쓰지 않고 멈춥니다.
 

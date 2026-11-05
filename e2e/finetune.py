@@ -23,9 +23,12 @@ import argparse
 import datetime
 import hashlib
 import json
+import math
 import os
+import statistics
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -61,9 +64,15 @@ def parse_args():
     ap.add_argument("--allow-missing", action="store_true", help="ckpt 에 없는 가중치가 있어도 진행")
     ap.add_argument("--devices", default="auto")
     ap.add_argument("--accelerator", default="auto")
+    ap.add_argument("--ddp-backend", choices=["nccl", "gloo"], default="gloo" if os.name == "nt" else "nccl",
+                    help="DDP 통신 백엔드 — Windows 는 nccl 이 없어 gloo(기본). X-Mobility 데이터 로더가 "
+                         "DistributedSampler 를 써서 GPU 1장이어도 DDP 프로세스 그룹이 필요함")
     ap.add_argument("--max-steps", type=int, default=-1)
+    ap.add_argument("--max-time", default=None, help="학습 시간 상한 \"DD:HH:MM:SS\" (Kaggle 12시간 세션 등). "
+                    "닿으면 그 자리에서 멈추고 last.ckpt 저장 — lr 스케줄은 끝까지 안 내려가므로 에폭 수를 시간에 맞추는 게 우선")
     ap.add_argument("--limit-train-batches", type=float, default=None)
     ap.add_argument("--limit-val-batches", type=float, default=None)
+    ap.add_argument("--save-top-k", type=int, default=3, help="val_loss 상위 몇 개를 남길지(+ last). 디스크가 작으면 1")
     ap.add_argument("--no-test", action="store_true", help="학습 뒤 test split 평가 건너뜀")
     ap.add_argument("--wandb", choices=["offline", "online", "disabled"], default="offline")
     ap.add_argument("--wandb-entity", default=None)
@@ -96,6 +105,7 @@ def main():
     import torch
     from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
     from pytorch_lightning.loggers import WandbLogger
+    from pytorch_lightning.strategies import DDPStrategy
     # gin 이 바인딩을 알아보도록 X-Mobility 모듈을 먼저 import (train.py 와 같은 순서)
     from model.dataset.isaac_sim_dataset import XMobilityIsaacSimDataModule  # noqa: F401
     from model.trainer import XMobilityTrainer
@@ -142,25 +152,40 @@ def main():
     meta = dict(started=datetime.datetime.now().isoformat(timespec="seconds"), argv=sys.argv,
                 repo_rev=git_rev(REPO), xm_repo=xm, xm_rev=git_rev(xm), configs=cfgs, gin_extra=a.gin,
                 dataset=data, checkpoint=ckpt, checkpoint_sha12=sha12(ckpt) if ckpt else None, keys=keys,
-                epochs=epochs, precision=precision, freeze_prefixes=list(freeze),
+                epochs=epochs, precision=precision, freeze_prefixes=list(freeze), ddp_backend=a.ddp_backend,
                 trainable_params=n_train, torch=torch.__version__, lightning=pl.__version__)
-    with open(os.path.join(out, "run_meta.json"), "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=1)
+    rank0 = os.environ.get("LOCAL_RANK", "0") == "0"   # DDP 는 이 스크립트를 GPU 수만큼 다시 띄움
+    if rank0:
+        with open(os.path.join(out, "run_meta.json"), "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=1)
 
+    class StepTimer(pl.Callback):
+        """학습 스텝 사이 시간(데이터 로딩 포함) — 남은 시간에 맞춰 에폭 수를 정하는 데 씀."""
+        def __init__(self):
+            self.starts = []
+
+        def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
+            self.starts.append(time.perf_counter())
+
+        def step_time(self, skip=5):
+            d = [b - a for a, b in zip(self.starts, self.starts[1:])][skip:]
+            return statistics.median(d) if d else None
+
+    timer = StepTimer()
     dm = XMobilityIsaacSimDataModule(dataset_path=data)
     logger = WandbLogger(entity=a.wandb_entity, project=a.wandb_project, name=a.wandb_run or os.path.basename(out),
                          save_dir=out, group="DDP", log_model=False)
-    ckpt_cb = ModelCheckpoint(dirpath=os.path.join(out, "checkpoints"), save_top_k=3, monitor="val_loss",
+    ckpt_cb = ModelCheckpoint(dirpath=os.path.join(out, "checkpoints"), save_top_k=a.save_top_k, monitor="val_loss",
                               mode="min", save_last=True)
     kw = {}
-    if a.limit_train_batches is not None:
-        kw["limit_train_batches"] = a.limit_train_batches
-    if a.limit_val_batches is not None:
-        kw["limit_val_batches"] = a.limit_val_batches
+    for k in ("limit_train_batches", "limit_val_batches"):   # 1 이하 = 비율, 그보다 크면 배치 수(Lightning 규칙)
+        v = getattr(a, k)
+        if v is not None:
+            kw[k] = int(v) if v > 1 else v
     trainer = pl.Trainer(max_epochs=epochs, max_steps=a.max_steps, precision=precision, sync_batchnorm=True,
-                         accelerator=a.accelerator, devices=a.devices, strategy="ddp_find_unused_parameters_true",
-                         callbacks=[pl.callbacks.ModelSummary(-1), pl.callbacks.LearningRateMonitor(), ckpt_cb],
-                         logger=logger, **kw)
+                         accelerator=a.accelerator, devices=a.devices, strategy=DDPStrategy(find_unused_parameters=True, process_group_backend=a.ddp_backend),
+                         callbacks=[pl.callbacks.ModelSummary(-1), pl.callbacks.LearningRateMonitor(), ckpt_cb, timer],
+                         max_time=a.max_time, logger=logger, **kw)
     trainer.fit(model, datamodule=dm)
 
     if trainer.global_rank == 0:
@@ -172,6 +197,12 @@ def main():
         res = trainer.test(model, datamodule=dm, ckpt_path=best or "last")
         test = dict(ckpt=best or "last", metrics=res[0] if res else None)
     if trainer.global_rank == 0:
+        n_seq = len(dm.train_dataset)                      # 시퀀스 수(로더가 겹치지 않게 sequence_length 개씩 자름)
+        per_rank = math.ceil(n_seq / trainer.world_size)   # DistributedSampler
+        meta.update(step_time_s=timer.step_time(), train_sequences=n_seq,
+                    steps_per_epoch=per_rank // dm.batch_size,   # drop_last=True, limit_train_batches 와 무관한 전체 값
+                    world_size=trainer.world_size,
+                    peak_gpu_mem_gb=round(torch.cuda.max_memory_allocated() / 2**30, 2) if torch.cuda.is_available() else None)
         meta.update(finished=datetime.datetime.now().isoformat(timespec="seconds"),
                     best_model_path=ckpt_cb.best_model_path, best_val_loss=float(ckpt_cb.best_model_score)
                     if ckpt_cb.best_model_score is not None else None, global_step=trainer.global_step, test=test)
