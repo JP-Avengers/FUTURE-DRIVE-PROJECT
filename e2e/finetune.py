@@ -16,7 +16,7 @@ X-Mobility 레포(NVlabs/X-Mobility 5837aea)의 train.py 와 같은 학습 루�
   python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobility \\
       -c e2e/configs/finetune_parking_r3.gin -d data/teacher/xm_v1 \\
       -p <x_mobility-nav2-semantic_action_path.ckpt> -o data/checkpoints/xm_ft_<버전>
-  시험(몇 스텝만): --max-steps 20 --limit-val-batches 2 --gin "finetune.precision='32'"
+  시험(1에폭 20배치 — 검증 · ckpt 선택까지 지나감): --limit-train-batches 20 --limit-val-batches 2 --gin NUM_EPOCHS=1
 W&B: 기본 WANDB_MODE=offline(출력 폴더 wandb/ 에 저장, 나중에 `wandb sync`). 온라인은 --wandb online + WANDB_API_KEY.
 """
 import argparse
@@ -74,6 +74,9 @@ def parse_args():
                     "닿으면 그 자리에서 멈추고 last.ckpt 저장 — lr 스케줄은 끝까지 안 내려가므로 에폭 수를 시간에 맞추는 게 우선")
     ap.add_argument("--limit-train-batches", type=float, default=None)
     ap.add_argument("--limit-val-batches", type=float, default=None)
+    ap.add_argument("--monitor", default="validation/losses/action",
+                    help="best ckpt 고르는 기준(작을수록 좋음). 기본 = 명령 손실. val_loss(전체 합)에는 경로 손실이 들어가는데 "
+                         "X-Mobility 경로 출력은 Tanh 라 ±1 m 를 못 넘고 우리 path 정답(3.36 s 앞)은 1 m 를 넘어 줄일 수 없는 몫이 생김")
     ap.add_argument("--save-top-k", type=int, default=3, help="val_loss 상위 몇 개를 남길지(+ last). 디스크가 작으면 1")
     ap.add_argument("--no-test", action="store_true", help="학습 뒤 test split 평가 건너뜀")
     ap.add_argument("--wandb", choices=["offline", "online", "disabled"], default="offline")
@@ -85,9 +88,9 @@ def parse_args():
 
 def main():
     a = parse_args()
-    if not a.xm_repo or not os.path.isfile(os.path.join(a.xm_repo, "train.py")):
+    xm = os.path.abspath(os.path.expanduser(a.xm_repo)) if a.xm_repo else None   # PowerShell 은 인자의 ~ 를 안 펼침
+    if not xm or not os.path.isfile(os.path.join(xm, "train.py")):
         sys.exit("--xm-repo(또는 XM_REPO)에 X-Mobility 레포 경로를 주세요 (train.py 가 있는 폴더)")
-    xm = os.path.abspath(os.path.expanduser(a.xm_repo))
     cfgs = [os.path.abspath(c) for c in a.config_files]
     data = os.path.abspath(a.dataset_path)
     out = os.path.abspath(a.output_dir)
@@ -163,7 +166,7 @@ def main():
     meta = dict(started=datetime.datetime.now().isoformat(timespec="seconds"), argv=sys.argv,
                 repo_rev=git_rev(REPO), xm_repo=xm, xm_rev=git_rev(xm), configs=cfgs, gin_extra=a.gin,
                 dataset=data, checkpoint=ckpt, checkpoint_sha12=sha12(ckpt) if ckpt else None, keys=keys,
-                epochs=epochs, precision=precision, freeze_prefixes=list(freeze), ddp_backend=a.ddp_backend,
+                epochs=epochs, precision=precision, freeze_prefixes=list(freeze), ddp_backend=a.ddp_backend, monitor=a.monitor,
                 trainable_params=n_train, torch=torch.__version__, lightning=pl.__version__)
     rank0 = os.environ.get("LOCAL_RANK", "0") == "0"   # DDP 는 이 스크립트를 GPU 수만큼 다시 띄움
     if rank0:
@@ -186,7 +189,7 @@ def main():
     dm = XMobilityIsaacSimDataModule(dataset_path=data)
     logger = WandbLogger(entity=a.wandb_entity, project=a.wandb_project, name=a.wandb_run or os.path.basename(out),
                          save_dir=out, group="DDP", log_model=False)
-    ckpt_cb = ModelCheckpoint(dirpath=os.path.join(out, "checkpoints"), save_top_k=a.save_top_k, monitor="val_loss",
+    ckpt_cb = ModelCheckpoint(dirpath=os.path.join(out, "checkpoints"), save_top_k=a.save_top_k, monitor=a.monitor,
                               mode="min", save_last=True)
     kw = {}
     for k in ("limit_train_batches", "limit_val_batches"):   # 1 이하 = 비율, 그보다 크면 배치 수(Lightning 규칙)
@@ -215,11 +218,13 @@ def main():
                     world_size=trainer.world_size,
                     peak_gpu_mem_gb=round(torch.cuda.max_memory_allocated() / 2**30, 2) if torch.cuda.is_available() else None)
         meta.update(finished=datetime.datetime.now().isoformat(timespec="seconds"),
-                    best_model_path=ckpt_cb.best_model_path, best_val_loss=float(ckpt_cb.best_model_score)
-                    if ckpt_cb.best_model_score is not None else None, global_step=trainer.global_step, test=test)
+                    best_model_path=ckpt_cb.best_model_path, monitor=a.monitor, best_score=float(ckpt_cb.best_model_score)
+                    if ckpt_cb.best_model_score is not None else None,
+                    val_loss=float(trainer.callback_metrics["val_loss"]) if "val_loss" in trainer.callback_metrics else None,
+                    global_step=trainer.global_step, test=test)
         with open(os.path.join(out, "run_meta.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=1, default=float)
-        print(f"[끝] best {ckpt_cb.best_model_path} · val_loss {meta['best_val_loss']} · 기록 {out}/run_meta.json")
+        print(f"[끝] best {ckpt_cb.best_model_path} · {a.monitor} {meta['best_score']} · 기록 {out}/run_meta.json")
 
 
 if __name__ == "__main__":

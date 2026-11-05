@@ -47,11 +47,11 @@
 # 1) 데이터 점검 (받은 zip 을 푼 폴더, 어디서든)
 python3 e2e/check_xm_dataset.py data/teacher/xm_v1 --json logs/xm_v1_check.json
 
-# 2) 짧은 시험 — 20 스텝, 키 대조 · 메모리 확인
+# 2) 짧은 시험 — 1에폭 20배치, 키 대조 · 메모리 · 스텝 시간
 python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobility \
     -c e2e/configs/finetune_parking_r3.gin -d data/teacher/xm_v1 \
     -p <x_mobility-nav2-semantic_action_path.ckpt> -o logs/xm_ft_smoke \
-    --max-steps 20 --limit-val-batches 2 --no-test
+    --limit-train-batches 20 --limit-val-batches 2 --no-test --gin NUM_EPOCHS=1
 
 # 3) 본 학습 — 출력 폴더 이름 = MANIFEST checkpoint 버전
 CUDA_VISIBLE_DEVICES=1 python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobility \
@@ -61,6 +61,8 @@ CUDA_VISIBLE_DEVICES=1 python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobil
 
 - 설정 덧붙이기: `--gin "NUM_EPOCHS=3"` · `--gin "finetune.freeze_prefixes=['model.observation_encoder.image_encoder.']"`(DINOv2 고정).
 - W&B 는 기본 오프라인(출력 폴더 `wandb/`). 온라인은 `--wandb online` + `WANDB_API_KEY`.
+- best ckpt 는 `--monitor`(기본 `validation/losses/action` = 명령 손실)로 고릅니다. `val_loss` 에는 경로 손실이 들어가는데, X-Mobility 경로 출력이 Tanh 라 ±1 m 를 못 넘고 우리 path 정답(3.36 s 앞, 0.57 m/s 면 약 1.9 m)은 넘어서 줄일 수 없는 몫이 생깁니다(`action_policy.py:106-115`). D 가 쓰는 출력은 명령뿐.
+- Windows 는 데이터 로더가 프로세스마다 데이터셋(약 600 MB)을 복사하므로 RAM 이 빠듯하면 `--gin "XMobilityIsaacSimDataModule.num_workers=2"`.
 - 그 밖의 옵션: `--max-time DD:HH:MM:SS`(시간 상한, 닿으면 last.ckpt 저장 후 멈춤 — lr 스케줄이 끝까지 안 내려가므로 에폭 수를 시간에 맞추는 게 우선) · `--save-top-k 1`(디스크 절약) · `--ddp-backend gloo|nccl`(Windows 는 gloo 기본 — X-Mobility 로더가 DistributedSampler 를 써서 GPU 1장이어도 DDP 가 필요).
 - `run_meta.json` 에 스텝 시간(`step_time_s`, 데이터 로딩 포함 중앙값) · 에폭당 스텝(`steps_per_epoch`) · GPU 최대 메모리가 남습니다 — 짧은 시험으로 본 학습 시간을 정할 때 씁니다.
 - GPU 0 은 Isaac Sim 고정이라 학습은 `CUDA_VISIBLE_DEVICES=1` 을 권합니다([`docs/server207.md`](../docs/server207.md)).
