@@ -109,7 +109,7 @@ def main():
     import pytorch_lightning as pl
     import torch
     from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
-    from pytorch_lightning.loggers import WandbLogger
+    from pytorch_lightning.loggers import CSVLogger, WandbLogger
     from pytorch_lightning.strategies import DDPStrategy
     # gin 이 바인딩을 알아보도록 X-Mobility 모듈을 먼저 import (train.py 와 같은 순서)
     from model.dataset.isaac_sim_dataset import XMobilityIsaacSimDataModule  # noqa: F401
@@ -189,6 +189,9 @@ def main():
     dm = XMobilityIsaacSimDataModule(dataset_path=data)
     logger = WandbLogger(entity=a.wandb_entity, project=a.wandb_project, name=a.wandb_run or os.path.basename(out),
                          save_dir=out, group="DDP", log_model=False)
+    # 학습 곡선용 — <out>/csv/metrics.csv (wandb 오프라인 파일은 꺼내기 번거로움). 첫 logger 가 wandb 라 X-Mobility 의
+    # self.logger.experiment.log(시각화)는 그대로 wandb 로 감. plot: python e2e/plot_training.py <out>
+    csv_logger = CSVLogger(save_dir=out, name="csv", version="")
     ckpt_cb = ModelCheckpoint(dirpath=os.path.join(out, "checkpoints"), save_top_k=a.save_top_k, monitor=a.monitor,
                               mode="min", save_last=True)
     kw = {}
@@ -199,7 +202,7 @@ def main():
     trainer = pl.Trainer(max_epochs=epochs, max_steps=a.max_steps, precision=precision, sync_batchnorm=True,
                          accelerator=a.accelerator, devices=a.devices, strategy=DDPStrategy(find_unused_parameters=True, process_group_backend=a.ddp_backend),
                          callbacks=[pl.callbacks.ModelSummary(-1), pl.callbacks.LearningRateMonitor(), ckpt_cb, timer],
-                         max_time=a.max_time, logger=logger, **kw)
+                         max_time=a.max_time, logger=[logger, csv_logger], **kw)
     trainer.fit(model, datamodule=dm)
 
     if trainer.global_rank == 0:
