@@ -42,7 +42,8 @@ python3 eval/routes/make_refline.py eval/routes/parking_r3_island.yaml   # 꼭�
 
 ## 실행 방법
 
-(작성 예정 — 명령 한 줄이라도 동작하는 것부터 적어 주세요)
+- **60회 실행 (D)**: (작성 예정 — 명령 한 줄이라도 동작하는 것부터 적어 주세요)
+- **결과 분석 (E)**: `python3 eval/analyze_runs.py data/eval/<묶음>/results.csv --expect-n 60` — 아래 "60회 결과 분석 (E)" 절
 
 ## 시나리오 — `eval/scenarios/` (10.14 ~)
 
@@ -72,3 +73,18 @@ python3 eval/routes/make_refline.py eval/routes/parking_r3_island.yaml   # 꼭�
 - 실행은 `sim/nav2/scenario_batch.sh`(항목마다 씬 + Nav2 를 새로 띄움), 판정 · 주의는 `sim/README.md` Nav2 절. 시나리오 그림은 `python3 eval/scenarios/plot_scenarios.py`(장애물 = 숫자, 구간 = 글자).
 - 장애물 자리는 기준선 길이 `s` 와 옆 오프셋 `lateral`(진행 방향 왼쪽 +)로 적습니다 — 기준선을 다시 만들어도 같은 뜻. `sim/make_obstacles.py` 가 월드 좌표와 바닥 높이를 붙여 USD 레이어로 만들고, 씬은 `FD_LAYERS` 로 얹어 띄웁니다.
 
+
+## 60회 결과 분석 (E)
+
+결과 CSV 형식은 [`results_schema.md`](results_schema.md)(스키마 v0 초안 — 리허설 전 D 확인 후 동결). 한 행 = 한 회, 열 이름은 `sim/nav2/nav2_route.py` 결과 JSON 키(`max_cte` · `mean_cte` · `lap_sim_s` · `max_stall_s` · `collision` · `min_clearance` · `goal_err` · `dist_m` · `plan_m` · `pass`)를 그대로 쓰고, `repo_rev`(커밋 해시) · 방법 · 모델 · 씬 · 시나리오 버전 · 방향 · 시드 · 판정 기준 6개 · 개입 수를 더합니다.
+
+```bash
+python3 eval/analyze_runs.py data/eval/<묶음>/results.csv [더 있으면 이어서] --out data/eval/<묶음>/analysis --expect-n 60 [--ref nav2]
+# → 화면 표 + analysis/summary.json · summary.md(보고서용 표) · matplotlib 이 있으면 success_rate.png · max_cte.png
+```
+
+- **검사 먼저** — 필수 열 · 형식 · `repo_rev` 한 값(여러 값이면 오류, 의도면 `--allow-mixed-rev`) · `run_id` 중복 · `pass` = 기준 6개 AND 가 하나라도 어긋나면 표를 만들지 않고 종료 코드 1. 기준 bool 과 수치(`max_cte` ≤ 2.0 등)가 안 맞거나 시나리오 yaml 과 방향 · 버전이 다르면 경고.
+- **표** — 방법 전체 · 방법 × 종류(직진 · 곡선 · 장애물) · 방법 × 시나리오 · × 방향: N · 성공률 + Wilson 95 % 구간 · `max_cte` 평균 · 중앙 · 최대 · 랩(통과한 회만) · 개입/회 · 충돌 · 실패 사유, 기준별 실패 수, 실패한 회 목록.
+- **방법 비교**(`--ref` 기준 대 나머지) — 성공률 차 + Newcombe 구간 · Fisher p, 같은 `scenario` · `direction` · `seed` 짝이면 McNemar · 부호 검정 · Wilcoxon(정확 p, scipy 없이). N 이 작아 구간이 넓습니다 — 10회 중 8회 통과의 구간이 0.49 ~ 0.94, 짝 5개 부호 검정의 가장 작은 p 가 0.0625.
+- 필요: numpy · pandas 만(`python3 -I` 로 돎 — 서버 `eval_env` 또는 시스템 python3). 리허설(11.16–23) 결과 CSV 로 한 번 돌려 오류 0 을 확인한 뒤 스키마를 동결합니다.
+- 동결 전 D 확인할 것(60회 구성 · 개입 정의 · 재시도 행 · 충돌 판정 범위 · 시드 뜻 · 씬 판 · 평가 4종)은 `results_schema.md` 6장.
