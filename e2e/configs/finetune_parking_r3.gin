@@ -1,0 +1,19 @@
+# X-Mobility 파인튜닝 — 실제 주차장 r3 교사 데이터(xm_v1). e2e/finetune.py 로 실행.
+# 바탕: X-Mobility 레포 configs/train_config.gin(= base_train_config.gin, 5837aea). 여기 적은 것만 바꿈.
+# include 경로는 e2e/finetune.py 가 X-Mobility 레포를 gin 검색 경로에 넣어 찾음.
+include 'configs/base_train_config.gin'
+
+# 의미 분할 열이 없음(sim/export_xmobility.py) → 끔. 사전학습 ckpt 의 semantic_decoder 는 안 씀(unexpected 로 보고됨).
+ENABLE_SEMANTIC=False
+
+# 시작값(튜닝 전) — 47,572장 중 train 38,211 / 4(시퀀스) / 4(배치) ≈ 2,390 스텝/에폭/GPU.
+# lr 은 사전학습 기본값 1e-5 그대로(OneCycle, 앞 20 % 워밍업). 바꾸면 run_meta.json 에 남음.
+NUM_EPOCHS=10
+finetune.epochs=%NUM_EPOCHS
+finetune.precision="16-mixed"
+# 고정할 파라미터 이름 앞부분. 예: ["model.observation_encoder.image_encoder."] = DINOv2 이미지 인코더 고정
+finetune.freeze_prefixes=[]
+
+XMobilityTrainer.lr=1e-5
+XMobilityIsaacSimDataModule.batch_size=4
+XMobilityIsaacSimDataModule.num_workers=4

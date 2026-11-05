@@ -19,10 +19,50 @@
 
 ## 환경
 
-PyTorch (`requirements.txt` 로 고정 예정). 추론 노드는 [`ros2_ws/src/`](../ros2_ws/src)에 만듭니다.
+- **모델**: X-Mobility(NVlabs/X-Mobility, 11.2 팀 회의 확정) — 사전학습 ckpt `x_mobility-nav2-semantic_action_path.ckpt`(Hugging Face `nvidia/X-Mobility`, 로그인 · 약관 동의 필요)에서 파인튜닝.
+- **학습 환경**: server207, X-Mobility 의존성이 깔린 python(D 의 `~/xmobility_test/venv` 또는 `envs/ml_env`). X-Mobility 레포 고정 버전 `5837aea`(학습 형식 xm_v1 이 맞춘 커밋).
+- 데이터 점검(`check_xm_dataset.py`)은 numpy · pandas · pyarrow · pillow 만 있으면 됩니다(torch · GPU 불필요).
 
 > 가중치(`*.pt` `*.ckpt` …)·데이터셋은 커밋하지 않습니다 — [`MANIFEST.md`](../MANIFEST.md) 에 기록.
 
+## 파일
+
+| 파일 | 하는 일 |
+| --- | --- |
+| `check_xm_dataset.py` | 학습 형식(xm_v1) 점검 — X-Mobility 로더가 가정하는 폴더 구조 · 열 길이 · JPEG 512×320 · NaN · 명령 가운데 4칸 0 · 녹화 묶음 split 누수, split · 시나리오별 v · ω · 경로 지시 분포. 오류면 종료 코드 1 |
+| `finetune.py` | 파인튜닝 실행기 — X-Mobility `train.py` 와 같은 루프, 세 가지를 고침(아래) |
+| `configs/finetune_parking_r3.gin` | 파인튜닝 설정 — X-Mobility `base_train_config.gin` 위에 `ENABLE_SEMANTIC=False` · 에폭 · lr · 배치만 바꿈 |
+
+`finetune.py` 가 원본 `train.py` 와 다른 점:
+
+1. **lr 이 실제로 적용됨** — 원본은 `load_from_checkpoint` 라 ckpt 에 저장된 lr · weight_decay 가 gin 값을 덮어씁니다. 여기서는 gin 값으로 모델을 만들고 가중치만 넣습니다.
+2. **가중치 대조** — 원본은 `strict=False` 라 이름이 안 맞는 가중치가 말없이 무작위로 남습니다. 여기서는 missing · unexpected 키를 출력하고, missing 이 있으면 멈춥니다. 의미 분할을 끈 탓에 `model.semantic_decoder.*` 가 unexpected 로 나오는 것은 정상.
+3. **기록** — `run_meta.json`(이 레포 · X-Mobility 커밋, ckpt sha256 12자리, 데이터 경로, 명령, 키 대조, best val_loss, test 지표) · `gin_operative.txt`. MANIFEST `checkpoint` 행의 출처 칸에 옮깁니다. gin 의 모르는 이름은 무시하지 않고 멈춥니다.
+
 ## 실행 방법
 
-(작성 예정 — 명령 한 줄이라도 동작하는 것부터 적어 주세요)
+```bash
+# 1) 데이터 점검 (받은 zip 을 푼 폴더, 어디서든)
+python3 e2e/check_xm_dataset.py data/teacher/xm_v1 --json logs/xm_v1_check.json
+
+# 2) 짧은 시험 — 20 스텝, 키 대조 · 메모리 확인
+python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobility \
+    -c e2e/configs/finetune_parking_r3.gin -d data/teacher/xm_v1 \
+    -p <x_mobility-nav2-semantic_action_path.ckpt> -o logs/xm_ft_smoke \
+    --max-steps 20 --limit-val-batches 2 --no-test
+
+# 3) 본 학습 — 출력 폴더 이름 = MANIFEST checkpoint 버전
+CUDA_VISIBLE_DEVICES=1 python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobility \
+    -c e2e/configs/finetune_parking_r3.gin -d data/teacher/xm_v1 \
+    -p <x_mobility-nav2-semantic_action_path.ckpt> -o data/checkpoints/xm_ft_v0.1
+```
+
+- 설정 덧붙이기: `--gin "NUM_EPOCHS=3"` · `--gin "finetune.freeze_prefixes=['model.observation_encoder.image_encoder.']"`(DINOv2 고정).
+- W&B 는 기본 오프라인(출력 폴더 `wandb/`). 온라인은 `--wandb online` + `WANDB_API_KEY`.
+- GPU 0 은 Isaac Sim 고정이라 학습은 `CUDA_VISIBLE_DEVICES=1` 을 권합니다([`docs/server207.md`](../docs/server207.md)).
+- 같은 출력 폴더에 체크포인트가 있으면 덮어쓰지 않고 멈춥니다.
+
+## 검증 상태 (11.4)
+
+- `check_xm_dataset.py` — 합성 데이터(export 와 같은 열)로 정상 통과, 고장 6종(split 폴더 안 파일 · 열 길이 · NaN · 명령 가운데 칸 · 640×480 이미지 · 묶음 누수)을 모두 오류로 잡음. **실제 xm_v1 에는 아직 안 돌림.**
+- `finetune.py` — 문법 검사만. **실제 학습 · 사전학습 ckpt 키 대조는 아직 안 돌림**(서버에서 2) 시험을 먼저).
