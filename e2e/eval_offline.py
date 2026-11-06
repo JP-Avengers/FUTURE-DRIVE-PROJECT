@@ -70,6 +70,7 @@ SPLITS = ("train", "val", "test")
 REQUIRED = ("driving_command", "ego_speed", "path", "camera_image", "route_poses")   # isaac_sim_dataset.py:47-49
 ANALYSIS = ("acqtime", "route_command", "obstacle_dist", "cte", "teacher_noise")      # sim/export_xmobility.py:248-262
 ACTION_SIZE, PATH_SIZE = 6, 10
+PATH_SCALE = 1.0                # 데이터 path 배수(scale_path_xm.py) — main 에서 정함
 V_IDX, W_IDX = 0, 5               # linear x · angular z (x_mobility_metrics.py:86-87, navigator.py:272-273)
 NUM_ROUTE_POINTS = 20             # navigator.py:41
 ROUTE_POSE_SIZE = 2               # isaac_sim_dataset.py:45
@@ -260,6 +261,7 @@ def run_eval(files, predictor, split, teacher_forcing=False, log=print):
             pred_p[i] = np.asarray(p, np.float64).reshape(-1)
             prev = (run["action"][i] if teacher_forcing else pred_a[i]).astype(np.float32)
         ade, fde = path_ade_fde(pred_p, run["path"])
+        ade, fde = ade / PATH_SCALE, fde / PATH_SCALE          # 축척 데이터면 m 로 되돌림
         rc, lap = run["route_command"], run["lap"]
         part = pd.DataFrame(dict(
             split=split, scenario=scenario, file=os.path.basename(path), idx=np.arange(n),
@@ -408,12 +410,21 @@ def parse_args(argv=None):
     ap.add_argument("--gin", action="append", default=[], help="gin 바인딩 덧붙이기(여러 번)")
     ap.add_argument("--allow-missing", action="store_true", help="ckpt 에 없는 가중치가 있어도 진행")
     ap.add_argument("--seed", type=int, default=0, help="확산 정책일 때 고정 policy_noise 시드(MLP 정책이면 무관)")
+    ap.add_argument("--path-scale", type=float, default=None,
+                    help="데이터의 path 에 곱해진 배수(scale_path_xm.py 의 PATH_SCALE.json). ADE · FDE 를 이 값으로 나눠 m 로. "
+                         "기본: 데이터 폴더에 PATH_SCALE.json 이 있으면 그 scale, 없으면 1")
     ap.add_argument("--overwrite", action="store_true", help="출력 폴더에 summary.json 이 있어도 덮어씀")
     return ap.parse_args(argv)
 
 
 def main():
     a = parse_args()
+    global PATH_SCALE
+    _ps = os.path.join(a.dataset_path, "PATH_SCALE.json")
+    PATH_SCALE = a.path_scale if a.path_scale is not None else (
+        float(json.load(open(_ps, encoding="utf-8"))["scale"]) if os.path.isfile(_ps) else 1.0)
+    if PATH_SCALE != 1.0:
+        print(f"[경로 축척] path × {PATH_SCALE:.4f} 데이터 — ADE · FDE 는 /{PATH_SCALE:.4f} 해서 m 로 보고")
     if not a.xm_repo or not os.path.isfile(os.path.join(os.path.expanduser(a.xm_repo), "train.py")):
         sys.exit("--xm-repo(또는 XM_REPO)에 X-Mobility 레포 경로를 주세요 (train.py 가 있는 폴더)")
     xm = os.path.abspath(os.path.expanduser(a.xm_repo))

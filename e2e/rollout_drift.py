@@ -47,8 +47,13 @@ def drift_file(g, H):
     dth = np.degrees((p[2] - t[2] + np.pi) % (2 * np.pi) - np.pi)
     n = len(lat)
     wmean = np.convolve(np.abs(g.w_teacher.values), np.ones(H) / H, mode="valid")[:n]
+    if "teacher_noise" in g.columns:
+        tn = np.abs(np.nan_to_num(pd.to_numeric(g.teacher_noise, errors="coerce").values.astype(np.float64)))
+        noisy = np.convolve(tn, np.ones(H) / H, mode="valid")[:n] > 0
+    else:
+        noisy = np.zeros(n, bool)
     return pd.DataFrame(dict(file=g.file.values[:n], scenario=g.scenario.values[:n], route_s=g.route_s.values[:n],
-                             lat=lat, lon=lon, dth=dth, corner=wmean > W_CORNER))
+                             lat=lat, lon=lon, dth=dth, corner=wmean > W_CORNER, noisy=noisy))
 
 
 def summarize(d):
@@ -78,8 +83,8 @@ def main():
         runs = [(n, d[d.file.isin(keep)]) for n, d in runs]
         lines += [f"공통 파일 {len(keep)}개만 사용 · 뺀 파일: {', '.join(drop) or '없음'}", ""]
     scen = sorted(set().union(*(set(d.scenario) for _, d in runs)))
-    lines += ["| 창 | 시나리오 | 모델 | 창 수 | 가로 이탈 평균 (m) | p95 | 부호 평균 | 방향 차 평균 (°) | 코너 창 가로 평균 | 코너 창 수 |",
-              "|---|---|---|---|---|---|---|---|---|---|"]
+    lines += ["| 창 | 시나리오 | 모델 | 창 수 | 가로 이탈 평균 (m) | p95 | 부호 평균 | 방향 차 평균 (°) | 코너 창 가로 평균 | 코너 창 수 | 잡음 창 가로 평균 | 잡음 창 수 |",
+              "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     last = None
     for T in WINDOWS_S:
         H = int(round(T / DT))
@@ -90,9 +95,10 @@ def main():
                 if not parts:
                     continue
                 dd = pd.concat(parts)
-                m, c = summarize(dd), dd[dd.corner]
+                m, c, nz = summarize(dd), dd[dd.corner], dd[dd.noisy]
                 lines.append(f"| {T:g} s | {'전체' if sc == '*' else sc} | {name} | {m['n']} | {m['lat_mean']:.3f} | {m['lat_p95']:.3f} | "
-                             f"{m['lat_signed']:+.3f} | {m['dth_mean']:.1f} | {c.lat.abs().mean() if len(c) else float('nan'):.3f} | {len(c)} |")
+                             f"{m['lat_signed']:+.3f} | {m['dth_mean']:.1f} | {c.lat.abs().mean() if len(c) else float('nan'):.3f} | {len(c)} | "
+                             f"{nz.lat.abs().mean() if len(nz) else float('nan'):.3f} | {len(nz)} |")
                 if sc == "*":
                     last = (name, T, dd)
     if last is not None:
@@ -106,7 +112,7 @@ def main():
                   "| 시나리오 | 방향 | s (m) | 창 수 | 가로 이탈 평균 | 부호 평균 |", "|---|---|---|---|---|---|"]
         for (sc, dr, b), r in g.iterrows():
             lines.append(f"| {sc} | {dr} | {b}–{b + int(BIN_M)} | {int(r.n)} | {r.mean_abs:.3f} | {r.signed:+.3f} |")
-    lines += ["", f"유니사이클 적분 dt {DT} s · 가로 = 교사 끝 자세 기준 왼쪽 + · 코너 창 = 창 안 교사 |ω| 평균 > {W_CORNER}"]
+    lines += ["", f"유니사이클 적분 dt {DT} s · 가로 = 교사 끝 자세 기준 왼쪽 + · 코너 창 = 창 안 교사 |ω| 평균 > {W_CORNER} · 잡음 창 = 창 안에 teacher_noise≠0(교사가 일부러 벗어난 상태, 폐루프와 가장 가까움)"]
     txt = "\n".join(lines)
     print(txt)
     if a.out:

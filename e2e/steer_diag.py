@@ -71,6 +71,8 @@ def main():
         if any(d[d.scenario == sc].obstacle_dist.notna().any() for _, d in runs):
             groups.append((f"{sc} · 장애물 {NEAR} m 안", lambda d, sc=sc: d[(d.scenario == sc) & (d.obstacle_dist < NEAR)]))
             groups.append((f"{sc} · 장애물 {NEAR} m 밖", lambda d, sc=sc: d[(d.scenario == sc) & (d.obstacle_dist >= NEAR)]))
+        if all("teacher_noise" in d.columns for _, d in runs) and any((d[d.scenario == sc].teacher_noise.abs() > 0).any() for _, d in runs):
+            groups.append((f"{sc} · 잡음 중(이탈 상태)", lambda d, sc=sc: d[(d.scenario == sc) & (d.teacher_noise.abs() > 0)]))
     groups.append(("전체", lambda d: d))
     for label, pick in groups:
         for name, d in runs:
@@ -81,7 +83,7 @@ def main():
             lines.append(f"| {label} | {name} | {m['n']} | {m['slope']:.2f} | {m['n_big']} | "
                          f"{m['big_pred']:.2f} / {m['big_teacher']:.2f} | {100 * m['flip']:.1f} % | {m['lag']} |")
     txt = "\n".join(([note, ""] if note else []) + lines
-                    + ["", f"기울기: 교사 |ω|>{W_FIT} 프레임 1차 회귀 · 급회전: 교사 |ω|>{W_BIG} · 지연: 파일별 상관 최대 k(0–{MAX_LAG})"])
+                    + ["", f"기울기: 교사 |ω|>{W_FIT} 프레임 1차 회귀 · 급회전: 교사 |ω|>{W_BIG} · 지연: 파일별 상관 최대 k(0–{MAX_LAG}) · 잡음 중 = teacher_noise≠0(교사가 일부러 벗어난 상태 — 폐루프와 가장 가까운 프레임, Codevilla 2018)"])
     print(txt)
     if a.out:
         with open(a.out, "w", encoding="utf-8") as fh:
