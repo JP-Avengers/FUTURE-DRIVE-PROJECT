@@ -53,6 +53,9 @@ import hashlib
 import io
 import json
 import os
+# transformers 가 TensorFlow 를 안 불러오게(USE_TF=0). Kaggle 이미지의 TF 2.21 은 protobuf ≥6.31 인데
+# wandb==0.19.4 가 protobuf 를 5.29 로 내려서, TF 를 불러오면 diffusers→transformers.clip import 에서 VersionError.
+os.environ.setdefault("USE_TF", "0")
 import subprocess
 import sys
 import time
