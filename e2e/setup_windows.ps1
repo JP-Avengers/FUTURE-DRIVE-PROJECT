@@ -28,6 +28,11 @@ param(
     [int]$MaxEpochs = 10,
     # DataLoader 워커 수. Windows(spawn)는 워커마다 train 데이터셋 사본(약 0.65 GB, 추정)을 가짐
     [int]$NumWorkers = 2,
+    # 배치 · 기울기 누적. T4 16 GB 에서 배치 4 는 OOM, 배치 2 는 최대 10.4 GB(11.6 Kaggle 실측) → 16 GB 카드 기본 2 × 4 = Kaggle 과 같은 실효 배치 8
+    [int]$BatchSize = 2,
+    [int]$Accum = 4,
+    # finetune.py 에 그대로 덧붙일 인자(시험 · 본 학습 둘 다). 예: -ExtraArgs '--seed','1'
+    [string[]]$ExtraArgs = @(),
     # gin 바인딩 덧붙이기(시험 · 본 학습 둘 다). 예: 'XMobilityIsaacSimDataModule.batch_size=2'
     [string[]]$ExtraGin = @(),
     # X-Mobility 레포 위치(기본: 이 레포 옆 폴더 X-Mobility)
@@ -513,9 +518,9 @@ try {
 
     # ---- 9. 40배치 시험 → 스텝 시간 → 본 학습 명령
     Write-Step ('9/9 시험 — 1에폭 {0}배치(+검증 {1}배치), 키 대조 · VRAM · 스텝 시간' -f $SmokeBatches, $SmokeValBatches)
-    $ginArgs = @('--gin', ('XMobilityIsaacSimDataModule.num_workers={0}' -f $NumWorkers))
+    $ginArgs = @('--gin', ('XMobilityIsaacSimDataModule.num_workers={0}' -f $NumWorkers), '--gin', ('XMobilityIsaacSimDataModule.batch_size={0}' -f $BatchSize))
     foreach ($g in $ExtraGin) { if ($g) { $ginArgs += @('--gin', $g) } }
-    $baseArgs = @($Finetune, '--xm-repo', $XmDir, '-c', $GinFile, '-d', $Data, '-p', $Ckpt, '--wandb', 'offline', '--save-top-k', '1')
+    $baseArgs = @($Finetune, '--xm-repo', $XmDir, '-c', $GinFile, '-d', $Data, '-p', $Ckpt, '--wandb', 'offline', '--save-top-k', '1', '--accumulate-grad-batches', "$Accum") + $ExtraArgs
     # finetune.py 는 smoke 의 --gin 목록을 run_meta.json 의 gin_extra 에 남김 → 설정이 바뀌면 다시 돌림
     $smokeGin = @('--gin', 'NUM_EPOCHS=1') + $ginArgs
     $smokeArgs = $baseArgs + @('-o', $SmokeDir, '--limit-train-batches', "$SmokeBatches", '--limit-val-batches', "$SmokeValBatches", '--no-test') + $smokeGin
@@ -542,7 +547,7 @@ try {
         if ($code -ne 0) {
             Write-Host ''
             Write-Host '    자주 나는 원인 (SETUP_LOCAL.md 문제 해결 표):'
-            Write-Host '      CUDA out of memory    → -ExtraGin ''XMobilityIsaacSimDataModule.batch_size=2'' -ForceSmoke'
+            Write-Host '      CUDA out of memory    → -BatchSize 1 -Accum 8 -ForceSmoke'
             Write-Host '                              또는 -ExtraGin "finetune.freeze_prefixes=[''model.observation_encoder.image_encoder.'']" (DINOv2 고정)'
             Write-Host '      WinError 1455 / MemoryError → -NumWorkers 1 -ForceSmoke, 페이지 파일 "시스템이 관리" 확인'
             Write-Host '      missing 키 있음        → gin 설정이 사전학습 때와 다름(finetune.py 출력 확인)'
@@ -578,7 +583,7 @@ try {
         Write-Note ('키 대조          missing {0} · 예상 밖 unexpected {1}' -f $m['missing'], $m['unexpected_other'])
         Write-Note ('에폭당 예상      {0:N2} 시간 (= 스텝 × 스텝 시간 × {1}, 검증 · 저장 몫 포함)' -f ($perEpochS / 3600), $EpochOverhead)
         if ((Test-Number $m['peak_gpu_mem_gb']) -and ((ConvertTo-Number $m['peak_gpu_mem_gb']) -gt 14.5)) {
-            Write-Caution 'VRAM 최대치가 14.5 GB 넘음 — 본 학습 중 OOM 가능. batch_size=2 또는 DINOv2 고정 검토'
+            Write-Caution 'VRAM 최대치가 14.5 GB 넘음 — 본 학습 중 OOM 가능. -BatchSize 1 -Accum 8 또는 DINOv2 고정 검토'
         }
         if ($m['missing'] -ne '0') { Write-Caution 'missing 키가 있음 — finetune.py 는 원래 여기서 멈춤. 출력 확인' }
         if (($perEpochS * $epochs + $MarginS) -gt $budgetS) {

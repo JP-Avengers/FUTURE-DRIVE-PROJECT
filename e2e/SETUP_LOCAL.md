@@ -2,6 +2,29 @@
 
 `e2e/setup_windows.ps1` 한 번으로 환경 설치 → GPU 확인 → 사전학습 ckpt → 데이터 점검 → 40배치 시험 → 본 학습 명령 출력까지 갑니다. 흐름은 `kaggle_finetune.ipynb` 와 같습니다(시험으로 스텝 시간을 재고, 시간 예산에 맞춰 에폭 수를 정함).
 
+## 집 가기 전(노트북에서) · 도착 후 순서
+
+**가기 전 — 챙길 것 5개**
+
+1. **HF 토큰** — Kaggle 비밀 `HF_TOKEN` 과 같은 것(nvidia/X-Mobility 약관은 이미 동의됨). 집 PC 에서 `$env:HF_TOKEN='hf_...'` 로 넣게 따로 적어 두기.
+2. **Kaggle 토큰** — `$HOME\.kaggle\access_token` 파일을 USB · 드라이브로 옮겨 집 PC 의 같은 경로에(데이터 · 결과 내려받기용). 내용은 채팅에 붙이지 말 것.
+3. **데이터** — `Downloads\03_xm_v1_2.zip`(1.14 GB, 안에 `xm_v1_2\` 폴더) · `02_xm_v1.zip`. 또는 집에서 `kaggle datasets download henryseo711/dataset-03-xm-v1-2`.
+4. **v0.1 ckpt** — `Downloads\xm_ft_kaggle_full\xm_ft_kaggle_e10\checkpoints\epoch=8-step=10719.ckpt`(0.96 GB, sha12 d86970ce1faf) — 집에서 오프라인 평가 비교용.
+5. 레포 push 확인(`git status` 깨끗, `git log origin/main..HEAD` 비어 있음).
+
+**도착 후(약 1시간 + 본 학습)**
+
+| 분 | 할 일 | 확인 |
+| --- | --- | --- |
+| 0–5 | `nvidia-smi` · Windows 업데이트 재시작 미루기 · `powercfg /change standby-timeout-ac 0` | 드라이버 ≥ 570.65 |
+| 5–10 | `winget install -e --id Python.Python.3.12`, `winget install -e --id Git.Git` → PowerShell **새로** 열기 | `py -3.12 -V` |
+| 10–15 | `git clone https://github.com/JP-Avengers/FUTURE-DRIVE-PROJECT.git C:\fd\FUTURE-DRIVE-PROJECT`, zip 을 `C:\fd\data\` 에 풀기 | `C:\fd\data\xm_v1_2\train` 있음 |
+| 15–45 | `cd C:\fd\FUTURE-DRIVE-PROJECT; Set-ExecutionPolicy -Scope Process Bypass; $env:HF_TOKEN='hf_...'; .\e2e\setup_windows.ps1 -Data C:\fd\data\xm_v1_2 -HoursBudget 8` | pip 10–30 분 · 시험 약 5 분 |
+| 45 | 시험 `logs\xm_ft_smoke\run_meta.json`: `missing 0` · `peak_gpu_mem_gb` ≤ 14.5 · `step_time_s` | 값을 `e2e/README.md` GPU 표 "5060 Ti" 행에 적기 |
+| 45– | 스크립트가 출력한 본 학습 명령을 그대로 실행. 그날 실험(`PLAN.md`)은 `-ExtraGin` · `-ExtraArgs` 로: 예 `-ExtraGin 'XMobilityLoss.action_weight=30'`, `-ExtraArgs '--seed','1'` | 에폭당 시간이 Kaggle(28 분, T4×2) 과 비슷하면 정상 |
+
+막히면 아래 "문제 해결" 표 → 그래도 안 되면 WSL2 절(맨 아래).
+
 ## 어느 OS 로
 
 | 경로 | 판단 | 이유 |
@@ -20,7 +43,7 @@
 | 디스크 | 여유 **20 GB 이상** — `.venv-xm` 약 6 GB(torch 만 5.4 GB) · pip 캐시 3.3 GB · 사전학습 ckpt 1.44 GB · 데이터 zip + 압축 해제 약 1.6 GB · 본 학습 ckpt 약 2 GB(1 GB × best + last) |
 | RAM | 16 GB 이상, 32 GB 권장(추정 — 아래 "워커 RAM") |
 | Hugging Face | huggingface.co 로그인 → [`nvidia/X-Mobility`](https://huggingface.co/nvidia/X-Mobility) 약관 동의 → Settings → Access Tokens 에서 **Read** 토큰 |
-| 데이터 | 팀 드라이브 `02_xm_v1.zip`(805 MB)을 `Downloads` 에 두면 스크립트가 `Downloads\xm_v1_unzip\` 에 풂 |
+| 데이터 | 11.7 기준 학습 데이터는 **xm_v1_2**(`03_xm_v1_2.zip` 1.14 GB · Kaggle `henryseo711/dataset-03-xm-v1-2`). 풀어서 `-Data <폴더>` 로 지정(train/val/test 가 바로 아래). 원본 v1.0 은 `02_xm_v1.zip`(805 MB) → `-Zip` 기본값 |
 
 레포는 짧은 경로(예: `C:\fd\FUTURE-DRIVE-PROJECT`)에, OneDrive 밖에 두세요 — 설치 파일 경로가 260자 한도에 걸리거나 6 GB 가 동기화됩니다.
 
@@ -45,7 +68,9 @@ $env:HF_TOKEN = 'hf_...'                                       # 또는 나중�
 | `-HoursBudget` | 8 | 본 학습 시간(시간). 에폭 수 계산과 `--max-time` 상한에 씀 |
 | `-MaxEpochs` | 10 | 에폭 상한(gin 기본값) |
 | `-NumWorkers` | 2 | DataLoader 워커 수 |
-| `-ExtraGin` | — | gin 덧붙이기(시험 · 본 학습 둘 다), 예: `-ExtraGin 'XMobilityIsaacSimDataModule.batch_size=2'` |
+| `-BatchSize` / `-Accum` | 2 / 4 | 배치 · 기울기 누적(실효 배치 8 = Kaggle T4×2 와 같음). 16 GB 에서 배치 4 는 OOM(11.6 실측) |
+| `-ExtraArgs` | — | `finetune.py` 인자 덧붙이기, 예: `-ExtraArgs '--seed','1'` |
+| `-ExtraGin` | — | gin 덧붙이기(시험 · 본 학습 둘 다), 예: `-ExtraGin 'XMobilityLoss.action_weight=30'` |
 | `-ForceSmoke` / `-SkipSmoke` / `-SkipDataCheck` | — | 시험 다시 / 시험 건너뜀 / 데이터 점검 건너뜀 |
 
 ## 단계와 기대 출력
@@ -88,7 +113,7 @@ peak_gpu_mem_gb  xx.x
 | --- | --- |
 | 6단계 `sm_120 이(가) 이 torch 빌드에 없음` · 학습 중 `no kernel image is available` | cu128 빌드가 아님(CPU 판 · cu126 이하). `Remove-Item -Recurse -Force .venv-xm` 후 다시. 확인: `.venv-xm\Scripts\python.exe -c "import torch; print(torch.__version__)"` → `2.7.1+cu128` |
 | `torch.cuda.is_available() = False` | 드라이버(`nvidia-smi`) 또는 `CUDA_VISIBLE_DEVICES` |
-| `CUDA out of memory` | `-ExtraGin 'XMobilityIsaacSimDataModule.batch_size=2' -ForceSmoke`(에폭당 스텝 2배, lr 그대로) 또는 DINOv2 고정 `-ExtraGin "finetune.freeze_prefixes=['model.observation_encoder.image_encoder.']" -ForceSmoke`(22.1 M 파라미터 고정, 그만큼 역전파 메모리 감소) |
+| `CUDA out of memory` | `-BatchSize 1 -Accum 8 -ForceSmoke`(실효 배치 그대로 8) 또는 DINOv2 고정 `-ExtraGin "finetune.freeze_prefixes=['model.observation_encoder.image_encoder.']"` |
 | `WinError 1455`(페이징 파일이 너무 작음) · `MemoryError` · `DataLoader worker ... exited unexpectedly` | 워커 RAM/커밋 부족. `-NumWorkers 1 -ForceSmoke`, 페이지 파일 "시스템이 관리" 확인 |
 | 7단계 HTTP 401 | 토큰 없음/틀림 — `$env:HF_TOKEN` 또는 `.venv-xm\Scripts\huggingface-cli.exe login` |
 | 7단계 HTTP 403 | 약관 미동의, 또는 fine-grained 토큰에 "public gated repos" 읽기 권한 없음 → Read 토큰으로 |
@@ -149,5 +174,5 @@ python e2e/finetune.py --xm-repo ~/fd/X-Mobility -c e2e/configs/finetune_parking
 
 확인 못 한 것:
 - **실제 Windows · RTX 5060 Ti 에서 한 번도 안 돌림** — CUDA 커널, Windows gloo + CUDA 텐서, spawn 워커 RAM, WinError 1455, 배치 4 가 16 GB 에 들어가는지, 스텝 시간.
-- **`setup_windows.ps1` 은 PowerShell 로 파싱하지 못함**(이 환경에 pwsh 없음). 괄호 · 따옴표 · here-string 짝과 PS7 전용 연산자만 간이 검사.
+- ~~`setup_windows.ps1` 파싱~~ → 11.7 PowerShell 7.6.9 파서(`Parser::ParseFile`)로 구문 오류 0. **실행**은 여전히 GPU 있는 PC 에서만 가능.
 - 사전학습 ckpt 키 대조(게이트라 못 받음), 5060 Ti 출시 드라이버 판, Ubuntu 직접 설치 시 open 모듈 필수 여부, WSL 기본 메모리 상한.
