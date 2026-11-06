@@ -262,11 +262,15 @@ def run(cfg, root, visuals, colliders, ground):
     gc = e.get("grass_cell_m", 0.5)
     k = int(round(gc / cell))
     gs = (dist_out[::k, ::k] > sw - gc) & (dist_out[::k, ::k] <= e.get("outer_m", 40.0))
+    if not e.get("outer_ground", True):                                # 11.06: 초록 바깥 땅은 어색해서 끔 — 인도 너머는 비워 둠
+        gs = np.zeros_like(gs)
     grass = grid_mesh(gs, lo, cell * k, lambda xy: ground.height(xy) + h - 0.006)
     for m_, col in ((curb, [0.62, 0.62, 0.6]), (sidewalk, [0.55, 0.55, 0.53]), (grass, [0.25, 0.33, 0.17]), (island_mesh, [0.25, 0.33, 0.17])):
         if len(m_.triangles):
             m_.paint_uniform_color(col)                                # 텍스처를 못 읽을 때 대신 보이는 색
-    visuals.update(Curb=curb, Sidewalk=sidewalk, Grass=grass)
+    visuals.update(Curb=curb, Sidewalk=sidewalk)
+    if len(grass.triangles):
+        visuals["Grass"] = grass
     if len(island_mesh.triangles):
         visuals["Island"] = island_mesh
     st["island_m2"] = round(float(island.sum()) * cell * cell, 1)
@@ -296,7 +300,7 @@ def run(cfg, root, visuals, colliders, ground):
     mats = {}
     for part, key in (("Curb", "curb"), ("Sidewalk", "sidewalk"), ("Grass", "grass"), ("Island", "grass")):
         mm = (e.get("materials") or {}).get(key)
-        if not mm:
+        if not mm or part not in visuals:
             continue
         t = dict(tile_m=mm.get("tile_m", 1.0), normal_strength=mm.get("normal_strength", 1.0), roughness_range=mm.get("roughness_range"))
         for k_ in ("color", "normal", "roughness"):

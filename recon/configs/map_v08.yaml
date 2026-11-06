@@ -1,4 +1,4 @@
-# 맵 v0.8 (2026-11-06) = v0.7 r2 + 스캔 주차 차 지움. 차 메쉬가 찌그러져 보이고 차는 촬영 날마다 달라서 맵에서 뺌 (11.06, 가운데 포함).
+# 맵 v0.8 r2 (2026-11-06) = v0.7 r2 + 스캔 주차 차 지움 + 인도 밖 초록 바깥 땅 뺌. 차 메쉬가 찌그러져 보이고 차는 촬영 날마다 달라서 맵에서 뺌 (11.06, 가운데 포함).
 # 지운 자리 바닥은 fill_stalls 가 아스팔트로 채움. 건물 벽 · 계단 · 덤불은 남김 — 라이다가 볼 물체가 줄어서 D 가 AMCL 을 다시 확인해야 함.
 # 바닥 굽기는 v0.7 과 같음: map_v07 결과의 floor_tex/ 를 결과 폴더에 복사해 두면 건너뜀 (reuse_bake).
 #   python recon/pipeline/build_usd.py --config recon/configs/map_v08.yaml --out $OUT
@@ -211,6 +211,7 @@ edge:                                  # 테두리 마감 (pipeline/edge_finish.
   curb_h_m: 0.15                       # 연석 높이 (B 실측 18 cm — 인도 쪽이 조금 낮은 경우가 많아 15)
   curb_top_m: 0.15
   sidewalk_m: 2.0                      # 인도 띠 폭
+  outer_ground: false                  # 인도 밖 바깥 땅 끔 — 초록 띠가 어색함 (11.06). 인도 너머는 비움
   outer_m: 8.0                         # 바깥 땅을 경계에서 이만큼까지 (인도 2 m + 6 m, 그 너머는 하늘) — 40 m 는 너무 넓었음 (11.01)
   grass_cell_m: 0.5
   materials:                           # ambientCG 2K (CC0) — 레포에는 안 넣음, recon/README 참고

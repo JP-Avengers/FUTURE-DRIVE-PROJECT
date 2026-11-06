@@ -110,7 +110,7 @@ B 가 형상 메쉬(원본 depth TSDF, 색 없음)와 키프레임을 넘기므�
   - 보기: `floor_textured/floor.obj` (텍스처째, Open3D 로 열림 — 요철·거칠기는 USD 에만)
 - **테두리 마감** (`edge:`, `pipeline/edge_finish.py`, v0.7~): 10/30 팀 결정 — 원경(`far_tsdf`)은 건물처럼 보이지 않고 잡음이라 끄고, 맵 테두리를 깔끔하게 마무리 (10/7 '인위적 마감 없이'를 바꿈)
   - 경계 = 바닥 범위를 `smooth_m`(1 m) 다듬은 선. 경계 밖 바닥 · 스캔 조각은 지움 (B 차 자리는 남김), B 나무 자리 · 경계 안쪽 `tall_band_m` 의 `tall_cut_m` 넘는 스캔 조각(나무 · 덤불 잔해)도 지움
-  - 경계선을 따라 연석(`curb_h_m` 15 cm), 밖으로 인도 띠(`sidewalk_m` 2 m), 그 밖은 바깥 땅(`outer_m` 8 m 까지). 나무 모델(`tree_models`)은 너무 인위적이라 끔 (11.01)
+  - 경계선을 따라 연석(`curb_h_m` 15 cm), 밖으로 인도 띠(`sidewalk_m` 2 m), 그 밖은 바깥 땅(`outer_m` 8 m 까지). `outer_ground: false` 면 바깥 땅을 안 깖 (v0.8 r2). 나무 모델(`tree_models`)은 너무 인위적이라 끔 (11.01)
   - 가운데 섬(`island`): 바닥 범위 안 구멍 둘레의 스캔 조각을 지우고 `mode: floor` = 주변과 같은 아스팔트로 메움 (텍스처는 `floor_texture.fill_stalls.holes`), `mode: curb` = 연석 + 화단
   - 재질: ambientCG Concrete034 · PavingStones128 · Ground037 2K (CC0) 를 받아 `edge.materials` 에 경로 (레포에는 안 넣음). `roughness_range` · `normal_strength` 는 텍스처 사본에 반영 (렌더러마다 scale · bias 처리가 달라서)
   - 모두 '보완(만든 것)' — 위치는 측정, 모양 · 재질은 만든 것
