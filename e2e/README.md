@@ -77,6 +77,7 @@ CUDA_VISIBLE_DEVICES=1 python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobil
 python e2e/eval_offline.py --xm-repo ~/xmobility_test/X-Mobility -c e2e/configs/finetune_parking_r3.gin \
     -d data/teacher/xm_v1 -p data/checkpoints/xm_ft_v0.1/checkpoints/<best>.ckpt -o logs/xm_eval_v0.1
 # 비교용: 같은 명령에 -p <사전학습 ckpt> → 제로샷. --teacher-forcing 은 직전 명령을 교사 값으로(학습 때 조건)
+# 서버 사전 점검(약 1분): 위 명령에 --max-files 1 → ckpt 로드 · 출력 유한 · run_meta 의 frames_per_s(T4 17.6 ≫ 노드 5 Hz) 확인
 ```
 → `frames.csv`(프레임별) · `summary.json`(묶음별 지표) · `run_meta.json`. xm_v1 test 는 경로 지시에 좌회전이 없음(val/test 분할 문제, `resplit_xm.py` 참고).
 
