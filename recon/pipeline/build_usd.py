@@ -14,6 +14,7 @@ import numpy as np
 import open3d as o3d
 import yaml
 
+import cars
 import edge_finish
 import far_zone
 import floor_texture
@@ -281,6 +282,18 @@ def main():
         print(f"      바닥 텍스처: 사진으로 칠한 텍셀 {ftr['seen_pct']}% · 화소 크기 중앙 {ftr['gsd_cm_p10_50_90'][1]} cm"
               f" | 주차칸 채움 {ftr['finish'].get('filled_m2', 0)} m² (차 {ftr['finish'].get('cars', 0)}대)")
         del sets
+
+    cc = cfg.get("cars")
+    if cc and cc.get("remove") and objects is not None:   # 스캔 주차 차 지우기 (v0.8) — 색 투영 · 굽기 뒤라 가림 판정에는 차가 있음
+        rows = cars.read(os.path.join(os.path.expanduser(cfg["input"]["root"]), cc["objects"]), cc.get("extra"))
+        keep, n_left, n_float = cars.object_keep(objects, rows, cc.get("margin_m", 0.3), cc.get("near_m", 1.0), cc.get("leftover_tris", 3000),
+                                                 ground, cc.get("float_h_m", 0.0))
+        if len(scene.triangles) - n_floor_tris != len(keep):      # scene = 바닥 + objects 순서라 뒤쪽 삼각형이 objects 와 같아야 함
+            raise SystemExit("cars: 씬 물체 삼각형 수가 objects 와 다름")
+        report["cars"] = dict(boxes=len(rows), object_tris_before=len(keep), object_tris_removed=int((~keep).sum()), leftover_tris_removed=n_left, floating_tris_removed=n_float)
+        scene = cars.cut(scene, np.r_[np.ones(n_floor_tris, bool), keep])
+        objects = cars.cut(objects, keep)
+        print(f"      주차 차 지우기: 사각형 {len(rows)}개 | 물체 삼각형 {report['cars']['object_tris_removed']:,} 삭제 (부스러기 {n_left:,} · 뜬 조각 {n_float:,})")
 
     d = cfg["decimate"]
     if d.get("visual_tris") and len(scene.triangles) > d["visual_tris"]:

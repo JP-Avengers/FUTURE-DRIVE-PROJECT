@@ -36,6 +36,7 @@ recon/pipeline/io_rgbd.py         입력 읽기: open3d_lounge(시험용) · tum
 recon/pipeline/color_utils.py     키프레임 RGB → 메쉬 정점 색 투영 (가림 처리) + 키프레임 정합 점검
 recon/pipeline/floor_texture.py   바닥 한 장에 키프레임 사진을 1 cm 텍스처로 굽기 · 밝기 보정 · 주차칸 채우기 (v0.6)
 recon/pipeline/edge_finish.py     테두리 마감: 경계 밖 정리 · 연석 · 인도 · 바깥 땅 · 섬 메우기 (v0.7)
+recon/pipeline/cars.py            스캔 주차 차 지우기 (v0.8)
 recon/tools/preview_blender.py    씬 USD 를 Blender 로 열어 로봇 카메라 높이 렌더 (흐린 날 · 해) — Isaac Sim 없이 재질 확인
 recon/pipeline/tsdf.py            RGB-D 프레임 + pose → TSDF → mesh_raw.ply (근거리) + mesh_far_raw.ply (원거리, 배경용)
 recon/pipeline/build_usd.py       정리 → 바닥 평면으로 Z-up·원점 → 구멍 메우기 → 경량화 → 충돌 메쉬 → 구역(바깥·배경·경계) → USD → 검증
@@ -113,6 +114,9 @@ B 가 형상 메쉬(원본 depth TSDF, 색 없음)와 키프레임을 넘기므�
   - 가운데 섬(`island`): 바닥 범위 안 구멍 둘레의 스캔 조각을 지우고 `mode: floor` = 주변과 같은 아스팔트로 메움 (텍스처는 `floor_texture.fill_stalls.holes`), `mode: curb` = 연석 + 화단
   - 재질: ambientCG Concrete034 · PavingStones128 · Ground037 2K (CC0) 를 받아 `edge.materials` 에 경로 (레포에는 안 넣음). `roughness_range` · `normal_strength` 는 텍스처 사본에 반영 (렌더러마다 scale · bias 처리가 달라서)
   - 모두 '보완(만든 것)' — 위치는 측정, 모양 · 재질은 만든 것
+- **주차 차 지우기** (`cars:`, `pipeline/cars.py`, v0.8~): 차 메쉬가 찌그러져 보이고 촬영 날마다 달라서 뺌 (11.06). 차 자리 = B `outer/objects.csv` + `cars.extra` (B 목록에 없는 덩어리를 메쉬 · 키프레임 사진으로 확인해 적은 것)
+  - 색 투영 · 바닥 굽기 뒤에 지움 (가림 판정에는 차가 있어야 차 색이 바닥에 안 찍힘). 물체 메쉬에서 빼므로 보이는 메쉬 · 충돌 메쉬 둘 다 빠짐. 차 둘레 `near_m` 의 `leftover_tris` 미만 부스러기, 바닥 위 `float_h_m` 넘게 뜬 조각도 지움
+  - 바닥은 `fill_stalls` 가 같은 목록(`extra_cars`)으로 채움. 라이다가 볼 물체가 크게 줄어 AMCL 은 D 확인 필요
 - **v0.4**: B 가 두 판(a = v0.3 바닥 + 빈 곳 채움, b = 본네트 카메라 바닥 기준)을 보냄 → `map_v04a.yaml`, `map_v04b.yaml`. 바닥 고르기·색 정합이 나은 b 권장
 - **새 판(v0.n)을 받으면**: 영문 경로로 복사 → 체크섬 확인 → 직전 config 를 `map_v0n.yaml` 로 복사해 `root`·`out`·B 인계서의 새 조건만 바꿈
 

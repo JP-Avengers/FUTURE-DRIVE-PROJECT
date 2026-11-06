@@ -370,6 +370,7 @@ def finish(out_dir, floor, c, root):
     obj_path = os.path.join(root, fs["objects"]) if fs.get("objects") else None
     if obj_path and os.path.exists(obj_path):
         cars = [r for r in csv.DictReader(open(obj_path, encoding="utf-8")) if r["type"] == "car"]
+        cars += [dict(x=e[0], y=e[1], yaw_deg=e[2], length_m=e[3], width_m=e[4]) for e in fs.get("extra_cars") or []]   # B 목록에 없는 차 (v0.8)
         core, rect = np.zeros((H, W), bool), np.zeros((H, W), bool)
         ml, mw = fs.get("margin_len_m", 0.3), fs.get("margin_side_m", 0.1)
         for r in cars:                                          # 차 사각형 (B 가 붙어 선 차를 2.5 m 단위로 나눈 것)
