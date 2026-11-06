@@ -87,6 +87,7 @@ def parse_args():
                          "X-Mobility 경로 출력은 Tanh 라 ±1 m 를 못 넘고 우리 path 정답(3.36 s 앞)은 1 m 를 넘어 줄일 수 없는 몫이 생김")
     ap.add_argument("--save-top-k", type=int, default=3, help="val_loss 상위 몇 개를 남길지(+ last). 디스크가 작으면 1")
     ap.add_argument("--no-test", action="store_true", help="학습 뒤 test split 평가 건너뜀")
+    ap.add_argument("--seed", type=int, default=None, help="pl.seed_everything(workers=True). 기본 None = 안 정함. 같은 설정 2회 차이(분산)를 잴 때 0 · 1")
     ap.add_argument("--wandb", choices=["offline", "online", "disabled"], default="offline")
     ap.add_argument("--wandb-entity", default=None)
     ap.add_argument("--wandb-project", default="fd_xmobility_finetune")
@@ -96,6 +97,8 @@ def parse_args():
 
 def main():
     a = parse_args()
+    if a.seed is not None:
+        pl.seed_everything(a.seed, workers=True)
     xm = os.path.abspath(os.path.expanduser(a.xm_repo)) if a.xm_repo else None   # PowerShell 은 인자의 ~ 를 안 펼침
     if not xm or not os.path.isfile(os.path.join(xm, "train.py")):
         sys.exit("--xm-repo(또는 XM_REPO)에 X-Mobility 레포 경로를 주세요 (train.py 가 있는 폴더)")
@@ -175,7 +178,7 @@ def main():
                 repo_rev=git_rev(REPO), xm_repo=xm, xm_rev=git_rev(xm), configs=cfgs, gin_extra=a.gin,
                 dataset=data, checkpoint=ckpt, checkpoint_sha12=sha12(ckpt) if ckpt else None, keys=keys,
                 epochs=epochs, precision=precision, freeze_prefixes=list(freeze), ddp_backend=a.ddp_backend, monitor=a.monitor,
-                trainable_params=n_train, torch=torch.__version__, lightning=pl.__version__)
+                trainable_params=n_train, seed=a.seed, torch=torch.__version__, lightning=pl.__version__)
     rank0 = os.environ.get("LOCAL_RANK", "0") == "0"   # DDP 는 이 스크립트를 GPU 수만큼 다시 띄움
     if rank0:
         with open(os.path.join(out, "run_meta.json"), "w", encoding="utf-8") as f:
