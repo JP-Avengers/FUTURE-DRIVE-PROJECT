@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
-r"""X-Mobility 학습 형식(xm_v1 등)을 녹화 묶음 단위로 다시 나눠 새 폴더에 만든다 — 원본은 읽기만 한다.
+r"""X-Mobility 학습 형식(xm_v1 등)을 녹화 묶음 단위로 다시 나누거나 다른 export 묶음을 더해 새 폴더에 만든다 — 원본은 읽기만 한다.
 
 왜: xm_v1(v1.0)은 val 에 반시계 녹화만(경로 지시 직진 · 좌), test 에 시계 녹화만(직진 · 우) 있어서
     val_loss 로 고른 ckpt 는 우회전을 안 보고, 오프라인 test 에는 좌회전이 없다.
     --preset v1.1 = Nav2 장애물 녹화 둘을 맞바꿈 — 1014_123928_nav2_ccw(콘 · 반시계) val→test,
     1014_115111_nav2_cw(슬라럼 · 시계) test→val. 자동 교사 묶음은 그대로.
+    --add = 실패구간 보정 · 1회 재학습(11.16–23) — D 가 약한 구간에서 더 녹화한 교사 데이터(DAgger 식 라벨만 녹화 등)를
+    sim/export_xmobility.py(.sh) 로 따로 내보낸 폴더(같은 xm 구성)의 묶음을 원본 버전에 더해 새 버전을 만듦.
 
 하는 일:
   점검  원본에 train · val · test 가 있음, split 폴더 안은 <split>/<시나리오>/run_<묶음>_<NN>.pqt 뿐,
         한 묶음은 한 split 에만, index/<묶음>.json 의 split = 파일 위치, 옮길 묶음이 있음(파일 이름 또는 index),
         대상 폴더가 없음(덮어쓰지 않음) · 원본 안이 아님, 옮긴 뒤 빈 split 없음. 하나라도 걸리면 아무것도 쓰지 않음
+  추가  --add <폴더>[:train|val|test](여러 번) — 그 폴더의 train · val · test(있는 것만) 묶음을 전부 대상의 같은 시나리오 폴더
+        이름으로 더함. split 은 그 폴더의 것 그대로, :<split> 을 붙이면 전부 그 split. 일부만 val 로 보내려면
+        --move <추가 묶음>=val(--move 는 원본 · 추가 묶음 모두, --preset 은 원본 묶음만). 추가 폴더도 위와 같은 점검.
+        거부: 묶음 이름이 원본이나 앞의 --add 와 겹침(같은 녹화가 두 번 = 평가 누수 위험) — 단 .pqt 이름 · 바이트가 모두 같으면
+              건너뜀(먼저 있던 쪽 split 그대로, 알림) · 원본에 없는 시나리오 폴더 이름(--allow-new-scenario 면 경고만) ·
+              추가 폴더가 원본 · 대상 · 다른 추가 폴더와 같거나 안팎으로 겹침 · 대상 경로가 겹치거나 대소문자만 다름
+        index/<묶음>.json 은 split · files[].file 을 대상 위치로 고치고 added_from(폴더 경로 · 폴더 sha12 · 원래 split · 방법)을 더함.
+        그 폴더의 기타 파일(export.log · README.md 등)은 added/<폴더 이름>_<sha12>/ 아래 그대로(로더는 train · val · test 만 읽음)
   복사  .pqt 를 새 배치로(옮기지 않은 것은 같은 split) — 기본 shutil.copy2, --link hard 면 하드 링크(같은 디스크만).
         index/<묶음>.json 은 옮긴 묶음만 split · files[].file 을 고치고 resplit_from 을 더함, 나머지는 그대로 복사.
         그 밖의 최상위 파일(README.md · export.log 등)도 그대로 복사 — 내용은 원본 나눔 기준
-  확인  대상 파일마다 sha256 = 원본 파일 sha256, 대상을 다시 훑어 묶음마다 split 하나 · 계획과 같음
+  확인  대상 파일마다 sha256 = 원본(추가 폴더) 파일 sha256, 대상을 다시 훑어 묶음마다 split 하나 · 계획과 같음 · 계획에 없는 묶음 없음
   기록  <대상>/RESPLIT.json(마지막에 씀 — 없으면 중간에 끊긴 것) — 원본 경로 · 원본 sha12 · 대상 sha12(RESPLIT.json 뺌) ·
-        옮김 · split × 시나리오별 묶음 · 파일 · 행 · 경로 지시 수(pyarrow 있으면 parquet 에서, 없으면 행만 index 에서) · 시각
-  출력  MANIFEST 한 줄 초안(sha12 = RESPLIT.json 까지 포함한 대상 폴더), --check 면 e2e/check_xm_dataset.py 를 대상에 돌림
+        옮김 · 추가(폴더 경로 · sha12 · 묶음별 split · 건너뜀) · split × 시나리오별 묶음 · 파일 · 행 ·
+        경로 지시 수(pyarrow 있으면 parquet 에서, 없으면 행만 index 에서) · 시각
+  출력  MANIFEST 한 줄 초안(sha12 = RESPLIT.json 까지 포함한 대상 폴더, 출처 = 원본 버전 + 추가 폴더 sha12),
+        --check 면 e2e/check_xm_dataset.py 를 대상에 돌림
 
 폴더 sha 는 MANIFEST.md 디렉터리 방법을 LC_ALL=C 순서로 계산한 값과 같다:
   (cd <폴더> && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) | sha256sum | cut -c1-12
@@ -26,9 +38,11 @@ r"""X-Mobility 학습 형식(xm_v1 등)을 녹화 묶음 단위로 다시 나눠
 사용(PowerShell, Windows — 레포 폴더에서):
   python e2e\resplit_xm.py C:\Users\hennr\Downloads\xm_v1_unzip\xm_v1 C:\Users\hennr\Downloads\xm_v1_unzip\xm_v1.1 --preset v1.1 --check
   python e2e\resplit_xm.py <원본> <대상> --preset v1.1 --dry-run          # 계획 · 원본 sha 만, 쓰지 않음
+  python e2e\resplit_xm.py C:\data\xm_v1.1 C:\data\xm_v1.2 --add C:\data\xm_dagger1 --add C:\data\xm_dagger2:val --dry-run
 사용(bash, server207):
   ~/xmobility_test/venv/bin/python e2e/resplit_xm.py data/teacher/xm_v1 data/teacher/xm_v1.1 --preset v1.1 --link hard --check
   python3 e2e/resplit_xm.py <원본> <대상> --move <묶음>=<train|val|test> [--move ...]
+  ~/xmobility_test/venv/bin/python e2e/resplit_xm.py data/teacher/xm_v1.1 data/teacher/xm_v1.2 --add data/teacher/xm_dagger1 --move <추가 묶음>=val --check
 필요: 표준 라이브러리만. pyarrow 가 있으면 행 · 경로 지시 수를 parquet 에서 셈. --check 는 numpy · pandas · pyarrow · pillow.
 종료 코드: 0 성공 · 1 복사 확인 실패 또는 --check 오류(못 돌림 포함) · 2 거부(아무것도 쓰지 않음).
 """
@@ -57,6 +71,7 @@ SPLITS = ("train", "val", "test")
 RUN_RE = re.compile(r"^run_(.+)_(\d+)\.pqt$")      # e2e/check_xm_dataset.py 와 같음
 TOOL = "e2e/resplit_xm.py"
 RECORD = "RESPLIT.json"
+ADDED_DIR = "added"                                 # --add 폴더의 기타 파일 자리
 CMD_NAME = {0: "직진", 1: "좌", 2: "우"}
 PRESETS = {
     "v1.1": dict(
@@ -66,6 +81,7 @@ PRESETS = {
         base="xm_parking_r3 v1.0", base_sha12="9350296bfd8f",      # MANIFEST 11.2 행 — server207 에서 계산한 값
         note="Nav2 장애물 녹화 val ↔ test 맞바꿈"),
 }
+KNOWN_SHA12 = {p["base_sha12"]: p["base"] for p in PRESETS.values()}   # MANIFEST 에 있는 원본 — 이름 찾기용
 
 
 class Refuse(Exception):
@@ -125,14 +141,22 @@ def human(n):
 
 
 # ---------------------------------------------------------------- 원본 훑기
-def scan(root):
-    """→ dict(files=[{split, scenario, name, bundle, rel}], index={묶음: (rel, data)}, other=[rel], errors, warnings)"""
+def scan(root, need_splits=True):
+    """→ dict(files=[{split, scenario, name, bundle, rel}], index={묶음: (rel, data)}, other=[rel], errors, warnings)
+
+    need_splits=False(--add 폴더): 없는 split 폴더는 건너뜀 — export 는 쓴 split 만 만듦."""
     inv = dict(files=[], index={}, other=[], errors=[], warnings=[])
     err, warn = inv["errors"].append, inv["warnings"].append
     for sp in SPLITS:
         d = root / sp
+        if d.is_symlink():
+            err(f"{sp}: 심볼릭 링크 — 폴더 sha · 복사 확인이 안 맞으므로 거부")
+            continue
         if not d.is_dir():
-            err(f"{sp}/ 없음")
+            if need_splits:
+                err(f"{sp}/ 없음")
+            elif d.exists():
+                err(f"{sp}: 폴더가 아님")
             continue
         for sc in sorted(d.iterdir()):
             if sc.is_symlink() or not sc.is_dir():
@@ -146,7 +170,7 @@ def scan(root):
                 inv["files"].append(dict(split=sp, scenario=sc.name, name=f.name, bundle=m.group(1),
                                          rel=f"{sp}/{sc.name}/{f.name}"))
     idx = root / "index"
-    if idx.is_dir():
+    if idx.is_dir() and not idx.is_symlink():
         for f in sorted(idx.iterdir()):
             rel = f"index/{f.name}"
             if f.is_symlink() or not f.is_file():
@@ -159,7 +183,7 @@ def scan(root):
                 except (ValueError, UnicodeDecodeError) as e:
                     err(f"{rel}: JSON 읽기 실패 {e}")
     elif idx.exists() or idx.is_symlink():
-        err("index: 폴더가 아님")
+        err("index: 폴더가 아님(심볼릭 링크 포함)")
     else:
         warn("index/ 없음 — index json 은 건너뜀")
     for e in sorted(root.iterdir()):
@@ -245,6 +269,9 @@ def group_counts(files, key):
     return out
 
 
+ZERO = dict(bundles=[], files=0, rows=0, route_command=None)
+
+
 def fmt_counts(s):
     t = f"묶음 {len(s['bundles']):2d} · 파일 {s['files']:3d} · 행 {s['rows'] if s['rows'] is not None else '-':>6}"
     if s["route_command"] is not None:
@@ -279,14 +306,148 @@ def rewrite_index(data, old, new, src_sha12, how):
     return out
 
 
+def added_index(data, new, mark):
+    """--add 묶음의 index — split · files[].file 을 대상 위치로, split 바로 뒤에 added_from(앞선 것은 prev 로)."""
+    if "added_from" in data:
+        mark = dict(mark, prev=data["added_from"])
+    out = {}
+    for k, v in data.items():
+        if k == "added_from":
+            continue
+        if k == "split":
+            out["split"], out["added_from"] = new, mark
+        elif k == "files" and isinstance(v, list):
+            out["files"] = [dict(x, file=resplit_rel(x["file"], new)) if isinstance(x, dict) and "file" in x else x for x in v]
+        else:
+            out[k] = v
+    if "split" not in out:
+        out["split"], out["added_from"] = new, mark
+    return out
+
+
 def write_json(path, obj):
     with open(path, "w", encoding="utf-8", newline="\n") as f:     # Windows 에서도 LF — 어디서 만들든 같은 바이트
         json.dump(obj, f, ensure_ascii=False, indent=1)
 
 
+# ---------------------------------------------------------------- --add
+def safe_name(name):
+    """Windows 에서도 되는 폴더 이름(<>:"/\\|?* · 제어 문자 → _, 끝 공백 · 점 뺌)."""
+    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).rstrip(" .") or "add"
+
+
+def parse_add(s):
+    """'<폴더>[:<split>]' → (Path, split 또는 None). 끝이 :train · :val · :test 일 때만 split — C:\\... 의 ':' 와 안 헷갈림."""
+    head, sep, tail = s.rpartition(":")
+    if sep and head and tail in SPLITS:
+        whole, part = Path(s).is_dir(), Path(head).is_dir()
+        if whole and part:
+            raise Refuse(f"--add {s!r}: 폴더 {s} 와 {head}(+ split {tail}) 둘 다 있음 — 어느 쪽인지 모름")
+        if whole:
+            return Path(s), None
+        return Path(head), tail
+    return Path(s), None
+
+
+def bundle_bytes(root, files, b):
+    """묶음 b 의 [(.pqt 이름, sha256)] — 같은 녹화인지(바이트까지) 비교용."""
+    return sorted((f["name"], file_sha256(root / f["split"] / f["scenario"] / f["name"])) for f in files if f["bundle"] == b)
+
+
+def load_adds(a, src, sr, dr, inv, cur):
+    """--add 폴더들을 훑고 겹침 · 시나리오를 점검 → (adds, 경고). 문제는 Refuse 로(아무것도 쓰지 않음)."""
+    errs, warns, adds = [], [], []
+    taken = [("원본", sr), ("대상", dr)]
+    for s in a.add:
+        try:
+            path, override = parse_add(s)
+        except Refuse as e:
+            errs.append(str(e))
+            continue
+        if not path.is_dir():
+            errs.append(f"--add {s!r}: 폴더 없음 {path}" + (" (split 은 :train · :val · :test 소문자)" if ":" in s else ""))
+            continue
+        r = path.resolve()
+        hit = [(what, o) for what, o in taken if r == o or o in r.parents or r in o.parents]
+        if hit:
+            what, o = hit[0]
+            errs.append(f"--add {s!r}: {what} 폴더와 같거나 안팎으로 겹침({o}) — 원본 · 추가 폴더는 읽기만, 대상은 따로")
+            continue
+        taken.append((f"--add {r.name}", r))
+        ai = scan(path, need_splits=False)
+        ac = bundle_layout(ai)
+        tag = f"--add {r.name}"
+        errs += [f"{tag}: {e}" for e in ai["errors"]]
+        warns += [f"{tag}: {w}" for w in ai["warnings"]]
+        if not ai["errors"] and not ac:
+            errs.append(f"{tag}: train · val · test 에 더할 묶음이 없음")
+        adds.append(dict(arg=s, path=path, real=r, name=r.name, override=override, inv=ai, cur=ac, skip={}))
+    if errs:
+        raise Refuse("\n".join(errs))
+
+    # 묶음 이름 겹침 — 대소문자만 달라도 겹침(Windows 에서 같은 파일)
+    owner = {b.casefold(): (None, b) for b in cur}
+    start_of = {}                                        # 먼저 들어간 추가 묶음의 split(덮어쓴 뒤)
+    for k, ad in enumerate(adds):
+        for b in sorted(ad["cur"]):
+            key = b.casefold()
+            if key not in owner:
+                owner[key] = (k, b)
+                start_of[b] = ad["override"] or ad["cur"][b]
+                continue
+            ok, ob = owner[key]
+            where = "원본" if ok is None else f"--add {adds[ok]['name']}"
+            o_root, o_files = (src, inv["files"]) if ok is None else (adds[ok]["path"], adds[ok]["inv"]["files"])
+            if ob == b and bundle_bytes(o_root, o_files, ob) == bundle_bytes(ad["path"], ad["inv"]["files"], b):
+                sp, mine = cur[ob] if ok is None else start_of[ob], ad["override"] or ad["cur"][b]
+                ad["skip"][b] = (f"{where}의 같은 묶음과 .pqt 이름 · 바이트가 모두 같음 — 건너뜀({where} 쪽 {sp} 그대로"
+                                 + (f", 이 폴더에선 {mine}" if mine != sp else "") + ")")
+            else:
+                errs.append(f"--add {ad['name']}: 묶음 {b} 가 {where}에도 있음"
+                            + (f"(이름이 대소문자만 다름: {ob})" if ob != b else "")
+                            + " — 내용이 다름. 같은 녹화가 두 번(두 split) 들어가면 평가 누수 위험, 다른 녹화면 묶음 이름을 바꿔 다시 export")
+    # 시나리오 폴더 — 원본에 없는 이름은 오타일 수 있음
+    base_scen = sorted({f["scenario"] for f in inv["files"]})
+    for ad in adds:
+        new_sc = defaultdict(set)
+        for f in ad["inv"]["files"]:
+            if f["bundle"] not in ad["skip"] and f["scenario"] not in base_scen:
+                new_sc[f["scenario"]].add(f["bundle"])
+        for sc, bs in sorted(new_sc.items()):
+            near = difflib.get_close_matches(sc, base_scen, n=2, cutoff=0.6)
+            msg = (f"--add {ad['name']}: 시나리오 폴더 {sc} 가 원본에 없음(원본 {', '.join(base_scen) or '-'} · 묶음 {', '.join(sorted(bs))})"
+                   + (f" — 비슷한 이름 {near}" if near else ""))
+            if a.allow_new_scenario:
+                warns.append(msg + " — --allow-new-scenario 로 그대로 씀")
+            else:
+                errs.append(msg + " — 이름이 맞으면 --allow-new-scenario")
+        if ad["cur"] and len(ad["skip"]) == len(ad["cur"]):
+            warns.append(f"--add {ad['name']}: 모든 묶음이 이미 있음 — 이 폴더는 아무것도 더하지 않음(기타 파일도 안 씀)")
+    if errs:
+        raise Refuse("\n".join(errs))
+    for ad in adds:
+        ad["start"] = {b: ad["override"] or sp for b, sp in ad["cur"].items() if b not in ad["skip"]}
+    return adds, warns
+
+
+def base_label(src, src_sha12):
+    """원본의 MANIFEST 이름 · 버전 — 이 도구가 --preset 만으로 만든 폴더(RESPLIT.json) 또는 MANIFEST sha 로 앎, 모르면 None."""
+    rec = src / RECORD
+    if rec.is_file():
+        try:
+            r = json.loads(rec.read_text(encoding="utf-8"))
+        except (ValueError, UnicodeDecodeError, OSError):
+            r = {}
+        p = PRESETS.get(r.get("preset"))
+        if p and r.get("how") == f"{TOOL} --preset {r.get('preset')}":
+            return f"{p['name']} {p['version']}"
+    return KNOWN_SHA12.get(src_sha12)
+
+
 # ---------------------------------------------------------------- 계획
-def parse_moves(a, cur):
-    """→ [(묶음, 새 split, 기대 split 또는 None, 설명)] — 문제는 Refuse 로."""
+def parse_moves(a, cur, added=None):
+    """→ [(묶음, 새 split, 기대 split 또는 None, 설명)] — 문제는 Refuse 로. added = 추가 묶음 → split(:<split> 반영)."""
+    added = added or {}
     errs, moves = [], []
     if a.preset:
         for b, fr, to, label in PRESETS[a.preset]["moves"]:
@@ -303,13 +464,18 @@ def parse_moves(a, cur):
         if n > 1:
             errs.append(f"묶음 {b} 를 두 번 옮기려 함(--preset 과 --move 겹침 포함)")
     for b, to, fr, _ in moves:
-        if b not in cur:
-            near = difflib.get_close_matches(b, list(cur), n=3, cutoff=0.8)
-            errs.append(f"묶음 {b} 없음(파일 이름 · index 둘 다)" + (f" — 비슷한 이름 {near}" if near else ""))
-        elif fr is not None and cur[b] != fr:
-            errs.append(f"--preset {a.preset}: {b} 는 {fr} 에 있어야 하는데 {cur[b]} 에 있음 — 원본이 v1.0 이 맞는지 확인")
-    if not moves and not errs:
-        errs.append("옮길 것이 없음 — --preset 또는 --move 를 주세요")
+        if b in cur:
+            if fr is not None and cur[b] != fr:
+                errs.append(f"--preset {a.preset}: {b} 는 {fr} 에 있어야 하는데 {cur[b]} 에 있음 — 원본이 v1.0 이 맞는지 확인")
+        elif b in added:
+            if fr is not None:
+                errs.append(f"--preset {a.preset}: {b} 는 원본에 있어야 하는데 --add 폴더에만 있음 — 원본이 v1.0 이 맞는지 확인")
+        else:
+            near = difflib.get_close_matches(b, list(cur) + list(added), n=3, cutoff=0.8)
+            errs.append(f"묶음 {b} 없음({'원본 · --add 의 ' if a.add else ''}파일 이름 · index {'모두' if a.add else '둘 다'})"
+                        + (f" — 비슷한 이름 {near}" if near else ""))
+    if not moves and not errs and not a.add:
+        errs.append("옮길 것이 없음 — --preset · --move · --add 중 하나를 주세요")
     if errs:
         raise Refuse("\n".join(errs))
     return moves
@@ -325,10 +491,15 @@ def main():
     ap.add_argument("src", help="원본 폴더(xm_v1 등) — 읽기만 함")
     ap.add_argument("dst", help="새 폴더 — 없어야 함")
     ap.add_argument("--preset", choices=sorted(PRESETS), help="정해 둔 옮김(v1.1: Nav2 장애물 녹화 val ↔ test)")
-    ap.add_argument("--move", action="append", default=[], metavar="묶음=split", help="묶음 하나를 옮김(여러 번 가능)")
+    ap.add_argument("--move", action="append", default=[], metavar="묶음=split",
+                    help="묶음 하나를 옮김(여러 번 가능, 원본 · --add 묶음 모두)")
+    ap.add_argument("--add", action="append", default=[], metavar="폴더[:split]",
+                    help="다른 xm 폴더(같은 구성)의 묶음을 전부 더함(여러 번 가능) — split 은 그 폴더 것 그대로, :train · :val · :test 면 전부 그 split")
+    ap.add_argument("--allow-new-scenario", action="store_true",
+                    help="--add 묶음의 시나리오 폴더 이름이 원본에 없어도 거부하지 않음(경고만)")
     ap.add_argument("--link", choices=("copy", "hard"), default="copy",
                     help=".pqt 를 복사(기본) 또는 하드 링크(같은 디스크, 공간 안 씀 — 대상 .pqt 를 고치면 원본도 바뀜)")
-    ap.add_argument("--dry-run", action="store_true", help="점검 · 계획 · 원본 sha 만, 아무것도 쓰지 않음")
+    ap.add_argument("--dry-run", action="store_true", help="점검 · 계획 · 원본(추가 폴더) sha 만, 아무것도 쓰지 않음")
     ap.add_argument("--check", action="store_true", help="끝나면 e2e/check_xm_dataset.py 를 대상에 돌림")
     a = ap.parse_args()
 
@@ -346,46 +517,65 @@ def main():
         cur = bundle_layout(inv)
         if inv["errors"]:
             raise Refuse("원본 점검 실패:\n" + "\n".join(inv["errors"]))
-        moves = parse_moves(a, cur)
+        adds, add_warn = load_adds(a, src, sr, dr, inv, cur)
+        start = dict(cur)                                # 옮기기 전 split — 추가 묶음은 :<split> 반영
+        for ad in adds:
+            start.update(ad["start"])
+        moves = parse_moves(a, cur, {b: sp for ad in adds for b, sp in ad["start"].items()})
     except Refuse as e:
         for line in str(e).splitlines():
             print(f"거부: {line}", file=sys.stderr)
         print("아무것도 쓰지 않음.", file=sys.stderr)
         return 2
 
-    warnings = list(inv["warnings"])
-    new = dict(cur)
+    warnings = list(inv["warnings"]) + add_warn
+    new = dict(start)
     for b, to, _, _ in moves:
-        if cur[b] == to:
+        if start[b] == to:
             warnings.append(f"--move {b}={to}: 이미 {to} 에 있음 — 바뀌지 않음")
         new[b] = to
-    if all(cur[b] == to for b, to, _, _ in moves):
-        print("거부: 모든 옮김이 제자리 — 바뀌는 것 없음\n아무것도 쓰지 않음.", file=sys.stderr)
+    adding = any(ad["start"] for ad in adds)
+    if not adding and all(start[b] == to for b, to, _, _ in moves):
+        why = "--add 묶음이 모두 이미 있고 옮김도 없거나 제자리" if adds else "모든 옮김이 제자리"
+        print(f"거부: {why} — 바뀌는 것 없음\n아무것도 쓰지 않음.", file=sys.stderr)
         return 2
 
-    # 파일별 행 · 경로 지시
+    # 파일별 행 · 경로 지시 — o = 0 원본, k = adds[k-1]
+    roots = [src] + [ad["path"] for ad in adds]
+    files = []
+    for o, fi in enumerate([inv] + [ad["inv"] for ad in adds]):
+        skip = adds[o - 1]["skip"] if o else {}
+        for f in fi["files"]:
+            if f["bundle"] not in skip:
+                f["o"] = o
+                files.append(f)
     idx_rows = {}
-    for b, (_, data) in inv["index"].items():
-        for x in data.get("files", []) if isinstance(data.get("files"), list) else []:
-            if isinstance(x, dict) and "file" in x:
-                idx_rows[(b, str(x["file"]).replace("\\", "/").rsplit("/", 1)[-1])] = x.get("rows")
+    for o, fi in enumerate([inv] + [ad["inv"] for ad in adds]):
+        for b, (_, data) in fi["index"].items():
+            for x in data.get("files", []) if isinstance(data.get("files"), list) else []:
+                if isinstance(x, dict) and "file" in x:
+                    idx_rows[(o, b, str(x["file"]).replace("\\", "/").rsplit("/", 1)[-1])] = x.get("rows")
     rows_src = set()
-    for f in inv["files"]:
-        f["rows"], f["rc"], how_rows = file_stats(src / f["split"] / f["scenario"] / f["name"], idx_rows.get((f["bundle"], f["name"])))
+    for f in files:
+        f["rows"], f["rc"], how_rows = file_stats(roots[f["o"]] / f["split"] / f["scenario"] / f["name"],
+                                                  idx_rows.get((f["o"], f["bundle"], f["name"])))
         rows_src.add(how_rows)
         f["new_split"] = new[f["bundle"]]
         f["new_rel"] = f"{f['new_split']}/{f['scenario']}/{f['name']}"
     rows_source = rows_src.pop() if len(rows_src) == 1 else ("mixed" if rows_src else None)
+    base_files = [f for f in files if f["o"] == 0]
+    add_files = [f for f in files if f["o"]]
 
-    empty = [sp for sp in SPLITS if not any(f["new_split"] == sp for f in inv["files"])]
+    empty = [sp for sp in SPLITS if not any(f["new_split"] == sp for f in files)]
     if empty:
         print(f"거부: 옮긴 뒤 빈 split {empty} — 로더가 빈 split 을 못 씀\n아무것도 쓰지 않음.", file=sys.stderr)
         return 2
 
-    before = group_counts(inv["files"], lambda f: f"{f['split']}/{f['scenario']}")
-    after = group_counts(inv["files"], lambda f: f"{f['new_split']}/{f['scenario']}")
-    sp_before = group_counts(inv["files"], lambda f: f["split"])
-    sp_after = group_counts(inv["files"], lambda f: f["new_split"])
+    before = group_counts(base_files, lambda f: f"{f['split']}/{f['scenario']}")
+    after = group_counts(files, lambda f: f"{f['new_split']}/{f['scenario']}")
+    sp_before = group_counts(base_files, lambda f: f["split"])
+    sp_after = group_counts(files, lambda f: f["new_split"])
+    sp_added = group_counts(add_files, lambda f: f["new_split"])
     for sp in ("val", "test"):
         rc = sp_after[sp]["route_command"]
         if rc is not None:
@@ -393,23 +583,49 @@ def main():
             if miss:
                 warnings.append(f"옮긴 뒤 {sp} 에 경로 지시 {' · '.join(miss)} 없음")
 
-    how = " ".join([TOOL] + ([f"--preset {a.preset}"] if a.preset else []) + [f"--move {s}" for s in a.move])
+    how = " ".join([TOOL] + ([f"--preset {a.preset}"] if a.preset else []) + [f"--move {s}" for s in a.move]
+                   + [f"--add {ad['name']}" + (f":{ad['override']}" if ad["override"] else "") for ad in adds]
+                   + (["--allow-new-scenario"] if a.allow_new_scenario and adds else []))
+    added_of = {b: k for k, ad in enumerate(adds) for b in ad["start"]}
     move_rows = []
     for b, to, _, label in moves:
-        fs = [f for f in inv["files"] if f["bundle"] == b]
+        fs = [f for f in files if f["bundle"] == b]
         rows = sum(f["rows"] for f in fs) if all(f["rows"] is not None for f in fs) else None
-        scen = sorted({f["scenario"] for f in fs}) or [inv["index"].get(b, ("", {}))[1].get("scenario")]
-        move_rows.append(dict(bundle=b, scenario=",".join(str(s) for s in scen), **{"from": cur[b]}, to=to,
-                              files=len(fs), rows=rows, label=label))
+        fi = adds[added_of[b]]["inv"] if b in added_of else inv
+        scen = sorted({f["scenario"] for f in fs}) or [fi["index"].get(b, ("", {}))[1].get("scenario")]
+        m = dict(bundle=b, scenario=",".join(str(s) for s in scen), **{"from": start[b]}, to=to,
+                 files=len(fs), rows=rows, label=label)
+        if b in added_of:
+            m["added"] = adds[added_of[b]]["name"]
+        move_rows.append(m)
+    moved = {m["bundle"] for m in move_rows}
+    for k, ad in enumerate(adds, 1):
+        ad["rows"] = []
+        for b in sorted(ad["start"]):
+            fs = [f for f in add_files if f["o"] == k and f["bundle"] == b]
+            scen = sorted({f["scenario"] for f in fs}) or [ad["inv"]["index"].get(b, ("", {}))[1].get("scenario")]
+            ad["rows"].append(dict(bundle=b, scenario=",".join(str(s) for s in scen), **{"from": ad["cur"][b]}, to=new[b],
+                                   files=len(fs), rows=sum(f["rows"] for f in fs) if all(f["rows"] is not None for f in fs) else None,
+                                   split_by="move" if b in moved else ("override" if ad["override"] else "keep")))
 
+    bw = max([22] + [len(m["bundle"]) for m in move_rows] + [len(b) for ad in adds for b in list(ad["start"]) + list(ad["skip"])])
     print(f"원본  {src}")
     print(f"대상  {dst}  ({'하드 링크' if a.link == 'hard' else '복사'}{', dry-run' if a.dry_run else ''})")
     for m in move_rows:
-        print(f"옮김  {m['bundle']:22s} {m['scenario']:12s} {m['from']:5s} → {m['to']:5s} 파일 {m['files']} · 행 {m['rows'] if m['rows'] is not None else '-'}"
-              + (f"  ({m['label']})" if m["label"] else ""))
+        print(f"옮김  {m['bundle']:{bw}s} {m['scenario']:12s} {m['from']:5s} → {m['to']:5s} 파일 {m['files']} · 행 {m['rows'] if m['rows'] is not None else '-'}"
+              + (f"  ({m['label']})" if m["label"] else "") + (f"  [추가 {m['added']}]" if "added" in m else ""))
+    for ad in adds:
+        print(f"추가  {ad['path']}  ({'전부 ' + ad['override'] if ad['override'] else '폴더의 split 그대로'})")
+        for r in ad["rows"]:
+            print(f"  +   {r['bundle']:{bw}s} {r['scenario']:12s} {r['from']:5s} → {r['to']:5s} 파일 {r['files']} · 행 {r['rows'] if r['rows'] is not None else '-'}"
+                  + ("  (--move)" if r["split_by"] == "move" else ""))
+        for b, why in sorted(ad["skip"].items()):
+            print(f"  =   {b:{bw}s} {why}")
     print(f"split 별 (행 출처: {rows_source or '없음'}{'' if pq else ' — pyarrow 없음, 경로 지시 수 생략'})")
     for sp in SPLITS:
-        print(f"  {sp:5s} 이전 {fmt_counts(sp_before.get(sp, dict(bundles=[], files=0, rows=0, route_command=None)))}")
+        print(f"  {sp:5s} 이전 {fmt_counts(sp_before.get(sp, ZERO))}")
+        if adds:
+            print(f"  {'':5s} 추가 {fmt_counts(sp_added.get(sp, ZERO))}")
         print(f"  {'':5s} 이후 {fmt_counts(sp_after[sp])}")
     print("이후 split × 시나리오")
     for k, s in after.items():
@@ -427,45 +643,98 @@ def main():
     print(f"원본 sha12 {src_sha[:12]} · 파일 {len(src_rels)} · {human(src_bytes)}"
           + (f"  (MANIFEST {preset['base']} {preset['base_sha12']}: {'같음' if src_sha[:12] == preset['base_sha12'] else '다름'})"
              if preset else ""))
+    for ad in adds:
+        ad["rels"] = list_files(ad["path"])
+        ad["hash"] = hash_files(ad["path"], ad["rels"])
+        ad["sha"] = tree_sha(ad["hash"])
+        ad["bytes"] = sum((ad["path"] / r).stat().st_size for r in ad["rels"])
+        print(f"추가 sha12 {ad['sha'][:12]} · 파일 {len(ad['rels'])} · {human(ad['bytes'])}  {ad['name']}")
+    hashes = [src_hash] + [ad["hash"] for ad in adds]
+
+    # ------------------------------------------------------------ 계획(대상 상대 경로 → (o, 원본 상대 경로) 또는 None = 새로 씀)
+    plan, rewritten, ci, dirs = {}, {}, {}, set()
+
+    def put(drel, val, o):
+        parts = drel.split("/")
+        pre = ["/".join(parts[:i]) for i in range(1, len(parts))]
+        if drel in plan or drel in dirs or any(p in plan for p in pre):
+            raise Refuse(f"대상 경로 겹침: {drel}")
+        key = drel.casefold()
+        if key in ci and (o or ci[key][1]):
+            raise Refuse(f"대상 경로가 대소문자만 다름: {ci[key][0]} · {drel} — Windows 에서 같은 파일")
+        ci[key] = (drel, o)
+        dirs.update(pre)
+        plan[drel] = val
+
+    try:
+        for f in base_files:
+            put(f["new_rel"], (0, f["rel"]), 0)
+        for rel in inv["other"]:
+            if (src / rel).is_dir():
+                for r in list_files(src / rel):
+                    put(f"{rel}/{r}", (0, f"{rel}/{r}"), 0)
+            elif rel == RECORD:                          # 원본도 다시 나눈 것 — 그 기록은 이름을 바꿔 남김
+                put(f"RESPLIT_{src_sha[:12]}.json", (0, rel), 0)
+            else:
+                put(rel, (0, rel), 0)
+        for b, (rel, data) in inv["index"].items():
+            if new[b] != cur[b]:
+                rewritten[rel] = rewrite_index(data, cur[b], new[b], src_sha[:12], how)
+                put(rel, None, 0)
+            else:
+                put(rel, (0, rel), 0)
+        for k, ad in enumerate(adds, 1):
+            if not ad["start"]:
+                ad["other_to"] = None
+                continue
+            for f in add_files:
+                if f["o"] == k:
+                    put(f["new_rel"], (k, f["rel"]), k)
+            by = {r["bundle"]: r["split_by"] for r in ad["rows"]}
+            for b in sorted(ad["start"]):
+                if b in ad["inv"]["index"]:
+                    rel, data = ad["inv"]["index"][b]
+                    mark = dict(root=str(ad["real"]), name=ad["name"], sha12=ad["sha"][:12], split=ad["cur"][b],
+                                split_by=by[b], by=how)
+                    rewritten[rel] = added_index(data, new[b], mark)
+                    put(rel, None, k)
+            od = f"{ADDED_DIR}/{safe_name(ad['name'])}_{ad['sha'][:12]}"
+            ad["other_to"] = od if ad["inv"]["other"] else None
+            for rel in ad["inv"]["other"]:
+                if (ad["path"] / rel).is_dir():
+                    for r in list_files(ad["path"] / rel):
+                        put(f"{od}/{rel}/{r}", (k, f"{rel}/{r}"), k)
+                else:
+                    put(f"{od}/{rel}", (k, rel), k)
+    except Refuse as e:
+        print(f"거부: {e}\n아무것도 쓰지 않음.", file=sys.stderr)
+        return 2
     if a.dry_run:
+        print(f"쓸 파일 {len(plan)}개(새로 쓰는 index {len(rewritten)}개)"
+              + "".join(f" · {ad['name']} 기타 파일 → {ad['other_to']}/" for ad in adds if ad.get("other_to")))
         print("dry-run — 아무것도 쓰지 않음.")
         return 0
 
     # ------------------------------------------------------------ 쓰기
-    plan = {}            # 대상 상대 경로 → 원본 상대 경로(그대로) 또는 None(새로 씀)
-    for f in inv["files"]:
-        plan[f["new_rel"]] = f["rel"]
-    for rel in inv["other"]:
-        if (src / rel).is_dir():
-            for r in list_files(src / rel):
-                plan[f"{rel}/{r}"] = f"{rel}/{r}"
-        elif rel == RECORD:                          # 원본도 다시 나눈 것 — 그 기록은 이름을 바꿔 남김
-            plan[f"RESPLIT_{src_sha[:12]}.json"] = rel
-        else:
-            plan[rel] = rel
-    rewritten = {}
-    for b, (rel, data) in inv["index"].items():
-        if new[b] != cur[b]:
-            rewritten[rel] = rewrite_index(data, cur[b], new[b], src_sha[:12], how)
-            plan[rel] = None
-        else:
-            plan[rel] = rel
     try:
         dst.mkdir(parents=True, exist_ok=False)
         print(f"쓰는 중 ... 파일 {len(plan)}", flush=True)
-        for drel, srel in sorted(plan.items()):
+        for drel, val in sorted(plan.items()):
             dp = dst.joinpath(*drel.split("/"))
             dp.parent.mkdir(parents=True, exist_ok=True)
-            if srel is None:
+            if val is None:
                 write_json(dp, rewritten[drel])
-            elif a.link == "hard" and drel.endswith(".pqt"):
-                os.link(src.joinpath(*srel.split("/")), dp)
+                continue
+            o, srel = val
+            sp_ = roots[o].joinpath(*srel.split("/"))
+            if a.link == "hard" and drel.endswith(".pqt"):
+                os.link(sp_, dp)
             else:
-                shutil.copy2(src.joinpath(*srel.split("/")), dp)
+                shutil.copy2(sp_, dp)
     except BaseException as e:
         print(f"중간에 멈춤 — {dst} 는 불완전({RECORD} 없음). 지우고 다시 실행하세요.", file=sys.stderr)
         if a.link == "hard" and isinstance(e, OSError):
-            print("  --link hard 는 원본과 같은 디스크(NTFS · ext4 등)에서만 됨 — 아니면 기본 복사로.", file=sys.stderr)
+            print("  --link hard 는 원본(추가 폴더)과 같은 디스크(NTFS · ext4 등)에서만 됨 — 아니면 기본 복사로.", file=sys.stderr)
         raise
 
     # ------------------------------------------------------------ 확인
@@ -475,15 +744,17 @@ def main():
     if set(dst_rels) != set(plan):
         problems.append(f"대상 파일 목록이 계획과 다름: 더 있음 {sorted(set(dst_rels) - set(plan))[:5]} · 빠짐 {sorted(set(plan) - set(dst_rels))[:5]}")
     dst_hash = hash_files(dst, dst_rels)
-    for drel, srel in plan.items():
-        if srel is not None and dst_hash.get(drel) != src_hash.get(srel):
-            problems.append(f"{drel}: sha256 가 원본 {srel} 와 다름")
+    for drel, val in plan.items():
+        if val is not None and dst_hash.get(drel) != hashes[val[0]].get(val[1]):
+            problems.append(f"{drel}: sha256 가 {'원본' if val[0] == 0 else '추가 ' + adds[val[0] - 1]['name']} {val[1]} 와 다름")
     inv2 = scan(dst)
     cur2 = bundle_layout(inv2)
     problems += inv2["errors"]
     for b, sp in new.items():
         if cur2.get(b) != sp:
             problems.append(f"묶음 {b}: 대상에서 {cur2.get(b)} — 계획은 {sp}")
+    for b in sorted(set(cur2) - set(new)):
+        problems.append(f"묶음 {b}: 대상에 있는데 계획에 없음")
     if problems:
         for p in problems:
             print(f"오류: {p}", file=sys.stderr)
@@ -506,6 +777,15 @@ def main():
         index_rewritten=sorted(rewritten), copied_as_is=sorted(inv["other"]),
         warnings=warnings,
     )
+    if adds:
+        rec["adds"] = [dict(arg=ad["arg"], path=str(ad["real"]), name=ad["name"], split_override=ad["override"],
+                            sha12=ad["sha"][:12], files=len(ad["rels"]), bytes=ad["bytes"], bundles=ad["rows"],
+                            skipped=[dict(bundle=b, note=w) for b, w in sorted(ad["skip"].items())],
+                            other=sorted(ad["inv"]["other"]) if ad["other_to"] else [], other_to=ad["other_to"])
+                       for ad in adds]
+        rec["allow_new_scenario"] = a.allow_new_scenario
+        rec["counts"]["added"] = group_counts(add_files, lambda f: f"{f['new_split']}/{f['scenario']}")
+        rec["counts"]["splits_added"] = sp_added
     write_json(dst / RECORD, rec)
     full = dict(dst_hash)
     full[RECORD] = file_sha256(dst / RECORD)
@@ -513,6 +793,9 @@ def main():
     print(f"완료: {dst}  sha12 {dst_sha[:12]}(전체) · {data_sha[:12]}({RECORD} 뺌) · 파일 {len(full)} · {human(dst_bytes)}")
     if inv["other"]:
         print(f"  그대로 복사한 기타 파일: {', '.join(sorted(inv['other']))} — 내용은 원본 나눔 기준(새 나눔은 {RECORD})")
+    for ad in adds:
+        if ad["other_to"]:
+            print(f"  추가 {ad['name']} 기타 파일 → {ad['other_to']}/: {', '.join(sorted(ad['inv']['other']))}")
 
     # ------------------------------------------------------------ MANIFEST 초안
     today = datetime.date.today()
@@ -525,14 +808,36 @@ def main():
     if all(sp_after[sp]["route_command"] is not None for sp in ("val", "test")):
         rc_txt = ", 경로 지시(직진/좌/우) " + " · ".join(
             f"{sp} " + "/".join(str(sp_after[sp]["route_command"].get(str(c), 0)) for c in (0, 1, 2)) for sp in ("val", "test"))
-    note = (f"{preset['note'] + ' — ' if preset else ''}{moved_txt}{', 자동 교사 그대로' if a.preset == 'v1.1' else ''}. "
-            f"{rows_txt}(녹화 단위){rc_txt}. run 파일 {len(inv['files'])}개, {RECORD} 뺀 sha {data_sha[:12]}")
+    eff = [ad for ad in adds if ad["start"]]
+    if not adds:
+        note = (f"{preset['note'] + ' — ' if preset else ''}{moved_txt}{', 자동 교사 그대로' if a.preset == 'v1.1' else ''}. "
+                f"{rows_txt}(녹화 단위){rc_txt}. run 파일 {len(files)}개, {RECORD} 뺀 sha {data_sha[:12]}")
+        origin = (f"{preset['base']}({preset['base_sha12']}) → {how}" if preset else f"원본 {src.name}({src_sha[:12]}) → {how}")
+        name = preset["name"] if preset else "xm_parking_r3"
+        version = preset["version"] if preset else "v?.?"
+        path = preset["path"] if preset else f"data/teacher/{dst.name}/"
+        label = None
+    else:
+        add_txt = []
+        for ad in eff:
+            per = Counter(r["to"] for r in ad["rows"])
+            rows = sum(r["rows"] for r in ad["rows"]) if all(r["rows"] is not None for r in ad["rows"]) else None
+            add_txt.append(f"추가 {ad['name']}({ad['sha'][:12]}) 묶음 {len(ad['rows'])} → "
+                           + " · ".join(f"{sp} {per[sp]}" for sp in SPLITS if per[sp])
+                           + (f"(행 {rows:,})" if rows is not None else "")
+                           + (f", 같은 묶음 {len(ad['skip'])}개 건너뜀" if ad["skip"] else ""))
+        head = (f"{preset['note'] + ' — ' if preset else ''}{moved_txt}{', 자동 교사 그대로' if a.preset == 'v1.1' else ''}").strip(" —")
+        note = (" · ".join(p for p in [head] + add_txt if p) + ". "
+                f"{rows_txt}(녹화 단위){rc_txt}. run 파일 {len(files)}개, {RECORD} 뺀 sha {data_sha[:12]}")
+        label = None if preset else base_label(src, src_sha[:12])
+        base_txt = (f"{preset['base']}({preset['base_sha12']})" if preset else
+                    f"{label}({src_sha[:12]})" if label else f"원본 {src.name}({src_sha[:12]})")
+        origin = " + ".join([base_txt] + [f"{ad['name']}({ad['sha'][:12]})" for ad in eff]) + f" → {how}"
+        name = preset["name"] if preset else (label.split()[0] if label else "xm_parking_r3")
+        version = "v?.?"
+        path = f"data/teacher/{dst.name}/"
     if preset and src_sha[:12] != preset["base_sha12"]:
         note += f", 로컬 원본 sha {src_sha[:12]}"
-    origin = (f"{preset['base']}({preset['base_sha12']}) → {how}" if preset else f"원본 {src.name}({src_sha[:12]}) → {how}")
-    name = preset["name"] if preset else "xm_parking_r3"
-    version = preset["version"] if preset else "v?.?"
-    path = preset["path"] if preset else f"data/teacher/{dst.name}/"
     print("\nMANIFEST 초안(한 줄):")
     print(f"| {today.month}.{today.day} | `dataset` | `{name}` | {version} | `{path}` | {human(dst_bytes)} | {dst_sha[:12]} "
           f"| `{origin}` | E | `{note}` |")
@@ -542,6 +847,12 @@ def main():
     if preset and src_sha[:12] != preset["base_sha12"]:
         print(f"  · 로컬 원본 sha {src_sha[:12]} ≠ MANIFEST {preset['base']} {preset['base_sha12']}(server207 에서 계산). "
               "zip 에 빠지거나 더해진 파일(README.md · export.log 등), 또는 서버 sort 로캘(LC_ALL=C 아님) 차이일 수 있음")
+    if adds:
+        hl = preset["base"] if preset else label
+        print(f"  · 버전은 비워 둠(v?.?) — 원본{' ' + hl if hl else ''}에 내용을 더한 것이면 부 번호를 올림(MANIFEST 규칙, 이미 쓴 번호는 건너뜀)."
+              f" 출처의 추가 폴더 sha12 는 그 폴더 전체(LC_ALL=C) — D 가 MANIFEST 에 그 폴더 행을 넣었으면 이름 · 버전으로 바꿔 적기")
+        if not label and not preset:
+            print(f"  · 원본 이름 · 버전을 몰라 '원본 {src.name}' 로 적음 — MANIFEST 의 원본 행(같은 sha12)으로 바꿔 적기")
     print(f"  · 크기는 파일 크기 합(du -sh 와 조금 다를 수 있음){', 하드 링크라 실제 디스크는 index · 기타 파일만' if a.link == 'hard' else ''}")
 
     if not a.check:
