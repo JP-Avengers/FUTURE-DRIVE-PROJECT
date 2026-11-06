@@ -130,3 +130,4 @@ python3 eval/xm_route.py --rejudge logs/nav2/scenario/parking_r3_obs_cones_ccw.j
 - **노드 실행** — ml_env python 이 시스템 Jazzy rclpy(python 3.12)를 import 하는지(노드 README 가 적은 방식이지만 노드 자체도 아직 실제 실행 전, 노드 README "안 한 것"). 모델 로드 시간(`--ready-timeout` 300 s).
 - **출발 확인 한도**(0.5 m · 10°)가 실제 씬에서 맞는지 — 물리 안착 · odom 원점.
 - **실데이터 판정 대조** — 서버의 Nav2 JSON(`logs/nav2/scenario*`)을 `--rejudge` 로 다시 판정해 저장값과 같은지(다르면 `XM_ROUTE_REJUDGE_DIFF` 줄).
+- **DAgger 같이 띄우기** — 이 하네스(모델이 /cmd_vel)와 `sim/teacher.py --label-only`(라벨 /teacher/cmd_vel 만) · `sim/record_teacher.sh` 를 한 번에 띄워 모델이 가는 자리의 교사 라벨을 녹화하는 것. 도구는 다 있고 묶은 적이 없음 — 순서 · 부탁은 `e2e/PLAN.md` "DAgger". /cmd_vel 발행자는 노드 하나여야 함(`sim/check_proxy_topics.py`)이므로 teacher 는 꼭 `--label-only`.
