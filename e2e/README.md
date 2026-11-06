@@ -80,7 +80,18 @@ python e2e/eval_offline.py --xm-repo ~/xmobility_test/X-Mobility -c e2e/configs/
 ```
 → `frames.csv`(프레임별) · `summary.json`(묶음별 지표) · `run_meta.json`. xm_v1 test 는 경로 지시에 좌회전이 없음(val/test 분할 문제, `resplit_xm.py` 참고).
 
-## 검증 상태 (11.4)
+## 검증 상태 (11.6)
 
-- `check_xm_dataset.py` — 합성 데이터(export 와 같은 열)로 정상 통과, 고장 6종(split 폴더 안 파일 · 열 길이 · NaN · 명령 가운데 칸 · 640×480 이미지 · 묶음 누수)을 모두 오류로 잡음. **실제 xm_v1 에는 아직 안 돌림.**
-- `finetune.py` — 문법 검사만. **실제 학습 · 사전학습 ckpt 키 대조는 아직 안 돌림**(서버에서 2) 시험을 먼저).
+- `check_xm_dataset.py` — 실제 xm_v1(47,572장) 오류 0 · 경고 0(로컬 · Kaggle 둘 다).
+- `finetune.py` — Kaggle T4 × 2 에서 짧은 시험 통과: 사전학습 ckpt 키 넣은 297 · missing 0 · unexpected 61(모두 예상분) · lr 1e-5, 학습 20스텝 + 검증. **본 학습(10에폭)은 11.6 Kaggle 에서 도는 중.**
+- `eval_offline.py` — 제로샷 test 4,753프레임 완료(T4 1장 19.6 프레임/초).
+- `fd_xm_infer` — 입력 전처리(영상 · 경로 20점 · 상한)가 export · eval_offline 과 비트 단위로 같음(ROS 없이 대조). **ROS 위에서는 아직 안 돌림.**
+
+### GPU 메모리별 배치
+
+| GPU | 설정 | 실측 |
+| --- | --- | --- |
+| T4 15 GB | `--gin XMobilityIsaacSimDataModule.batch_size=2 --accumulate-grad-batches 2` | 배치 4 는 첫 스텝 OOM, 배치 2 최대 10.4 GB · 0.60 s/스텝 · 에폭 약 28분(2장) |
+| 24 GB 이상 | 기본(배치 4) | 안 재봄 — 2) 짧은 시험의 `peak_gpu_mem_gb` 로 확인 |
+
+실효 배치(배치 × 누적 × GPU 수)를 같게 두면 lr 그대로 써도 됩니다. `run_meta.json` 에 `batch_size` · `accumulate_grad_batches` · `effective_batch` 가 남습니다.
