@@ -55,6 +55,8 @@ LIM_DEFAULT = (2.0, 10.0, 1.0)              # nav2_route.py:287 · :289 — devi
 FOOT = [(0.14, 0.25), (0.14, -0.25), (-0.607, -0.25), (-0.607, 0.25)]   # nav2_route.py:70 = nav2_params.yaml:212
 GT_PARENT, GT_CHILD = "World", "nova_carter"                            # nav2_route.py:135 · topics.md:39
 TIMEOUT_S = 300.0                           # scenario_batch.sh:89 — nav2_route.py 에 --timeout 300 (yaml timeout_s 는 안 씀)
+GOAL_XY_TOL = 0.25                          # nav2_params.yaml:156 xy_goal_tolerance — Nav2 가 SUCCEEDED 를 내는 반경.
+                                            # 구간 s[i_goal] 은 goal.s 보다 0.21~0.24 m 뒤(계산 s ≠ CSV s 열)인데 노드 · 학습 경로는 goal.s 에서 끝남
 # ---------------------------------------------------------------- 여기서 정한 값(nav2 에 없는 부분)
 START_POS_TOL, START_YAW_TOL_DEG = 0.5, 10.0   # 출발 확인 — 위치는 nav2_route.py:227 의 0.5 m, 방향은 여기서 정함
 PROJ_BACK, PROJ_FWD = 1.0, 10.0             # 진행 거리 사영 창 = fd_xm_infer core.py:28 PROJECT_BACK · FWD(= export_xmobility.py:239)
@@ -269,9 +271,10 @@ def odom_to_map(ox, oy, oyaw, start):
 class Episode:
     """0.1 s 표본마다 update. 기준선 진행(station, 감은 s)이 마지막 경유점 s[i_goal] 을 지나면 도착."""
 
-    def __init__(self, ctx, t_goal, x0, y0, timeout_s, intervene=True, stall_abort_s=0.0):
+    def __init__(self, ctx, t_goal, x0, y0, timeout_s, intervene=True, stall_abort_s=0.0, goal_stop_s=0.0):
         self.ctx, self.t_goal, self.timeout_s = ctx, t_goal, timeout_s
-        self.intervene, self.stall_abort_s = intervene, stall_abort_s
+        self.intervene, self.stall_abort_s, self.goal_stop_s = intervene, stall_abort_s, goal_stop_s
+        self.gx, self.gy = (float(v) for v in ctx.R[ctx.i_goal])
         p0, _ = project_s(ctx, x0, y0)
         ref0 = ctx.s0 if ctx.segment else 0.0
         self.station = ref0 + _wrap_s(p0 - ref0, ctx.L)
@@ -298,8 +301,12 @@ class Episode:
         # max_dev_ok 가 쓰는 값(3자리 반올림, nav2_route.py:270 · :288)과 같은 값으로 비교 — 개입 ⇔ max_dev_ok 거짓
         if self.intervene and round(cte_v, 3) > ctx.lim_dev:
             self.reason, self.detail = "INTERVENED", f"cte {cte_v:.3f} > {ctx.lim_dev} at s {p:.1f}"
-        elif self.station >= ctx.goal_station:
-            self.reason, self.detail = "SUCCEEDED", f"진행 {self.station:.2f} ≥ 목표 지점 s {ctx.goal_station:.2f}"
+        elif self.station >= ctx.goal_station - GOAL_XY_TOL:
+            self.reason, self.detail = "SUCCEEDED", f"진행 {self.station:.2f} ≥ 목표 지점 s {ctx.goal_station:.2f} − {GOAL_XY_TOL}"
+        elif (self.goal_stop_s > 0 and self.run >= self.goal_stop_s and self.station >= ctx.goal_station - ctx.radius
+              and math.hypot(x - self.gx, y - self.gy) <= ctx.radius):
+            # 학습 교사(Nav2)는 목표 앞에서 멈춤 — 모델이 반경 안에서 멈추면 제한 시간(300 s)까지 기다리지 않고 도착으로 끝냄
+            self.reason, self.detail = "SUCCEEDED", f"목표 반경 {ctx.radius} m 안에서 {self.run:.1f} s 정지(진행 {self.station:.2f})"
         elif t - self.t_goal > self.timeout_s:
             self.reason, self.detail = "CANCELED", f"제한 시간 {self.timeout_s:g} s"
         elif self.stall_abort_s > 0 and self.run >= self.stall_abort_s:
@@ -483,17 +490,20 @@ def run_id_of(ts, method, ctx, seed, attempt=1):
     return f"{ts:%Y%m%d_%H%M%S}_{short}_{sc}_s{seed}" + (f"_a{attempt}" if attempt > 1 else "")
 
 
-def finish(ctx, a, track, t_goal, name, meta, extra, wall_s=None, harness="", summ_kw=None):
-    """요약 · 판정 → JSON(nav2_route.py:291-293 모양 + 칸 추가) · CSV 행 · NAV2_ROUTE_DONE 같은 한 줄."""
-    summ, crit, raw = summarize(ctx, track, t_goal, name, wall_s=wall_s, **(summ_kw or {}))
-    meta["fail_reason"] = fail_reason(ctx, track, t_goal, summ, crit, raw, harness)
+def finish(ctx, a, track, t_goal, name, meta, extra, wall_s=None, harness="", summ_kw=None, t_end=None):
+    """요약 · 판정 → JSON(nav2_route.py:291-293 모양 + 칸 추가) · CSV 행 · NAV2_ROUTE_DONE 같은 한 줄.
+    t_end 가 있으면 판정은 끝내기 판단 시각까지의 표본만(nav2_route.py 궤적은 isTaskComplete 에서 끝남 — 멈추는 동안의 표본이
+    lap_sim_s · goal_err · dist_m 에 안 들어감). JSON track 은 멈춘 뒤까지 전부."""
+    judge = [t for t in track if t_end is None or t[0] <= t_end + 1e-6] or track
+    summ, crit, raw = summarize(ctx, judge, t_goal, name, wall_s=wall_s, **(summ_kw or {}))
+    meta["fail_reason"] = fail_reason(ctx, judge, t_goal, summ, crit, raw, harness)
     row = make_row(ctx, summ, crit, raw, meta)
     out = dict(summ)
     out.update({k: row[k] for k in ("schema_version", "run_id", "timestamp", "repo_rev", "method", "model_version", "scene",
                                      "scene_version", "direction", "seed", "p95_cte", "interventions", "fail_reason", "kind",
                                      "deviation_limit_m", "stall_limit_s", "goal_radius_m", "timeout_s", "attempt")})
     out.update({"criteria": crit, "scenario_yaml": ctx.scenario_path, "t_goal": round(t_goal, 3) if t_goal is not None else None,
-                "track_columns": TRACK_COLS[:len(track[0])] if track else []})
+                "judged_samples": len(judge), "track_columns": TRACK_COLS[:len(track[0])] if track else []})
     out.update(extra)
     out["track"] = [[round(float(v), 3) for v in t] for t in track]                       # nav2_route.py:293 과 같은 3자리
     if a.out:
@@ -524,7 +534,10 @@ def rejudge(a):
     t_goal = j.get("t_goal")
     approx = t_goal is None
     if approx:
-        t_goal = track[-1][0] - float(j["lap_sim_s"])
+        # nav2_route.py:243 의 t_goal 은 표본 시각 그 자체 — lap_sim_s(0.1 s 반올림) · 3자리 반올림 · 부동소수 뺄셈 오차로
+        # 첫 표본이 t ≥ t_goal 에서 빠지면 [::5] 정지 보폭이 한 칸 밀려 max_stall_s 가 0.5 s 까지 달라짐 → 가장 가까운 표본 시각에 붙임
+        approx_t = track[-1][0] - float(j["lap_sim_s"])
+        t_goal = min((t[0] for t in track), key=lambda v: abs(v - approx_t))
     ts = datetime.datetime.fromisoformat(j["timestamp"]) if j.get("timestamp") else \
         datetime.datetime.fromtimestamp(os.path.getmtime(a.rejudge)).astimezone()
     method = a.method or j.get("method") or "nav2"
@@ -539,7 +552,7 @@ def rejudge(a):
     summ_kw = dict(recoveries=j.get("recoveries"), spacing=j.get("spacing_m"), waypoints=j.get("waypoints"),
                    amcl_start_err=j.get("amcl_start_err"), initialpose_resent=j.get("initialpose_resent"))
     summ, crit, row = finish(ctx, a, track, t_goal, j["result"], meta, {"rejudged_from": a.rejudge}, wall_s=j.get("wall_s"),
-                             harness=j.get("harness_failed") or "", summ_kw=summ_kw)
+                             harness=j.get("harness_failed") or "", summ_kw=summ_kw, t_end=j.get("t_end_decision"))
     diff = {k: (j[k], summ[k]) for k in ("mean_cte", "max_cte", "max_stall_s", "min_clearance", "collision", "goal_err", "dist_m",
                                          "plan_m", "pass") if k in j and k in summ and j[k] != summ[k]}
     if diff:
@@ -611,7 +624,8 @@ class Live:
                     v_odom = self.odom[3] if self.odom else float("nan")
                     if self.ep is None:                                            # 첫 표본 = t_goal(nav2_route.py:243)
                         self.t_goal = st
-                        self.ep = Episode(self.ctx, st, x, y, self.a.timeout, self.a.intervene == "stop", self.a.stall_abort_s)
+                        self.ep = Episode(self.ctx, st, x, y, self.a.timeout, self.a.intervene == "stop", self.a.stall_abort_s,
+                                          self.a.goal_stop_s)
                         self.t0w, self.ts = time.time(), datetime.datetime.now().astimezone()
                         ev = None
                     else:
@@ -798,7 +812,7 @@ def run_live(a):
                      goal_station=info["goal_station"], station_end=round(L.ep.station, 2), ckpt=os.path.abspath(a.ckpt),
                      ckpt_sha12=nm.get("ckpt_sha12"), node_meta=os.path.relpath(ck_meta, REPO) if nm else None,
                      node_csv=os.path.relpath(log_csv, REPO), node_rc=node_rc, node_cmd=cmd, intervene=a.intervene)
-        finish(ctx, a, L.track, L.t_goal, name, meta, extra, wall_s=wall_s, harness=harness)
+        finish(ctx, a, L.track, L.t_goal, name, meta, extra, wall_s=wall_s, harness=harness, t_end=L.t_end)
         rc = 0
         return rc
     except KeyboardInterrupt:
@@ -832,6 +846,8 @@ def parse_args(argv=None):
     ap.add_argument("--intervene", choices=["stop", "off"], default="stop",
                     help="stop: cte 가 한도를 넘으면 그 회를 끝냄(INTERVENED, results_schema.md §3) · off: Nav2 처럼 계속")
     ap.add_argument("--stall-abort-s", type=float, default=0.0, help="이만큼 정지하면 CANCELED 로 끝냄(0 = 끔, Nav2 일괄은 안 끔)")
+    ap.add_argument("--goal-stop-s", type=float, default=3.0,
+                    help="목표 반경(goal.radius_m) 안에서 이만큼 정지하면 SUCCEEDED 로 끝냄(0 = 끔 — 그러면 목표 앞에서 멈춘 회는 제한 시간까지 감)")
     ap.add_argument("--pose-source", choices=["odom", "ground_truth"], default="odom", help="노드 경로 입력 위치(기본 odom — 평가 규칙)")
     ap.add_argument("--start-pose", type=float, nargs=3, metavar=("X", "Y", "YAW_DEG"), help="씬 출발 자세(기본 시나리오에서 계산)")
     ap.add_argument("--start-yaw-deg", type=float, help="출발 방향만 덮어씀(반시계 바퀴를 레이어로 돌려 띄울 때)")

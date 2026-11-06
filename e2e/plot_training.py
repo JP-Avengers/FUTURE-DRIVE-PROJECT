@@ -14,6 +14,10 @@ import sys
 
 import pandas as pd
 
+# Windows 에서 출력을 파이프 · 파일로 돌리면 stdout 이 cp949 라 '—' 등에서 UnicodeEncodeError — 못 쓰는 글자만 ? 로
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 # 그림 글자는 영어(Kaggle · 서버 기본 글꼴에 한글이 없음)
 PLOT_NAME = {"val_loss": "val_loss", "명령": "action", "경로": "path", "KL": "kl", "v MAE": "v MAE",
              "ω MAE": "w MAE", "경로 MAE": "path MAE"}
@@ -61,7 +65,10 @@ def main():
     for c in TRAIN_COLS:
         if c in df.columns and "step" in df.columns:
             t = df[["step", c]].dropna()
-            ax[0].plot(t["step"], t[c].rolling(a.smooth, min_periods=1).mean(), label=c.split("/")[-1])
+            # 학습 행은 log_every_n_steps(기본 50) 스텝마다 하나 — 창(스텝)을 행 수로 바꿔야 함(행 50개 = 2500 스텝)
+            gap = t["step"].diff().median() if len(t) > 1 else 1.0
+            win = max(1, int(round(a.smooth / gap))) if gap and gap > 0 else 1
+            ax[0].plot(t["step"], t[c].rolling(win, min_periods=1).mean(), label=c.split("/")[-1])
     ax[0].set_title(f"train loss (step, moving avg {a.smooth})")
     ax[0].set_xlabel("step")
     for c, n in cols:

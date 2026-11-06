@@ -34,6 +34,8 @@ r"""X-Mobility 학습 형식(xm_v1 등)을 녹화 묶음 단위로 다시 나누
   (cd <폴더> && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) | sha256sum | cut -c1-12
   LC_ALL=C 없이 en_US.UTF-8 로캘에서 돌리면 대문자 이름(README.md · RESPLIT.json)의 순서가 바뀌어 값이 달라진다
   (C · C.UTF-8 · ko_KR.UTF-8 은 C 순서와 같음 — glibc 2.39 sort 로 확인).
+  Windows Git Bash(MSYS coreutils)의 sha256sum 은 기본이 바이너리 모드라 줄이 '<해시> *./<파일>' 이 되어 값이 달라진다
+  — Git Bash 에서는 xargs -0 sha256sum -t 로(xm_v1 9350296bfd8f 가 -t 없이 29719f711ed8 로 나옴, 11.6 확인).
 
 사용(PowerShell, Windows — 레포 폴더에서):
   python e2e\resplit_xm.py C:\Users\hennr\Downloads\xm_v1_unzip\xm_v1 C:\Users\hennr\Downloads\xm_v1_unzip\xm_v1.1 --preset v1.1 --check

@@ -17,6 +17,10 @@ import json
 import os
 import sys
 
+# Windows 에서 출력을 파이프 · 파일로 돌리면 stdout 이 cp949 라 '—' 등에서 UnicodeEncodeError — 못 쓰는 글자만 ? 로
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 ROUTE_KO = {"0_straight": "지시 직진", "1_left": "지시 좌회전", "2_right": "지시 우회전"}
 
 
@@ -45,9 +49,12 @@ def pair(a, b, key, fmt):
 def table_e15(zs, ft):
     """제로샷 · FT summary.json → 표 E-15 (묶음 = 전체 · 시나리오 · 경로 지시 · 장애물 근처)."""
     base = ft or zs
+
+    def keys(sect):   # 제로샷 · FT 묶음의 합집합(한쪽에만 있는 시나리오 · 지시도 행으로 남김)
+        return sorted(set((zs or {}).get(sect, {})) | set((ft or {}).get(sect, {})))
     rows = [("전체", "overall")]
-    rows += [(f"{k}", ("by_scenario", k)) for k in base["by_scenario"]]
-    rows += [(ROUTE_KO.get(k, k), ("by_route_command", k)) for k in base["by_route_command"]]
+    rows += [(f"{k}", ("by_scenario", k)) for k in keys("by_scenario")]
+    rows += [(ROUTE_KO.get(k, k), ("by_route_command", k)) for k in keys("by_route_command")]
     rows.append((f"장애물 {base['near_obstacle']['threshold_m']} m 안", "near_obstacle"))
 
     def get(s, key):
@@ -61,7 +68,8 @@ def table_e15(zs, ft):
              "| --- | --- | --- | --- | --- | --- | --- |"]
     for name, key in rows:
         a, b = get(zs, key), get(ft, key)
-        n = (b or a or {}).get("n")
+        na, nb = (a or {}).get("n"), (b or {}).get("n")
+        n = nb if na is None or na == nb else (na if nb is None else f"{na} · {nb}")   # 다르면 제로샷 · FT 둘 다
         lines.append(f"| {name} | {n if n is not None else '—'} | {pair(a, b, 'v_mae', f3)} | {pair(a, b, 'w_mae', f3)} | "
                      f"{pair(a, b, 'w_sign_agree', pct)} | {pair(a, b, 'ade_m', f3)} | {pair(a, b, 'fde_m', f3)} |")
     if "2_right" in base["by_route_command"] and "1_left" not in base["by_route_command"]:
@@ -69,7 +77,14 @@ def table_e15(zs, ft):
     setup = (ft or zs).get("setup", {})
     note = f"split {setup.get('split', '?')} · 파일 {setup.get('files', '?')} · 프레임 {setup.get('frames', '?')}" \
            f" · teacher_forcing {setup.get('teacher_forcing', '?')}"
-    return "\n".join(lines) + f"\n\n({note})"
+    warn = ""
+    if zs and ft:
+        sa, sb = zs.get("setup", {}), ft.get("setup", {})
+        diff = [f"{k} 제로샷 {sa.get(k)} · FT {sb.get(k)}" for k in ("split", "files", "frames", "teacher_forcing")
+                if sa.get(k) != sb.get(k)]
+        if diff:
+            warn = "\n\n**경고: 제로샷 · FT 평가 조건이 다름 — 같은 행끼리 비교 불가** (" + " · ".join(diff) + ")"
+    return "\n".join(lines) + f"\n\n({note})" + warn
 
 
 def table_e14(rm, curves, version, ckpt_info):
@@ -91,6 +106,9 @@ def table_e14(rm, curves, version, ckpt_info):
         ("repo · X-Mobility 커밋", f"`{rm.get('repo_rev')}` · `{rm.get('xm_rev')}`"),
     ]
     out = "| 항목 | 값 |\n| --- | --- |\n" + "\n".join(f"| {a} | {b} |" for a, b in rows)
+    if not rm.get("finished"):   # finetune.py 는 학습 전 · 끝난 뒤 두 번 씀 — finished 없으면 학습이 끝나지 않은 run
+        out = ("**경고: run_meta.json 에 finished 가 없음 — 학습이 끝나지 않은(중단 · OOM) run. best · global_step · "
+               "world_size 등은 None**\n\n" + out)
     if curves:
         out += "\n\n학습 곡선(에폭별 검증, plot_training.py):\n\n" + curves
     return out
@@ -142,9 +160,9 @@ def main():
     if zs or ft:
         parts += ["## 표 E-15. test split 개루프 지표 (제로샷 · 파인튜닝)", table_e15(zs, ft)]
     text = "\n\n".join(parts) + "\n"
-    print(text)
-    with open(a.out, "w", encoding="utf-8") as f:
+    with open(a.out, "w", encoding="utf-8") as f:   # 화면 출력이 실패해도 표 파일은 남게 먼저 씀
         f.write(text)
+    print(text)
     print(f"→ {a.out}")
 
 

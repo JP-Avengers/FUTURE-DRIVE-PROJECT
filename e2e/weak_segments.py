@@ -35,6 +35,10 @@ import sys
 import numpy as np
 import pandas as pd
 
+# Windows 에서 출력을 파이프 · 파일로 돌리면 stdout 이 cp949 라 '—' 등에서 UnicodeEncodeError — 못 쓰는 글자만 ? 로
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)            # python -I 로 돌려도 eval_offline 을 찾게

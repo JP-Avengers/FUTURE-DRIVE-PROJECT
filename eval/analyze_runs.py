@@ -37,6 +37,10 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 
+# Windows 에서 출력을 파이프 · 파일로 돌리면 stdout 이 cp949 라 '—' 등에서 UnicodeEncodeError — 못 쓰는 글자만 ? 로
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 SCHEMA_VERSION = "v0"
 # 열 이름: (형식, 필수 열, 빈칸 허용) — eval/results_schema.md 2장과 같게
 COLS = {
