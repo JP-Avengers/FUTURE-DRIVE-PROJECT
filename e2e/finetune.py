@@ -28,6 +28,8 @@ import os
 # transformers 가 TensorFlow 를 안 불러오게(USE_TF=0). Kaggle 이미지의 TF 2.21 은 protobuf ≥6.31 인데
 # wandb==0.19.4 가 protobuf 를 5.29 로 내려서, TF 를 불러오면 diffusers→transformers.clip import 에서 VersionError.
 os.environ.setdefault("USE_TF", "0")
+# T4(15 GB)에서 첫 스텝 OOM 이 688 MB 차이로 났음 — 단편화 줄이기(torch import 전에 정해야 먹힘)
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import statistics
 import subprocess
 import sys
@@ -73,6 +75,9 @@ def parse_args():
                     help="DDP 통신 백엔드 — Windows 는 nccl 이 없어 gloo(기본). X-Mobility 데이터 로더가 "
                          "DistributedSampler 를 써서 GPU 1장이어도 DDP 프로세스 그룹이 필요함")
     ap.add_argument("--max-steps", type=int, default=-1)
+    ap.add_argument("--accumulate-grad-batches", type=int, default=1,
+                    help="기울기 누적 — 배치를 줄여도 실효 배치를 지킴(T4: --gin XMobilityIsaacSimDataModule.batch_size=2 와 함께 2). "
+                         "OneCycle 은 Lightning estimated_stepping_batches 로 잡혀 누적을 반영함")
     ap.add_argument("--max-time", default=None, help="학습 시간 상한 \"DD:HH:MM:SS\" (Kaggle 12시간 세션 등). "
                     "닿으면 그 자리에서 멈추고 last.ckpt 저장 — lr 스케줄은 끝까지 안 내려가므로 에폭 수를 시간에 맞추는 게 우선")
     ap.add_argument("--limit-train-batches", type=float, default=None)
@@ -205,7 +210,7 @@ def main():
     trainer = pl.Trainer(max_epochs=epochs, max_steps=a.max_steps, precision=precision, sync_batchnorm=True,
                          accelerator=a.accelerator, devices=a.devices, strategy=DDPStrategy(find_unused_parameters=True, process_group_backend=a.ddp_backend),
                          callbacks=[pl.callbacks.ModelSummary(-1), pl.callbacks.LearningRateMonitor(), ckpt_cb, timer],
-                         max_time=a.max_time, logger=[logger, csv_logger], **kw)
+                         max_time=a.max_time, logger=[logger, csv_logger], accumulate_grad_batches=a.accumulate_grad_batches, **kw)
     trainer.fit(model, datamodule=dm)
 
     if trainer.global_rank == 0:
@@ -222,6 +227,8 @@ def main():
         meta.update(step_time_s=timer.step_time(), train_sequences=n_seq,
                     steps_per_epoch=per_rank // dm.batch_size,   # drop_last=True, limit_train_batches 와 무관한 전체 값
                     world_size=trainer.world_size,
+                    batch_size=dm.batch_size, accumulate_grad_batches=a.accumulate_grad_batches,
+                    effective_batch=dm.batch_size * a.accumulate_grad_batches * trainer.world_size,
                     peak_gpu_mem_gb=round(torch.cuda.max_memory_allocated() / 2**30, 2) if torch.cuda.is_available() else None)
         meta.update(finished=datetime.datetime.now().isoformat(timespec="seconds"),
                     best_model_path=ckpt_cb.best_model_path, monitor=a.monitor, best_score=float(ckpt_cb.best_model_score)
