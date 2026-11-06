@@ -5,6 +5,7 @@
   지표  기울기   교사 |ω| > 0.1 프레임에서 예측 ω 를 교사 ω 에 1차 회귀한 기울기(1 = 교사만큼, 0.5 = 절반만 꺾음)
         급회전   교사 |ω| > 0.3 프레임의 평균 |ω| 예측 / 교사, 부호 반대 비율
         지연     파일별로 예측을 k 프레임 늦춰 교사와 상관 — 최대인 k(0 이면 지연 없음)
+  장애물  obstacle_dist 가 있는 시나리오는 '장애물 3 m 안 · 밖'으로도 나눔(급회전이 장애물 때문인지 코너 때문인지)
   공통  --common 이면 모든 입력에 있는 파일만 씀. test split 이 다른 결과(v1.0 vs v1.1)를 공정하게 비교할 때.
 
   python e2e/steer_diag.py ZS=<zs>/frames.csv v0.1=<v01>/eval_test/frames.csv v0.2=<v02>/eval_test/frames.csv --common
@@ -15,7 +16,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-W_FIT, W_BIG, MAX_LAG = 0.1, 0.3, 5
+W_FIT, W_BIG, MAX_LAG, NEAR = 0.1, 0.3, 5, 3.0
 
 
 def best_lag(x):
@@ -36,7 +37,7 @@ def diag(x):
     return dict(n=len(x),
                 slope=np.polyfit(t.w_teacher, t.w_pred, 1)[0] if len(t) > 2 else np.nan,
                 n_big=len(big),
-                big_pred=big.w_pred.abs().mean(), big_teacher=big.w_teacher.abs().mean(),
+                big_pred=big.w_pred.abs().mean() if len(big) else np.nan, big_teacher=big.w_teacher.abs().mean(),
                 flip=(np.sign(big.w_pred) != np.sign(big.w_teacher)).mean() if len(big) else np.nan,
                 lag=best_lag(x))
 
@@ -64,13 +65,20 @@ def main():
     scen = sorted(set().union(*(set(d.scenario) for _, d in runs)))
     lines = ["| 시나리오 | 모델 | 프레임 | ω 기울기 | 급회전 수 | 급회전 ω 크기 예측 / 교사 | 부호 반대 | 지연(프레임) |",
              "|---|---|---|---|---|---|---|---|"]
-    for sc in scen + ["*"]:
+    groups = []
+    for sc in scen:
+        groups.append((sc, lambda d, sc=sc: d[d.scenario == sc]))
+        if any(d[d.scenario == sc].obstacle_dist.notna().any() for _, d in runs):
+            groups.append((f"{sc} · 장애물 {NEAR} m 안", lambda d, sc=sc: d[(d.scenario == sc) & (d.obstacle_dist < NEAR)]))
+            groups.append((f"{sc} · 장애물 {NEAR} m 밖", lambda d, sc=sc: d[(d.scenario == sc) & (d.obstacle_dist >= NEAR)]))
+    groups.append(("전체", lambda d: d))
+    for label, pick in groups:
         for name, d in runs:
-            x = d if sc == "*" else d[d.scenario == sc]
-            if not len(x):
+            x = pick(d)
+            if len(x) < 3:
                 continue
             m = diag(x)
-            lines.append(f"| {'전체' if sc == '*' else sc} | {name} | {m['n']} | {m['slope']:.2f} | {m['n_big']} | "
+            lines.append(f"| {label} | {name} | {m['n']} | {m['slope']:.2f} | {m['n_big']} | "
                          f"{m['big_pred']:.2f} / {m['big_teacher']:.2f} | {100 * m['flip']:.1f} % | {m['lag']} |")
     txt = "\n".join(([note, ""] if note else []) + lines
                     + ["", f"기울기: 교사 |ω|>{W_FIT} 프레임 1차 회귀 · 급회전: 교사 |ω|>{W_BIG} · 지연: 파일별 상관 최대 k(0–{MAX_LAG})"])
