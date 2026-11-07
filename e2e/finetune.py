@@ -97,8 +97,6 @@ def parse_args():
 
 def main():
     a = parse_args()
-    if a.seed is not None:
-        pl.seed_everything(a.seed, workers=True)
     xm = os.path.abspath(os.path.expanduser(a.xm_repo)) if a.xm_repo else None   # PowerShell 은 인자의 ~ 를 안 펼침
     if not xm or not os.path.isfile(os.path.join(xm, "train.py")):
         sys.exit("--xm-repo(또는 XM_REPO)에 X-Mobility 레포 경로를 주세요 (train.py 가 있는 폴더)")
@@ -119,6 +117,8 @@ def main():
     import gin
     import pytorch_lightning as pl
     import torch
+    if a.seed is not None:   # pl import 뒤, 모델 · 데이터 모듈을 만들기 전에(초기화 · 셔플 · 드롭아웃). 11.7 전에는 import 앞이라 --seed 면 UnboundLocalError
+        pl.seed_everything(a.seed, workers=True)
     from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
     from pytorch_lightning.loggers import CSVLogger, WandbLogger
     from pytorch_lightning.strategies import DDPStrategy
