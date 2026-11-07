@@ -35,7 +35,8 @@
 | `weak_segments.py` | 약한 구간 — `eval_offline.py` 의 frames.csv 를 (시나리오 · 방향 · 기준선 s 2 m 구간)으로 묶어 ω MAE 등이 나쁜 구간 순위, 두 평가(제로샷 · FT) 비교 시 나빠진 구간 표시, 기준선 위 색 그림. 재학습용 추가 수집 자리 고르기(11.16–23) |
 | `fill_report.py` | 결과 → 보고서 표 — run_meta.json · 평가 summary.json → 표 E-14 · E-15 · MANIFEST checkpoint 행 초안 |
 | `plot_training.py` | 학습 곡선 — `<out>/csv/metrics.csv`(finetune.py 가 남김) → 에폭별 검증 표 `curves.md` · 그림 `curves.png`(matplotlib 있을 때). 보고서 표 E-14 |
-| `kaggle_finetune.ipynb` | Kaggle 무료 GPU(T4 × 2)용 노트북 — 시험(40배치 1에폭, 스텝 시간 실측) + 제로샷 오프라인 평가 → 본 학습(남은 시간에 맞춰 에폭 수 자동) + 학습 곡선 + 파인튜닝 오프라인 평가. 준비 순서는 노트북 첫 칸 |
+| `kaggle_finetune.ipynb` | Kaggle 무료 GPU(T4 × 2)용 노트북 — 시험(40배치 1에폭, 스텝 시간 실측) + 제로샷 오프라인 평가 → 본 학습(남은 시간에 맞춰 에폭 수 자동) + 학습 곡선 + 파인튜닝 오프라인 평가. 실험은 `RUN_NAME` · `EXTRA_ARGS` · `SAVE_TOP_K` + Input 데이터셋으로 바꿈. 준비 순서는 노트북 첫 칸 |
+| `kaggle_eval.ipynb` | 여러 ckpt 를 같은 test 에서 재평가 + 체크포인트 평균(`avg_ckpt.py`) 평가. 학습 없음 · HF 토큰 필요 없음(CLI push 로 실행). T4 2장에서 2개씩 동시에 |
 | `configs/finetune_parking_r3.gin` | 파인튜닝 설정 — X-Mobility `base_train_config.gin` 위에 `ENABLE_SEMANTIC=False` · 에폭 · lr · 배치만 바꿈 |
 
 `finetune.py` 가 원본 `train.py` 와 다른 점:
@@ -81,10 +82,10 @@ python e2e/eval_offline.py --xm-repo ~/xmobility_test/X-Mobility -c e2e/configs/
 ```
 → `frames.csv`(프레임별) · `summary.json`(묶음별 지표) · `run_meta.json`. xm_v1 test 는 경로 지시에 좌회전이 없음(val/test 분할 문제, `resplit_xm.py` 참고).
 
-## 검증 상태 (11.6)
+## 검증 상태 (11.7)
 
 - `check_xm_dataset.py` — 실제 xm_v1(47,572장) 오류 0 · 경고 0(로컬 · Kaggle 둘 다).
-- `finetune.py` — Kaggle T4 × 2 에서 짧은 시험 통과: 사전학습 ckpt 키 넣은 297 · missing 0 · unexpected 61(모두 예상분) · lr 1e-5, 학습 20스텝 + 검증. **본 학습(10에폭)은 11.6 Kaggle 에서 도는 중.**
+- `finetune.py` — Kaggle T4 × 2 에서 짧은 시험 통과: 사전학습 ckpt 키 넣은 297 · missing 0 · unexpected 61(모두 예상분) · lr 1e-5, 학습 20스텝 + 검증. 본 학습 10에폭 3회 완료(v0.1 · v0.2 · v0.1_aw30, 결과 `results/`), 11.7 경로 축척 run(v0.1_p3) 진행.
 - `eval_offline.py` — 제로샷 test 4,753프레임 완료(T4 1장 19.6 프레임/초).
 - `fd_xm_infer` — 입력 전처리(영상 · 경로 20점 · 상한)가 export · eval_offline 과 비트 단위로 같음(ROS 없이 대조). **ROS 위에서는 아직 안 돌림.**
 

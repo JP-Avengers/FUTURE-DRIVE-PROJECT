@@ -1,0 +1,49 @@
+{
+ "soup_v01_v02": {
+  "out": "/tmp/soups/soup_v01_v02.ckpt",
+  "averaged": 297,
+  "kept_from_first": 0,
+  "weights": [
+   0.5,
+   0.5
+  ],
+  "size_gb": 0.96,
+  "sha12": "7e28d27bc2b6",
+  "parts": [
+   "v0.1",
+   "v0.2"
+  ]
+ },
+ "soup_v01_aw30": {
+  "out": "/tmp/soups/soup_v01_aw30.ckpt",
+  "averaged": 297,
+  "kept_from_first": 0,
+  "weights": [
+   0.5,
+   0.5
+  ],
+  "size_gb": 0.96,
+  "sha12": "8e3a6524c303",
+  "parts": [
+   "v0.1",
+   "aw30"
+  ]
+ },
+ "soup_all3": {
+  "out": "/tmp/soups/soup_all3.ckpt",
+  "averaged": 297,
+  "kept_from_first": 0,
+  "weights": [
+   0.3333333333333333,
+   0.3333333333333333,
+   0.3333333333333333
+  ],
+  "size_gb": 0.96,
+  "sha12": "2e8fbfad223b",
+  "parts": [
+   "v0.1",
+   "aw30",
+   "v0.2"
+  ]
+ }
+}
