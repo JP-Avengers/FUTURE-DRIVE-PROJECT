@@ -1,0 +1,77 @@
+# 실내 틀 (복도 등 평평한 한 층) — RGB-D 키프레임 + 자세. 형상 메쉬를 받았으면 geometry, 없으면 tsdf.py 로 만듦.
+# 장소 설정은 이 틀을 물려받고 바뀌는 것만 적음:  base: templates/indoor_rtabmap.yaml  (recon/pipeline/config.py)
+# ★ = 장소마다 꼭 바꿀 곳. 장소 설정 예: recon/configs/corridor.yaml · lounge_indoor.yaml (Open3D 샘플로 시험)
+# 실외 틀과 다른 점: 바닥 높이 지도(ground) · 바닥 한 장 · 바닥 텍스처 · 차 · 테두리 · 하늘 없음 (벽이 경계).
+# 실내용 새 기능(평면 바닥 텍스처 · 벽 사진 · 반사 거르기)은 docs/guides/digital_twin_map.md 6장 — 준비 중.
+
+name: CHANGE_ME                        # ★
+out: ~/recon_out/CHANGE_ME             # ★ 레포 밖. 메쉬·USD 는 커밋하지 않음
+
+input:                                 # ★ 장소마다 바꿈
+  format: rtabmap_keyframes            # B 키프레임 내보내기 — io_rgbd.LOADERS (tum · open3d_lounge 도 됨)
+  root: ~/recon_data/CHANGE_ME          # 받은 폴더. 경로에 한글이 있으면 Open3D 가 못 읽으므로 영문 경로로 복사
+  keyframes: keyframes
+  poses: trajectory_camera_optical.txt  # 시각 tx ty tz qx qy qz qw id — 카메라 광학 좌표계 → map
+  depth_scale: 1000.0
+
+# geometry:                            # B 가 형상 메쉬를 주면 켬 (input.root 기준) — 그러면 tsdf 단계를 건너뛰고 colorize 로 색을 입힘
+#   mesh: geometry_clean_5cm.ply
+
+tsdf:                                  # geometry 가 없을 때 키프레임으로 메쉬 만들기 (tsdf.py)
+  frame_step: 1                        # 키프레임은 이미 솎아져 있음 (동영상 프레임이면 5)
+  voxel: 0.01                          # m
+  sdf_trunc_voxels: 4
+  depth_trunc: 2.0                     # m. 3.0 이면 95% 오차가 9~25 cm 로 커짐 (10.2 Lounge 실험) — 긴 복도는 왕복 촬영으로 덮음
+  far_depth_trunc: 0                   # 원거리 볼륨 끔 (실내는 벽이 경계)
+
+cleanup:
+  min_cluster_tris: 500
+
+orient:
+  up_hint: [0, 0, 1]                   # B 맵은 IMU 로 이미 Z-up. 자세에 중력이 없으면 camera (카메라 화면 아래 방향 평균의 반대)
+  max_tilt_deg: 20
+  origin: keep                         # B 맵 좌표 그대로 (경로 · 실측 비교). min_corner = x·y 최솟값 모서리를 원점으로
+  crop_below_floor: 0.05               # 바닥보다 이만큼(m) 아래는 잡음
+
+fill:
+  small_hole_size_m: 0.3
+  floor_patch: true                    # 바닥이 빈 칸을 z=0 평면 조각으로 채움
+  floor_cell_m: 0.05
+  floor_band_m: 0.03
+  max_path_dist_m: 3.0                 # 주행 경로에서 3 m 안만 (복도 폭 2~3 m — 벽 너머 안 채움)
+
+colorize:                              # 색 입히기 — geometry 를 받았을 때 필요 (TSDF 메쉬는 이미 색이 있어 이 단계를 지워도 됨: colorize: null)
+  max_dist_m: 6.0                      # 실내는 가까이서 봄
+  top_k: 3
+  min_cos: 0.1
+  occlusion_tol_m: 0.03
+  occlusion_tol_per_m: 0.02
+  depth_tol_m: 0.10
+  depth_tol_per_m: 0.05
+  extra_inputs: []
+  floor_lift_m: 0.0
+
+decimate:
+  visual_tris: 300000                  # 복도 한 층 기준
+  collider_tris: 50000                 # 벽이 가장 중요 — 줄일 때 벽 면이 남는지 visibility · D 주행으로 확인
+
+zones:
+  near_cell_m: 0.1
+  far_tris: 0
+  ground_cell_m: 0.25
+  ground_margin_m: 0.5
+  backdrop_height_m: 0                 # 배경 벽 안 만듦 (실제 벽이 있음)
+  boundary_height_m: 2.0               # 안 보이는 경계벽 (충돌만 — 로봇이 지도 밖으로 못 나감)
+
+visibility:                            # 로봇 카메라 높이 기준 — 복도는 좁아서 좌우 이동을 작게
+  path_step: 5
+  offsets_m: [-0.3, 0.0, 0.3]
+  yaws_deg: [-45, 0, 45]
+  min_clearance_m: 0.2
+  ray_width: 160
+  horizon_deg: 11.5                    # 위로 빠지면 천장 구멍 (실내는 비정상)
+  list_cell_m: 0.25
+  list_top: 30
+
+usd:
+  double_sided: [Visual]

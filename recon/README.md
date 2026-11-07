@@ -45,7 +45,33 @@ recon/pipeline/usd_utils.py       USD 쓰기·검증 (씬 .usda + 메쉬 .usdc p
 recon/pipeline/check_visibility.py  주행 통로에서 보이는 구멍 점검 (가상 카메라 광선) → 다시 찍을 곳 목록
 ```
 
-### 실행
+### 새 장소 — 틀 + 한 명령 (11.07~)
+
+데이터가 오면 장소 설정 몇 줄만 쓰고 한 명령으로 USD 까지. 설정은 틀을 물려받고(`base:`) 바뀌는 것만 적는다 (`pipeline/config.py`: dict 는 키마다 덮어씀, `null` = 그 단계 끔).
+
+```
+recon/configs/templates/outdoor_rtabmap.yaml  실외 틀 — 주차장 v0.8 r2 에서 장소 전용(차 목록 · 보조 키프레임 · 하늘)을 뺀 것
+recon/configs/templates/indoor_rtabmap.yaml   실내 틀 — 평평한 한 층, 테두리 · 하늘 · 차 없음 (벽이 경계)
+recon/configs/parking.yaml                    주차장 = 실외 틀 + 장소 전용 (map_v08.yaml 과 합친 결과가 같음)
+recon/configs/corridor.yaml                   복도 — ★ input 만 채우면 됨
+recon/configs/lounge_indoor.yaml              실내 틀 시험 (Open3D 샘플)
+recon/pipeline/check_input.py                 받은 데이터 점검 (형식 · 한글 경로 · 이미지 크기 · 깊이 단위 · 자세 튐 · 메쉬 ↔ 자세 좌표 · 설정의 파일)
+recon/pipeline/run.py                         점검 → (TSDF) → USD → 구멍 점검 → Blender 미리보기 → (D 패키지)
+recon/pipeline/package.py                     D 패키지 폴더 + README_D.md (report.json 으로 채움) + zip · sha12
+```
+
+```bash
+# 1) 틀을 물려받은 장소 설정 (예: corridor.yaml 의 ★ 줄만 채움)
+# 2) 실행 — 점검에서 오류가 나면 빌드 전에 멈춤
+~/o3d_env/bin/python recon/pipeline/run.py --config recon/configs/corridor.yaml                 # USD + 점검 + 미리보기
+~/o3d_env/bin/python recon/pipeline/run.py --config recon/configs/corridor.yaml --package v0.1  # + D 패키지
+~/o3d_env/bin/python recon/pipeline/run.py --config recon/configs/corridor.yaml --from build    # 중간부터 (--only 하나만)
+```
+
+결과: `<out>/check_input.json` · `check_input_path.png` (카메라 경로) · `report.json` · `usd/` · `visibility/` · `preview/` · `run_log.txt` · `run_summary.json` · `handoff/<이름>_<판>_<날짜>.zip`.
+미리보기는 Blender 가 있을 때만 (`--blender` 또는 환경변수 `BLENDER`), 카메라 자리는 `preview.route` (x,y CSV) 가 없으면 입력 카메라 경로.
+
+### 실행 (단계별)
 
 레포 루트에서. 결과 폴더는 config 의 `out`(기본 `~/recon_out/<이름>`)이고, `--out` 으로 아무 곳이나 지정할 수 있다 (두 명령에 같은 폴더). 레포 안은 피한다.
 

@@ -16,8 +16,8 @@ import argparse, csv, json, os, time
 
 import numpy as np
 import open3d as o3d
-import yaml
 
+import config
 import io_rgbd
 from mesh_utils import Footprint, Ground
 
@@ -98,7 +98,7 @@ def main():
     ap.add_argument("--config", required=True)
     ap.add_argument("--out", help="build_usd.py 출력 폴더 (기본: config 의 out)")
     args = ap.parse_args()
-    cfg = yaml.safe_load(open(args.config, encoding="utf-8"))
+    cfg = config.load(args.config)
     out = os.path.expanduser(args.out or cfg["out"])
     c = cfg["visibility"]
     vdir = os.path.join(out, "visibility")

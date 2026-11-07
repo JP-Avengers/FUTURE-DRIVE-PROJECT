@@ -1,0 +1,20 @@
+# 실내 틀 시험 — Open3D 샘플 Lounge (자세에 중력이 없어 카메라 기준으로 세움). 실제 복도는 corridor.yaml.
+#   python recon/pipeline/run.py --config recon/configs/lounge_indoor.yaml
+base: templates/indoor_rtabmap.yaml
+
+name: lounge
+out: ~/recon_out/lounge_indoor
+
+input:
+  format: open3d_lounge                # Open3D 가 처음 실행 때 내려받음 (~/open3d_data)
+  root: null                           # 샘플이라 폴더 없음 (틀의 CHANGE_ME 지움)
+  depth_scale: 1000.0
+
+tsdf:
+  frame_step: 5                        # 동영상 프레임이라 5장마다
+
+orient:
+  up_hint: camera
+  origin: min_corner
+
+colorize: null                         # TSDF 메쉬에 이미 색이 있음

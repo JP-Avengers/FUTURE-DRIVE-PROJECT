@@ -12,9 +12,9 @@ import argparse, csv, json, os, time
 
 import numpy as np
 import open3d as o3d
-import yaml
 
 import cars
+import config
 import edge_finish
 import far_zone
 import floor_texture
@@ -125,7 +125,7 @@ def main():
     ap.add_argument("--out", help="결과 폴더 (기본: config 의 out). geometry 가 없으면 tsdf.py 출력 폴더")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(open(args.config, encoding="utf-8"))
+    cfg = config.load(args.config)
     out = os.path.expanduser(args.out or cfg["out"])
     os.makedirs(out, exist_ok=True)
     geo = cfg.get("geometry")

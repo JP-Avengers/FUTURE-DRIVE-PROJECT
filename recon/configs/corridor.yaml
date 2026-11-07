@@ -1,0 +1,14 @@
+# 복도 (실내 시험) — 데이터가 오면 input 만 채우고 실행. ★ 표시 확인.
+#   python recon/pipeline/run.py --config recon/configs/corridor.yaml
+base: templates/indoor_rtabmap.yaml
+
+name: corridor
+out: ~/recon_out/corridor_v01          # ★ 판마다 v01, v02 …
+
+input:
+  root: ~/recon_data/CHANGE_ME          # ★ B 가 준 복도 폴더 (영문 경로)
+  keyframes: keyframes                 # ★ B 폴더 안 이름에 맞춤
+  poses: trajectory_camera_optical.txt # ★ 카메라 광학 좌표계 궤적 (camera_link 아님)
+
+# geometry:                            # ★ B 가 형상 메쉬를 주면 켬
+#   mesh: geometry_clean_5cm.ply

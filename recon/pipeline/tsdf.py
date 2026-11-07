@@ -10,8 +10,8 @@ import argparse, json, os, time
 
 import numpy as np
 import open3d as o3d
-import yaml
 
+import config
 import io_rgbd
 
 
@@ -21,7 +21,7 @@ def main():
     ap.add_argument("--out", help="출력 폴더 (기본: config 의 out)")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(open(args.config, encoding="utf-8"))
+    cfg = config.load(args.config)
     out = os.path.expanduser(args.out or cfg["out"])
     os.makedirs(out, exist_ok=True)
     p = cfg["tsdf"]
