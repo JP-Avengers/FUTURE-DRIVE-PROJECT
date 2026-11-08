@@ -1,0 +1,49 @@
+# Polycam (아이폰 LiDAR) 등 사진 텍스처 메쉬 GLB 하나만 받았을 때의 틀 — glb_to_usd.py (run.py 가 input.format: glb 이면 자동).
+# 장소 설정은 이 틀을 물려받고 바뀌는 것만 적음:  base: templates/polycam_glb.yaml
+# ★ = 장소마다 꼭 바꿀 곳. 키프레임 · 자세가 없으므로 tsdf · 색 투영 · 바닥/벽 사진 굽기는 없음 — 텍스처는 Polycam 것을 그대로 씀.
+# 실행: python recon/pipeline/run.py --config recon/configs/<장소>.yaml   (check → build → visible → preview)
+
+name: CHANGE_ME                        # ★
+out: ~/recon_out/CHANGE_ME             # ★ 레포 밖. 메쉬·USD 는 커밋하지 않음
+
+input:                                 # ★
+  format: glb
+  root: ~/recon_data/CHANGE_ME          # 받은 폴더 (영문 경로)
+  mesh: CHANGE_ME.glb                  # Polycam 내보내기: GLB (텍스처 포함). 'Raw data' 내보내기가 있으면 사진 · 자세도 같이 받아 둠 (나중에 키프레임 방식으로)
+  up: y                                # glTF 규약 = Y-up (Polycam 도 그럼). check 가 '수평 면이 가장 많은 축' 을 알려 줌
+  scale: 1.0                           # Polycam = m. cm 로 나온 파일이면 0.01
+
+orient:
+  max_tilt_deg: 15                     # 바닥 찾기: 위를 향한 면 (기울기 15° 안)
+  origin: min_corner                   # min_corner = x·y 최솟값 모서리를 원점 | center = 가운데 | keep = 받은 좌표 (Polycam 원점 = 촬영 시작 자리)
+
+collision:
+  min_cluster_tris: 200                # 떠 있는 작은 조각 지움
+  tris: 80000                          # 충돌 메쉬 삼각형 (0 = 안 줄임)
+  flat_floor: true                     # 스캔 바닥은 빼고 평평한 바닥 한 장 (겹친 바닥 = PhysX 멈춤)
+  floor_band_m: 0.03                   # 바닥 높이 ± 이 안의 위 향한 면 = 스캔 바닥
+  floor_cell_m: 0.1
+  floor_margin_m: 0.3                  # 메쉬 범위보다 이만큼 넓게
+  floor_fill: true                     # 보이는 바닥 받침 (FloorFill prim): 스캔 바닥 아래 한 장, 바닥 중앙값 색 — 스캔 가장자리 · 벽 밑 틈이 하얗게 안 비치게
+  floor_fill_depth_m: 0.02             # 스캔 바닥이 몇 mm 출렁여도 받침이 뚫고 나오지 않게
+  boundary_height_m: 2.0               # 안 보이는 경계벽 (충돌만)
+
+drive_path:                            # 촬영 경로가 없어 바닥 빈 곳의 뼈대로 가상 경로를 만듦 (visibility · 미리보기 카메라 자리)
+  cell_m: 0.05
+  robot_h_m: 1.0                       # 이 높이 아래 물체 = 장애물
+  clearance_m: 0.3                     # 장애물에서 이만큼 떨어진 바닥만
+  path_step_m: 0.1
+  camera_height_m: 0.3                 # 로봇 카메라 높이
+
+visibility:                            # check_visibility.py (가상 경로 기준)
+  path_step: 5
+  offsets_m: [-0.2, 0.0, 0.2]
+  yaws_deg: [-45, 0, 45, 180]
+  min_clearance_m: 0.2
+  ray_width: 160
+  horizon_deg: 11.5
+  list_cell_m: 0.25
+  list_top: 30
+
+usd:
+  double_sided: [Visual]               # Polycam 메쉬는 벽 뒷면이 비어 있음 — 양면으로 그림

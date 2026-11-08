@@ -103,6 +103,41 @@ def check_frames(rep, name, inp, sample=30):
     return fr
 
 
+def check_glb(rep, cfg):
+    """GLB (Polycam 등) 점검: 파일 · 부분 수 · 텍스처 크기 · 범위(단위) · 위 축."""
+    import trimesh
+    inp = cfg["input"]
+    p = os.path.join(os.path.expanduser(inp.get("root", ".")), inp.get("mesh", ""))
+    if not inp.get("mesh") or not os.path.exists(p):
+        rep.add("err", "GLB 파일", f"없음: {p}")
+        return
+    if any(ord(ch) > 127 for ch in p):
+        rep.add("warn", "GLB 경로", "한글 등 비ASCII 문자 — 다른 도구가 못 읽을 수 있음, 영문 경로 권장")
+    sc = trimesh.load(p, force="scene", process=False)
+    geos = [g for g in sc.geometry.values() if isinstance(g, trimesh.Trimesh)]
+    n_tri = sum(len(g.faces) for g in geos)
+    tex = []
+    for g in geos:
+        mat = getattr(g.visual, "material", None)
+        img = getattr(mat, "baseColorTexture", None) or getattr(mat, "image", None)
+        if img is not None:
+            tex.append(img.size)
+    rep.add("ok" if n_tri else "err", "GLB 메쉬", f"부분 {len(geos)}개 · 삼각형 {n_tri:,} · 파일 {os.path.getsize(p) / 1e6:.1f} MB")
+    rep.add("ok" if tex else "warn", "GLB 텍스처",
+            f"{len(tex)}장 ({', '.join(f'{w}x{h}' for w, h in tex[:4])}{' …' if len(tex) > 4 else ''})" if tex else "사진 텍스처 없음 — 정점 색 · 단색으로 나옴")
+    ext = sc.extents * float(inp.get("scale", 1.0))
+    lvl = "ok" if 1.0 <= ext.max() <= 300 else "err"
+    rep.add(lvl, "GLB 범위", f"{np.round(ext, 2).tolist()} m" + ("" if lvl == "ok" else " — 단위가 이상함 (cm 이면 input.scale: 0.01)"))
+    if geos:                                                   # 위 축: 수평 면(바닥 · 천장)의 법선이 가장 많이 향한 축
+        allg = trimesh.util.concatenate([g.copy().apply_transform(sc.graph[n][0]) for n in sc.graph.nodes_geometry
+                                         for g in [sc.geometry[sc.graph[n][1]]] if isinstance(g, trimesh.Trimesh)])
+        w = np.abs(allg.face_normals) ** 8 * allg.area_faces[:, None]
+        axis = "xyz"[int(np.argmax(w.sum(0)))]
+        want = inp.get("up", "y")
+        rep.add("ok" if axis == want else "warn", "GLB 위 축", f"수평 면이 가장 많은 축 = {axis} (설정 input.up = {want})"
+                + ("" if axis == want else " — 다르면 바닥을 못 찾을 수 있음"))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", required=True)
@@ -118,6 +153,9 @@ def main():
             rep.add("err", f"설정 {k}", "틀의 CHANGE_ME 를 장소 이름으로 바꿔야 함")
     if "CHANGE_ME" in str(cfg["input"].get("root", "")):
         rep.add("err", "설정 input.root", "받은 데이터 폴더로 바꿔야 함")
+        return finish(rep, out, cfg)
+    if cfg["input"].get("format") == "glb":
+        check_glb(rep, cfg)
         return finish(rep, out, cfg)
     fr = check_frames(rep, "주 키프레임", cfg["input"])
     for e in (cfg.get("colorize") or {}).get("extra_inputs", []) or []:

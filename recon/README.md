@@ -51,10 +51,12 @@ recon/pipeline/check_visibility.py  주행 통로에서 보이는 구멍 점검 
 
 ```
 recon/configs/templates/outdoor_rtabmap.yaml  실외 틀 — 주차장 v0.8 r2 에서 장소 전용(차 목록 · 보조 키프레임 · 하늘)을 뺀 것
-recon/configs/templates/indoor_rtabmap.yaml   실내 틀 — 평평한 한 층, 테두리 · 하늘 · 차 없음 (벽이 경계)
+recon/configs/templates/indoor_rtabmap.yaml   실내 틀 — 평평한 한 층, 바닥 1 cm 텍스처 · 벽 사진(walls.py) · 반사/합의 거르기, 테두리 · 하늘 · 차 없음 (벽이 경계)
+recon/configs/templates/polycam_glb.yaml      Polycam GLB 틀 — glb_to_usd.py (텍스처 그대로 · 수평 맞춤 · 평평한 충돌 바닥 · 가상 주행 경로)
 recon/configs/parking.yaml                    주차장 = 실외 틀 + 장소 전용 (map_v08.yaml 과 합친 결과가 같음)
 recon/configs/corridor.yaml                   복도 — ★ input 만 채우면 됨
 recon/configs/lounge_indoor.yaml              실내 틀 시험 (Open3D 샘플)
+recon/configs/lounge_glb.yaml                 GLB 틀 시험 (Lounge 결과를 Y-up GLB 로 내보낸 것)
 recon/pipeline/check_input.py                 받은 데이터 점검 (형식 · 한글 경로 · 이미지 크기 · 깊이 단위 · 자세 튐 · 메쉬 ↔ 자세 좌표 · 설정의 파일)
 recon/pipeline/run.py                         점검 → (TSDF) → USD → 구멍 점검 → Blender 미리보기 → (D 패키지)
 recon/pipeline/package.py                     D 패키지 폴더 + README_D.md (report.json 으로 채움) + zip · sha12

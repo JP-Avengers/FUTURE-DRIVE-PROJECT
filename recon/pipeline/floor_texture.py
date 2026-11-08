@@ -93,7 +93,10 @@ def _project(tex, fr, f, P, zbuf, lift, c, step=1):
     depth = np.asarray(o3d.io.read_image(fr.depth[f])).astype(np.float32) / fr.depth_scale
     ui, vi = np.rint(u).astype(int), np.rint(v).astype(int)
     dk, zb = depth[vi, ui], zbuf[vi, ui]
-    m = (cos > c["min_cos"]) & (z <= zb + 0.05 + 0.02 * z) & ((dk == 0) | (np.abs(z - dk) < 0.15 + 0.05 * z))
+    dok = np.abs(z - dk) < c.get("depth_tol_m", 0.15) + c.get("depth_tol_per_m", 0.05) * z
+    if not c.get("require_depth"):                              # 바닥: depth 가 빈 화소(먼 곳 · 검은 노면)도 씀. 벽: 빈 화소 = 잎사귀 · 유리 등 앞의 물체일 수 있어 안 씀
+        dok |= dk == 0
+    m = (cos > c["min_cos"]) & (z <= zb + 0.05 + 0.02 * z) & dok
     if not m.any():
         return None
     iy, ix, u, v, cos, dist = iy[m], ix[m], u[m], v[m], cos[m], dist[m]
@@ -163,7 +166,7 @@ def bake(sets, floor, ground, occ, c, out_dir):
     lo, hi = np.floor(fv[:, :2].min(0) * 4) / 4, np.ceil(fv[:, :2].max(0) * 4) / 4
     region = [float(lo[0]), float(hi[0]), float(lo[1]), float(hi[1])]
     tex = Texels(region, c["cell_m"], ground)
-    print(f"      바닥 텍스처: {tex.nx}×{tex.ny} 텍셀 ({c['cell_m'] * 100:g} cm) · 키프레임 묶음 {[s[0] for s in sets]}")
+    print(f"      {c.get('label', '바닥 텍스처')}: {tex.nx}×{tex.ny} 텍셀 ({c['cell_m'] * 100:g} cm) · 키프레임 묶음 {[s[0] for s in sets]}")
     sel = {s[0]: _frames_near(tex, s[2], c["max_dist_m"]) for s in sets}
     st = dict(region=region, cell_m=c["cell_m"], texels=[tex.nx, tex.ny], photometric={})
 
@@ -226,8 +229,35 @@ def bake(sets, floor, ground, occ, c, out_dir):
     seen = np.isfinite(gmin)
     col = np.zeros((tex.ny, tex.nx, 3), np.float32)
     wsum = np.zeros((tex.ny, tex.nx), np.float32)
+    glare = None
+    sp = c.get("specular")                                      # 반사 거르기 (실내 형광등 · 유리 · 광택 바닥): 같은 텍셀을 본 사진 중 혼자 유난히 밝은 장은 뺌.
+    if sp:                                                      # 반짝임은 보는 방향마다 자리가 바뀌므로 다른 장들의 중앙값보다 ratio 배 밝고 min_lum 넘으면 반사로 봄
+        lum = best_c.astype(np.float32).mean(-1)                # 3장 이상 본 텍셀만 (중앙값이 반사가 아니려면) — 절반 넘게는 안 빠지므로 칠할 장은 남음
+        lum[~np.isfinite(best_g)] = np.nan
+        with np.errstate(all="ignore"):
+            med = np.nanmedian(lum, axis=-1)
+        glare = (lum > sp.get("ratio", 1.25) * med[..., None]) & (lum > sp.get("min_lum", 0.45)) & (np.isfinite(lum).sum(-1) >= 3)[..., None]
+        st["specular"] = dict(texels_pct=round(100 * float(glare.any(-1).mean()), 2), samples_dropped=int(glare.sum()))
+        print(f"      반사 거르기: 텍셀 {st['specular']['texels_pct']}% 에서 밝게 튄 사진 {st['specular']['samples_dropped']:,}장 뺌")
+        del lum, med
+    cs = c.get("consensus")                                     # 합의 거르기 (벽): 같은 텍셀을 본 사진들의 중앙값 색과 max_diff 넘게 다른 장은 뺌 —
+    if cs:                                                      # 벽에 붙은 화분 잎처럼 시점마다 자리가 바뀌는 앞 물체. 3장 이상 본 텍셀만
+        bc = best_c.astype(np.float32)
+        bc[~np.isfinite(best_g)] = np.nan
+        if glare is not None:
+            bc[glare] = np.nan
+        with np.errstate(all="ignore"):
+            medc = np.nanmedian(bc, axis=2)
+            diff = np.nanmax(np.abs(bc - medc[:, :, None]), axis=-1)
+        odd = (diff > cs.get("max_diff", 0.15)) & (np.isfinite(bc[..., 0]).sum(-1) >= 3)[..., None]
+        glare = odd if glare is None else (glare | odd)
+        st["consensus"] = dict(texels_pct=round(100 * float(odd.any(-1).mean()), 2), samples_dropped=int(odd.sum()))
+        print(f"      합의 거르기: 텍셀 {st['consensus']['texels_pct']}% 에서 다른 사진들과 색이 다른 {st['consensus']['samples_dropped']:,}장 뺌")
+        del bc, medc, diff
     for j in range(K):                                          # 메모리 아끼려고 한 자리씩 ([..., j] 면 색 채널 축이 잡힘 — 10.29 빨간 톱니)
         fin = np.isfinite(best_g[:, :, j])
+        if glare is not None:
+            fin &= ~glare[:, :, j]
         w = np.zeros((tex.ny, tex.nx), np.float32)
         w[fin] = (gmin[fin].astype(np.float32) / np.maximum(best_g[:, :, j][fin].astype(np.float32), 1e-6)) ** c.get("power", 3.0)
         col += best_c[:, :, j].astype(np.float32) * w[..., None]
@@ -250,7 +280,9 @@ def bake(sets, floor, ground, occ, c, out_dir):
 def _vertex_color_sampler(floor, tex, g=0.05):
     """바닥 정점 (g 격자 모서리, 정점 색) → 텍셀 위치 (iy, ix) 에서 이중선형으로 뽑는 함수."""
     v, c = np.asarray(floor.vertices), np.asarray(floor.vertex_colors)
-    ix = np.rint((v[:, 0] - tex.x0) / g).astype(int)
+    if len(c) != len(v):                                        # 정점 색이 없으면 회색
+        return lambda ty, tx: np.full((len(ty), 3), 0.5, np.float32)
+    ix =np.rint((v[:, 0] - tex.x0) / g).astype(int)
     iy = np.rint((v[:, 1] - tex.y0) / g).astype(int)
     grid = np.full((int(np.ceil((tex.y1 - tex.y0) / g)) + 1, int(np.ceil((tex.x1 - tex.x0) / g)) + 1, 3), np.nan, np.float32)
     ok = (ix >= 0) & (ix < grid.shape[1]) & (iy >= 0) & (iy < grid.shape[0])
@@ -499,7 +531,8 @@ def write_obj(d, mesh, tex, name="floor"):
     v, t = np.asarray(mesh.vertices), np.asarray(mesh.triangles) + 1
     if tex.get("region"):
         x0, x1, y0, y1 = tex["region"]
-        uv = np.c_[(v[:, 0] - x0) / (x1 - x0), (v[:, 1] - y0) / (y1 - y0)]
+        u = v if tex.get("uv_T") is None else v @ np.asarray(tex["uv_T"])[:3, :3].T + np.asarray(tex["uv_T"])[:3, 3]   # 벽은 벽 좌표로
+        uv = np.c_[(u[:, 0] - x0) / (x1 - x0), (u[:, 1] - y0) / (y1 - y0)]
     else:
         uv = v[:, :2] / tex["tile_m"]
     img = f"{name}_{os.path.basename(tex['color'])}"
@@ -524,6 +557,11 @@ def run(cfg, out, floor, occ_mesh, ground, sets):
                max_rms=c.get("photometric_max_rms"), gain_range=c.get("gain_range"),
                sets=[(s[0], len(s[2]), round(float(s[3]), 4), s[4]) for s in sets],
                floor=hashlib.sha1(np.asarray(floor.vertices, np.float32).tobytes()).hexdigest()[:12])
+    for kk in ("consensus", "require_depth", "depth_tol_m", "depth_tol_per_m"):
+        if c.get(kk):
+            key[kk] = c[kk]
+    if c.get("specular"):                                       # 켰을 때만 키에 (끈 판의 기존 굽기 결과는 그대로 다시 씀)
+        key["specular"] = c["specular"]
     key_s = json.dumps(key, sort_keys=True)
     stamp = os.path.join(d, "bake_key.json")
     if c.get("reuse_bake") and os.path.exists(stamp) and open(stamp, encoding="utf-8").read() == key_s \
@@ -538,7 +576,7 @@ def run(cfg, out, floor, occ_mesh, ground, sets):
         del occ
         json.dump(st, open(os.path.join(d, "bake_stats.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         open(stamp, "w", encoding="utf-8").write(key_s)
-    root = os.path.expanduser(cfg["input"]["root"])
+    root = os.path.expanduser(cfg["input"].get("root", "."))
     color, fst = finish(d, floor, c, root)
     st["finish"] = fst
     m = c.get("material", {})

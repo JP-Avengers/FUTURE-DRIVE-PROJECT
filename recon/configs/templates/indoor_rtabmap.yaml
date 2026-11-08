@@ -1,8 +1,8 @@
 # 실내 틀 (복도 등 평평한 한 층) — RGB-D 키프레임 + 자세. 형상 메쉬를 받았으면 geometry, 없으면 tsdf.py 로 만듦.
 # 장소 설정은 이 틀을 물려받고 바뀌는 것만 적음:  base: templates/indoor_rtabmap.yaml  (recon/pipeline/config.py)
 # ★ = 장소마다 꼭 바꿀 곳. 장소 설정 예: recon/configs/corridor.yaml · lounge_indoor.yaml (Open3D 샘플로 시험)
-# 실외 틀과 다른 점: 바닥 높이 지도(ground) · 바닥 한 장 · 바닥 텍스처 · 차 · 테두리 · 하늘 없음 (벽이 경계).
-# 실내용 새 기능(평면 바닥 텍스처 · 벽 사진 · 반사 거르기)은 docs/guides/digital_twin_map.md 6장 — 준비 중.
+# 실외 틀과 다른 점: 차 · 테두리 · 하늘 · 아스팔트 색 통일 · 주차칸 채우기 없음 (벽이 경계, 바닥 무늬는 사진 그대로).
+# 실내 기능 (11.08): 바닥 한 장 + 1 cm 사진 텍스처 · 벽 사진(walls.py) · 반사 거르기(specular) — 끄려면 장소 설정에서 null.
 
 name: CHANGE_ME                        # ★
 out: ~/recon_out/CHANGE_ME             # ★ 레포 밖. 메쉬·USD 는 커밋하지 않음
@@ -33,6 +33,56 @@ orient:
   origin: keep                         # B 맵 좌표 그대로 (경로 · 실측 비교). min_corner = x·y 최솟값 모서리를 원점으로
   crop_below_floor: 0.05               # 바닥보다 이만큼(m) 아래는 잡음
 
+ground:                                # 바닥 높이 지도 — 실내는 거의 평평하지만 같은 방식(카메라 아래 바닥 면)으로 재서 바닥 한 장 · 텍스처에 씀
+  cell_m: 0.25
+  band_m: 0.05                         # 카메라 경로 아래 지면에서 이 안의 위 향한 면 = 바닥 (문턱 몇 cm 포함, 탁자 · 의자 좌석 제외)
+  camera_height_m: auto                # 카메라에서 아래로 쏜 광선 중앙값
+  flat: true                           # 바닥 = 한 높이 기준 (손에 든 촬영 · Polycam 은 카메라 높이가 바뀜 — 낮게 든 곳의 의자 좌석이 바닥으로 잡히지 않게)
+
+single_floor:                          # 바닥 한 장: 스캔의 겹친 바닥 층을 빼고 매끈한 한 장 (겹친 바닥 = PhysX 멈춤 · 화면 깨짐)
+  cell_m: 0.05                         # 바닥 높이 지도 칸 (실내는 메쉬가 촘촘해 5 cm)
+  smooth: 3
+  mesh_cell_m: 0.05                    # 보이는 바닥 격자
+  band_m: 0.03                         # 바닥 높이 + 이 안 = 바닥 층 → 뺌 (이보다 솟은 것만 물체)
+  debris_h_m: 0.05                     # 바닥에 뜬 얇은 조각 지우기 (높이 · 두께)
+  debris_extent_m: 0.03
+  flat_h_m: 0.03
+  corridor_m: 0.3                      # 촬영한 사람이 지나간 길 0.3 m 안의
+  corridor_h_m: 0.2                    # 이보다 낮은 조각 = 잡음
+  collision_cell_m: 0.05               # 충돌 바닥 격자
+  collision_floor_min_tris: 200
+  collision_margin_m: 0.5
+  collision_low_h_m: 0.05              # 충돌 물체: 바닥 위 이 안의 작은 조각 지움
+  collision_flat_h_m: 0.03
+
+floor_texture:                         # 바닥 1 cm 사진 텍스처 (floor_texture.py) — 장판 · 타일 무늬는 사진 그대로 (색 통일 안 함)
+  cell_m: 0.01
+  max_dist_m: 4.0                      # 실내는 가까이서 봄
+  top_k: 5                             # 텍셀마다 5장까지 — 반사 거르기에 장 수가 필요
+  power: 3.0
+  border_px: 6
+  feather_px: 40
+  min_cos: 0.1
+  reuse_bake: true
+  specular: {ratio: 1.25, min_lum: 0.45}   # 반사 거르기: 같은 자리를 본 사진들의 중앙값보다 1.25배 밝고 밝기 0.45 넘는 장은 뺌 (형광등 · 광택 바닥)
+  jpeg_quality: 92
+
+walls:                                 # 벽 사진 (walls.py): 큰 수직 평면을 찾아 Wall<k> prim + 1 cm 텍스처 (형상은 스캔 그대로)
+  min_area_m2: 1.5
+  max_walls: 12
+  dist_m: 0.03                         # 평면에서 이 안 = 벽
+  max_tilt_deg: 10
+  cell_m: 0.01
+  max_dist_m: 4.0                      # RGB-D depth 가 믿을 만한 거리
+  top_k: 5
+  require_depth: true                  # 키프레임 depth 가 벽 거리와 맞는 화소만 (빈 depth = 잎사귀 · 유리일 수 있음) — 앞의 화분 · 의자가 벽에 번지지 않게
+  depth_tol_m: 0.05                    # 허용 차이 5 cm + 거리 1 m 당 2 cm (바닥은 15 cm + 5 cm/m)
+  depth_tol_per_m: 0.02
+  power: 1.5                           # 여러 장을 고르게 섞음 (바닥 3 — 흰 벽은 한 장이 넓게 칠하면 노출 차이가 쐐기 얼룩으로 보임)
+  min_cos: 0.35                        # 벽을 비스듬히(70° 넘게) 본 사진은 안 씀 — 세로 줄무늬로 늘어짐 (11.08 Lounge)
+  specular: {ratio: 1.25, min_lum: 0.45}   # 유리 · 광택 벽면 반사
+  consensus: {max_diff: 0.15}          # 합의 거르기: 같은 자리를 본 사진들의 중앙값 색과 0.15 넘게 다른 장은 뺌 (벽에 붙은 화분 · 사람 — 시점마다 자리가 바뀜)
+
 fill:
   small_hole_size_m: 0.3
   floor_patch: true                    # 바닥이 빈 칸을 z=0 평면 조각으로 채움
@@ -52,7 +102,7 @@ colorize:                              # 색 입히기 — geometry 를 받았�
   floor_lift_m: 0.0
 
 decimate:
-  visual_tris: 300000                  # 복도 한 층 기준
+  visual_tris: 0                       # 0 = 안 줄임 (floor_texture 가 켜져 있으면 0 이어야 함). 텍스처를 끄면 300000 정도
   collider_tris: 50000                 # 벽이 가장 중요 — 줄일 때 벽 면이 남는지 visibility · D 주행으로 확인
 
 zones:

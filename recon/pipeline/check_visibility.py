@@ -106,8 +106,15 @@ def main():
 
     mesh = o3d.io.read_triangle_mesh(os.path.join(out, "visual.ply"))
     T = np.array(json.load(open(os.path.join(out, "transform.json"), encoding="utf-8"))["T_input_to_scene"])
-    fr = io_rgbd.load(cfg["input"])
-    poses = [T @ p for p in fr.poses]                         # 카메라 경로를 메쉬와 같은 씬 좌표로
+    if cfg["input"].get("format") == "glb":                   # GLB: 촬영 경로가 없으므로 glb_to_usd.py 의 가상 경로 (씬 좌표)
+        dp = json.load(open(os.path.join(out, "drive_path.json"), encoding="utf-8"))
+        poses = [np.array(P) for P in dp["poses"]]
+        ii = dp["intrinsic"]
+        fr = type("F", (), {})()
+        fr.intrinsic = o3d.camera.PinholeCameraIntrinsic(ii["width"], ii["height"], ii["fx"], ii["fy"], ii["cx"], ii["cy"])
+    else:
+        fr = io_rgbd.load(cfg["input"])
+        poses = [T @ p for p in fr.poses]                     # 카메라 경로를 메쉬와 같은 씬 좌표로
     gpath = os.path.join(out, "ground.npz")                   # 실외: 바닥 높이 지도 (없으면 z=0)
     ground = Ground.load(gpath) if os.path.exists(gpath) else Ground()
     scene = o3d.t.geometry.RaycastingScene()

@@ -46,8 +46,15 @@ def add_texture_material(stage, mesh_prim, mat_path, mesh, tex, usd_dir):
     pv = UsdGeom.PrimvarsAPI(mesh_prim)
     if tex.get("region"):
         x0, x1, y0, y1 = tex["region"]
+        u = v
+        if tex.get("uv_T") is not None:   # 벽 (walls.py): 세계 → 벽 좌표로 돌린 뒤 영역 안 위치
+            A = np.asarray(tex["uv_T"])
+            u = v @ A[:3, :3].T + A[:3, 3]
         pv.CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex).Set(
-            Vt.Vec2fArray.FromNumpy(np.c_[(v[:, 0] - x0) / (x1 - x0), (v[:, 1] - y0) / (y1 - y0)].astype(np.float32)))
+            Vt.Vec2fArray.FromNumpy(np.c_[(u[:, 0] - x0) / (x1 - x0), (u[:, 1] - y0) / (y1 - y0)].astype(np.float32)))
+    elif tex.get("uv") is not None:   # 받은 메쉬의 UV 그대로 (glb_to_usd.py — Polycam 텍스처 아틀라스, 0 = 아래)
+        pv.CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex).Set(
+            Vt.Vec2fArray.FromNumpy(np.asarray(tex["uv"], np.float32)))
     pv.CreatePrimvar("st_tile", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex).Set(
         Vt.Vec2fArray.FromNumpy((v[:, :2] / tex["tile_m"]).astype(np.float32)))
     mat = UsdShade.Material.Define(stage, mat_path)
@@ -84,9 +91,9 @@ def add_texture_material(stage, mesh_prim, mat_path, mesh, tex, usd_dir):
         return t.CreateOutput(out, out_type)
 
     st_tile = reader("ReadSTTile", "st_tile")
-    if tex.get("region"):
+    if tex.get("region") or tex.get("uv") is not None:
         surf.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
-            texture("ColorTex", tex["color"], reader("ReadST", "st"), "sRGB", "clamp", "rgb", Sdf.ValueTypeNames.Float3))
+            texture("ColorTex", tex["color"], reader("ReadST", "st"), "sRGB", "clamp" if tex.get("region") else "repeat", "rgb", Sdf.ValueTypeNames.Float3))
     else:
         surf.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
             texture("ColorTex", tex["color"], st_tile, "sRGB", "repeat", "rgb", Sdf.ValueTypeNames.Float3))

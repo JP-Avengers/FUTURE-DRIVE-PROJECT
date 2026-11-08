@@ -48,14 +48,21 @@ def find_blender(arg):
     return None
 
 
+def is_glb(cfg):
+    return cfg["input"].get("format") == "glb"
+
+
 def route_csv(cfg, out):
     """미리보기 카메라 자리: config 의 preview.route (x,y CSV) 가 있으면 그것, 없으면 입력 카메라 경로를 씬 좌표로 옮겨서."""
     r = (cfg.get("preview") or {}).get("route")
     if r:
         return os.path.expanduser(r)
-    T = np.array(json.load(open(os.path.join(out, "transform.json"), encoding="utf-8"))["T_input_to_scene"])
-    fr = io_rgbd.load(cfg["input"])
-    xy = np.array([(T @ P)[:2, 3] for P in fr.poses])
+    if is_glb(cfg):                                             # GLB: glb_to_usd.py 가 만든 가상 경로 (이미 씬 좌표)
+        xy = np.array([np.array(P)[:2, 3] for P in json.load(open(os.path.join(out, "drive_path.json"), encoding="utf-8"))["poses"]])
+    else:
+        T = np.array(json.load(open(os.path.join(out, "transform.json"), encoding="utf-8"))["T_input_to_scene"])
+        fr = io_rgbd.load(cfg["input"])
+        xy = np.array([(T @ P)[:2, 3] for P in fr.poses])
     path = os.path.join(out, "preview_route.csv")
     with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
@@ -111,15 +118,15 @@ def main():
             if rc and not args.force:
                 raise SystemExit(f"입력 점검 오류 → 멈춤. {os.path.join(out, 'check_input.json')} 확인 (무시하려면 --force)")
         elif st == "tsdf":
-            if cfg.get("geometry"):
-                print("   geometry 를 받음 → 건너뜀")
+            if cfg.get("geometry") or is_glb(cfg):
+                print("   메쉬를 받음 (geometry · GLB) → 건너뜀")
                 continue
             if os.path.exists(os.path.join(out, "mesh_raw.ply")) and not args.rebuild_mesh:
                 print("   mesh_raw.ply 있음 → 건너뜀 (--rebuild-mesh 로 다시)")
                 continue
             rc, sec = call([py, os.path.join(HERE, "tsdf.py")] + common, log, out)
         elif st == "build":
-            rc, sec = call([py, os.path.join(HERE, "build_usd.py")] + common, log, out)
+            rc, sec = call([py, os.path.join(HERE, "glb_to_usd.py" if is_glb(cfg) else "build_usd.py")] + common, log, out)
         elif st == "visible":
             rc, sec = call([py, os.path.join(HERE, "check_visibility.py")] + common, log, out)
         elif st == "preview":

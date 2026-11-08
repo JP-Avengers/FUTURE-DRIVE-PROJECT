@@ -21,6 +21,7 @@ import floor_texture
 import io_rgbd
 import sky
 import usd_utils
+import walls
 from color_utils import fill_unseen, floor_offset, project_colors, raycasting_scene, seen_through
 from scipy.spatial import cKDTree
 
@@ -114,9 +115,18 @@ def make_ground(cfg, scene, poses):
         rays = np.c_[cams, np.tile([0, 0, -1], (len(cams), 1))].astype(np.float32)
         t = raycasting_scene(scene).cast_rays(o3d.core.Tensor(rays))["t_hit"].numpy()
         h = float(np.median(t[np.isfinite(t)]))
-    ground = Ground.from_mesh(scene, cams - [0, 0, h], g["cell_m"], g["band_m"])
+    ground = Ground.from_mesh(scene, path_ground(cfg, cams, h), g["cell_m"], g["band_m"])
     ground.stats["camera_height_m"] = round(h, 3)
     return ground
+
+
+def path_ground(cfg, cams, h):
+    """카메라 아래 지면 추정 = 카메라 - 장착 높이. ground.flat (실내 · 손에 든 촬영): 카메라 높이가 들쭉날쭉해도
+    바닥은 평평하므로 한 높이(중앙값)로 — 안 그러면 카메라를 낮게 든 곳에서 의자 좌석 · 탁자가 바닥으로 잡힘 (11.08 Lounge 혹)."""
+    pg = cams - [0, 0, h]
+    if cfg["ground"].get("flat"):
+        pg[:, 2] = np.median(pg[:, 2])
+    return pg
 
 
 def main():
@@ -206,7 +216,7 @@ def main():
         if sf.get("ground_map"):      # 받은 바닥 높이 지도 (B v0.5~: 본네트 여러 회차로 만든 것, 차로는 B 가 이미 다듬음)
             ground = Ground.from_map(os.path.join(os.path.expanduser(cfg["input"]["root"]), sf["ground_map"]), T)
         else:                         # 스캔 메쉬에서 뽑음 — 칸마다 바닥 정점이 3개 이상 있어야 해서 5 cm 안팎 메쉬에 맞음
-            ground = Ground.from_mesh(scene, cams - [0, 0, report["ground"]["camera_height_m"]], sf["cell_m"],
+            ground = Ground.from_mesh(scene, path_ground(cfg, cams, report["ground"]["camera_height_m"]), sf["cell_m"],
                                       cfg["ground"]["band_m"]).smoothed(sf.get("smooth", 3))
             if sf.get("road_smooth_m"):   # 주행 통로 노면은 넓게 다듬음 (겹친 바닥 때문에 생기는 계단 없애기)
                 ground = ground.smoothed_near(paths, sf["road_smooth_m"])
@@ -243,6 +253,9 @@ def main():
         report["single_floor"].update(floor_tris=len(floor_vis.triangles), collision_floor_tris=len(floor_col.triangles))
         o3d.io.write_triangle_mesh(os.path.join(out, "floor.ply"), floor_vis)
         n_floor_tris = len(floor_vis.triangles)
+        if objects.has_vertex_colors() and not floor_vis.has_vertex_colors():   # colorize 를 안 쓰면 (TSDF 색 메쉬) 새 바닥에 색이 없음
+            floor_vis.vertex_colors = o3d.utility.Vector3dVector(          # → 합칠 때 물체 색까지 사라지므로 스캔 바닥 색을 옮김
+                floor_colors([scene], np.asarray(floor_vis.vertices), sf["band_m"] + 0.02, ground))
         scene = floor_vis + objects
         scene.compute_vertex_normals()
         sfr = report["single_floor"]
@@ -360,6 +373,12 @@ def main():
         fl, ob = split_first(visual, n_floor_tris)
         visuals = {"Floor": fl, "Visual": ob, **{k: m for k, m in visuals.items() if k != "Visual"}}
     materials = {"Floor": tex_info} if tex_info else {}
+    if cfg.get("walls") and fr is not None:   # 벽에 키프레임 사진 (실내): 벽 삼각형을 Visual 에서 떼어 Wall<k> + 텍스처
+        wsets = [("main", fr, poses, 0.0, [])] + [(n, f2, [T @ P for P in f2.poses], 0.0, ex)
+                                                  for n, f2, ex in ((n, io_rgbd.load(i), ex) for n, i, ex in extra_sources(cfg))]
+        wall_mats, report["walls"] = walls.run(cfg, out, visuals, scene, wsets)
+        materials.update(wall_mats)
+        print(f"      벽 사진: 벽 {report['walls']['walls']}면 · {report['walls'].get('wall_area_m2', 0)} m²")
     if cfg.get("edge"):               # 테두리 마감 (v0.7): 경계 밖 정리 + 연석 · 인도 · 잔디 · 나무
         edge_mats, report["edge"] = edge_finish.run(cfg, os.path.expanduser(cfg["input"]["root"]), visuals, colliders,
                                                    ground or Ground())
