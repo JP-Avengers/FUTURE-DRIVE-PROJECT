@@ -7,36 +7,41 @@
 **가기 전 — 챙길 것(이 노트북 → 집 PC 같은 경로)**
 
 1. **사전학습 ckpt** — `Downloads\xm_pretrained_from_seed_try2\pretrained\x_mobility-nav2-semantic_action_path.ckpt`(1.44 GB · 1,444,751,035 B · sha12 `339c68f9e027` = v0.1 · aw30 run_meta 의 checkpoint_sha12). `-Ckpt` 로 주면 7단계가 HF 다운로드를 건너뜀.
-2. **데이터** — `Downloads\02_xm_v1.zip`(805 MB, 안에 `xm_v1\`; v0.1 · aw30 · seed1 과 같은 v1.0 split). 또는 집에서 `kaggle datasets download henryseo711/dataset-02-xm-v1`. xm_v1_2(`03_xm_v1_2.zip`)는 v0.2 탈락(11.7, `results/compare_11_7.md`)이라 안 가져감.
-3. **Kaggle 토큰** — `$HOME\.kaggle\access_token` 파일을 USB · 드라이브로 옮겨 집 PC 의 같은 경로에(데이터 · 결과 내려받기용). 내용은 채팅에 붙이지 말 것.
+2. **데이터** — `Downloads\02_xm_v1.zip`(805 MB, 안에 `xm_v1\`; v0.1 · aw30 · seed1 과 같은 v1.0 split). 또는 집에서 `kaggle datasets download henryseo711/dataset-02-xm-v1`. E3 용으로 `Downloads\03_xm_v1_1_p3.zip`(805 MB, 안에 `xm_v1_1_p3\`)도 — 또는 `kaggle datasets download henryseo711/dataset-06-xm-v1-1-p3`. xm_v1_2(`03_xm_v1_2.zip`)는 v0.2 탈락(11.7, `results/compare_11_7.md`)이라 안 가져감.
+3. **Kaggle 토큰**(결과 업로드에 필수) — `$HOME\.kaggle\access_token` · `kaggle.json` 파일을 USB · 드라이브로 옮겨 집 PC 의 같은 경로에(데이터 · 결과 내려받기용). 내용은 채팅에 붙이지 말 것.
 4. **비교용 ckpt(선택)** — aw30 best `Downloads\xm_ft_aw30_kaggle\xm_ft_v0.1_aw30_e10\checkpoints\epoch=8-step=10719.ckpt`(0.96 GB, sha12 4fdf249cda0a) · v0.1 best `Downloads\xm_ft_kaggle_full\xm_ft_kaggle_e10\checkpoints\epoch=8-step=10719.ckpt`(sha12 d86970ce1faf) — 집에서 오프라인 평가 비교용.
 5. **HF 토큰(선택)** — 1번을 `-Ckpt` 로 주면 불필요(학습 중 받는 DINOv2 `facebook/dinov2-small` 은 공개 모델). 못 가져갔을 때만 Kaggle 비밀 `HF_TOKEN` 과 같은 것을 `$env:HF_TOKEN='hf_...'` 로.
 6. 레포 push 확인(`git status` 깨끗, `git log origin/main..HEAD` 비어 있음).
 
-**오늘 밤(11.8) 배치**
+**11.9 계획 — 집 PC 순서**(`PLAN.md` "11.9 계획", 판정 기준은 거기 고정)
 
-| 어디 | run | 데이터 | 설정 |
-| --- | --- | --- | --- |
-| **집 5060 Ti** | **C = aw30 + seed 1** → `xm_ft_v0.1_aw30_seed1_e10` | xm_v1(v1.0 split — v0.1 · aw30 · seed1 과 같음) | `XMobilityLoss.action_weight=30` · `--seed 1` · 10 에폭 · 실효 배치 8 · `--save-top-k 3`. aw30 과 데이터 · gin 이 같아 시드 한 요인만 다른 반복 |
-| Kaggle | A = aw30 + p3 | xm_v1_1_p3(v1.1 split, 경로 ×1/3) | `kaggle_finetune.ipynb` |
-| Kaggle | B = aw30 + Nav2 ×2 | xm_v1_3(v1.1 + train Nav2 ×2) | `kaggle_finetune.ipynb`, 8 에폭 |
+| 순서 | run(`-o` 이름) | 데이터 | 설정 | 언제 |
+| --- | --- | --- | --- | --- |
+| **E1** | aw30 + 직전 명령 드롭아웃 0.5 → `xm_ft_v0.1_aw30_pad05_e10` | xm_v1(v1.0 split) | `XMobilityLoss.action_weight=30` · `--prev-action-dropout 0.5` · 10 에폭 · `--save-top-k 3` | 11.9 밤 |
+| **E2** | aw30 + 드롭아웃 1.0(직전 명령 입력 끔) → `xm_ft_v0.1_aw30_pad10_e10` | xm_v1 | 위와 같고 1.0 | 11.10 낮 |
+| E3 | aw30 + p3 + E1 · E2 중 나은 쪽 → `xm_ft_v0.1_aw30_p3_padXX_e10` | xm_v1_1_p3(`03_xm_v1_1_p3.zip` · Kaggle `dataset-06-xm-v1-1-p3`) | 결정 1(11.11) 뒤 | 11.11 밤 |
+| E4 | 실행 명령 입력판(동현님 재변환이 오면) 또는 경로 축척 1/2 | — | 11.12 에 정함 | 11.12 |
 
-집 run 은 torch **2.7.1+cu128**, Kaggle 학습(v0.1 · aw30 · seed1 · A · B)은 **2.11.0+cu130** — 결과는 "같은 설정, 다른 torch" 로 적음(아래 근거).
+- 왜 드롭아웃: 교사 강제 입력 평가에서 모델이 직전 명령 입력을 거의 그대로 이어 가는 것을 확인(`results/tf_eval_11_9/README.md`). 학습 때 그 입력을 흐려 덜 기대게 함.
+- 집 run 은 torch **2.7.1+cu128**, Kaggle 학습은 **2.11.0+cu130** — "같은 설정, 다른 torch". aw30(Kaggle)과 비교할 때 시드 바닥(`results/seed_noise_11_8.md`)보다 큰 차이만 봄.
+- 결과 받기: 학습이 끝나면 블록 마지막 줄(`home_after_train.ps1`)이 평가 → 곡선 → Kaggle 비공개 데이터셋 `henryseo711/fd-xm-home-<run>` 업로드까지 함. 노트북 Claude 에게 run 이름만 알려 주면 됨.
 
-**도착 후(약 1시간 + 본 학습 8~10 시간)** — PowerShell 일반 콘솔, 아래 블록을 그대로:
+**도착 후(약 1시간 + 본 학습)** — PowerShell 일반 콘솔, 아래 블록을 그대로:
 
 ```powershell
 cd C:\fd\FUTURE-DRIVE-PROJECT
-git pull                                                  # 7effa01 이상(--seed 수정 포함)
+git pull                                                  # 11.9 푸시 이후 — e2e\home_after_train.ps1 이 있어야 함
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 powercfg /change standby-timeout-ac 0
 $CK = "$HOME\Downloads\xm_pretrained_from_seed_try2\pretrained\x_mobility-nav2-semantic_action_path.ckpt"
-# C  aw30 + seed 1 — xm_v1, 명령 가중 30, 10 에폭. 설치 → 시험 40배치 → 본 학습 명령 출력(실행은 직접)
-.\e2e\setup_windows.ps1 -Data C:\fd\data\xm_v1 -Zip "$HOME\Downloads\02_xm_v1.zip" -Ckpt $CK -ExtraGin 'XMobilityLoss.action_weight=30' -ExtraArgs '--seed','1','--save-top-k','3' -MaxEpochs 10 -HoursBudget 14
+# E1  aw30 + 직전 명령 드롭아웃 0.5 — xm_v1, 10 에폭. 설치 → 시험 40배치(드롭아웃 포함) → 본 학습 명령 출력(실행은 직접)
+.\e2e\setup_windows.ps1 -Data C:\fd\data\xm_v1 -Zip "$HOME\Downloads\02_xm_v1.zip" -Ckpt $CK -ExtraGin 'XMobilityLoss.action_weight=30' -ExtraArgs '--prev-action-dropout','0.5','--save-top-k','3' -MaxEpochs 10 -HoursBudget 14
+# 시험 로그에 "[직전 명령 입력] 학습 때 드롭아웃 p=0.5" 가 찍혔는지 확인
 # 출력된 본 학습 명령: --gin NUM_EPOCHS=10 인지 확인(아니면 -HoursBudget 을 올려 다시) → -o 만 아래로 바꿔 붙여 넣기
-#   -o 'C:\fd\FUTURE-DRIVE-PROJECT\data\checkpoints\xm_ft_v0.1_aw30_seed1_e10'
-# 학습 끝(best = run_meta.json 의 best_model_path, 콘솔 "[끝] best ..."): 오프라인 평가(스크립트에 없음)
-& .\.venv-xm\Scripts\python.exe e2e\eval_offline.py --xm-repo ..\X-Mobility -c e2e\configs\finetune_parking_r3.gin -d C:\fd\data\xm_v1 --split test -p data\checkpoints\xm_ft_v0.1_aw30_seed1_e10\checkpoints\<best>.ckpt -o data\checkpoints\xm_ft_v0.1_aw30_seed1_e10\eval_test
+#   -o 'C:\fd\FUTURE-DRIVE-PROJECT\data\checkpoints\xm_ft_v0.1_aw30_pad05_e10'
+# 학습 끝: 평가 → 곡선 → Kaggle 업로드(노트북 Claude 가 받아 판정)
+.\e2e\home_after_train.ps1 -Run data\checkpoints\xm_ft_v0.1_aw30_pad05_e10 -Data C:\fd\data\xm_v1
+# E2: 위 setup 줄의 '0.5' → '1.0' 로 다시(설치 · 시험은 건너뜀), -o 와 home_after_train 의 이름은 xm_ft_v0.1_aw30_pad10_e10
 ```
 
 - `-HoursBudget 14` 는 `--max-time` 상한일 뿐. 10 에폭 ≈ 4,764 스텝 × step_time_s × 1.15 × 10 — 0.5 s 면 7.6 h, T4 실측 0.655 s 면 10.0 h. `NUM_EPOCHS` 가 10 보다 작게 찍히면 OneCycle lr 스케줄(total_steps)이 달라져 v0.1 · aw30 · seed1 과 비교 불가 → 예산을 올려 다시.
@@ -137,7 +142,7 @@ steps_per_epoch 4,764 = xm_v1 train 9,529 시퀀스 ÷ 배치 2(GPU 1장) = Kagg
 
 ## 본 학습
 
-- 출력된 명령의 `-o` 를 run 이름으로 바꿔 붙여 넣습니다(오늘 밤 `xm_ft_v0.1_aw30_seed1_e10`). 결과는 그 폴더(`run_meta.json` · `checkpoints\` · `wandb\` 오프라인) → MANIFEST `checkpoint` 행. best = `run_meta.json` 의 `best_model_path`(콘솔 `[끝] best ...`).
+- 출력된 명령의 `-o` 를 run 이름으로 바꿔 붙여 넣습니다(11.9 밤 E1 = `xm_ft_v0.1_aw30_pad05_e10`). 끝나면 `home_after_train.ps1`. 결과는 그 폴더(`run_meta.json` · `checkpoints\` · `wandb\` 오프라인) → MANIFEST `checkpoint` 행. best = `run_meta.json` 의 `best_model_path`(콘솔 `[끝] best ...`).
 - `--gin NUM_EPOCHS` 가 `-MaxEpochs` 보다 작으면 돌리지 말고 `-HoursBudget` 을 올려 다시 — 에폭 수가 다르면 OneCycle lr 스케줄(total_steps)이 달라 Kaggle 10 에폭 run 과 비교 불가.
 - 돌리기 전: 절전 끄기 `powercfg /change standby-timeout-ac 0`, Windows 업데이트 재시작 미루기, 콘솔 창 열어 두기.
 - 이어 하기 기능은 없습니다. 끊기면 `-p <그 폴더>\checkpoints\last.ckpt` 로 가중치만 이어 새 폴더에 다시(lr 스케줄은 처음부터, 미검증).
