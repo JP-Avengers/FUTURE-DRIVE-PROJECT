@@ -23,7 +23,8 @@
 
 nav2_route.py 는 import 하면 argparse · rclpy · Nav2 가 바로 돌아(모듈 수준 코드) 가져올 수 없다 — 판정에 쓰는 순수 계산만 아래에 옮겨
 적고 줄 번호를 달았다. 같은지는 nav2_route.py 의 문장을 ast 로 떼어 같은 궤적에 돌려 대조함(XM_HARNESS.md "확인").
-필요: 판정 · CSV 는 numpy · PyYAML(시스템 python3), 실주행은 + rclpy(시스템 Jazzy). 노드는 ml_env python(노드 README).
+필요: 판정 · CSV 는 numpy · PyYAML(시스템 python3), 실주행은 + rclpy(시스템 Jazzy). 노드는 ml_env python(노드 README, --node-python —
+xm_batch.sh 가 씬을 띄우기 전에 import 로 확인).
 """
 import argparse
 import csv
@@ -59,7 +60,7 @@ GOAL_XY_TOL = 0.25                          # nav2_params.yaml:156 xy_goal_toler
                                             # 구간 s[i_goal] 은 goal.s 보다 0.21~0.24 m 뒤(계산 s ≠ CSV s 열)인데 노드 · 학습 경로는 goal.s 에서 끝남
 # ---------------------------------------------------------------- 여기서 정한 값(nav2 에 없는 부분)
 START_POS_TOL, START_YAW_TOL_DEG = 0.5, 10.0   # 출발 확인 — 위치는 nav2_route.py:227 의 0.5 m, 방향은 여기서 정함
-PROJ_BACK, PROJ_FWD = 1.0, 10.0             # 진행 거리 사영 창 = fd_xm_infer core.py:28 PROJECT_BACK · FWD(= export_xmobility.py:239)
+PROJ_BACK, PROJ_FWD = 1.0, 10.0             # 진행 거리 사영 창 = fd_xm_infer core.py:27 PROJECT_BACK · FWD(= export_xmobility.py:239)
 SETTLE_V, SETTLE_SIM_S = 0.05, 3.0          # 끝낸 뒤 odom |v| < 0.05 m/s 가 되거나 시뮬 3 s 까지 표본을 더 받음
 METHODS = ("xmobility_ft", "xmobility_zeroshot", "nav2")   # analyze_runs.py:96
 METHOD_SHORT = {"xmobility_ft": "xmft", "xmobility_zeroshot": "xmzs", "nav2": "nav2"}
@@ -393,7 +394,7 @@ def fail_reason(ctx, track, t_goal, summ, crit, raw, harness=""):
 
 
 def repo_rev(root=REPO):
-    """git rev-parse HEAD + 더러우면 -dirty(results_schema.md repo_rev, 판정은 node.py:84-93 · eval_offline.py:378-382 와 같게 diff HEAD)."""
+    """git rev-parse HEAD + 더러우면 -dirty(results_schema.md repo_rev, 판정은 node.py:84-93 · eval_offline.py:382-388 와 같게 diff HEAD)."""
     try:
         rev = subprocess.check_output(["git", "-C", root, "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
         dirty = subprocess.call(["git", "-C", root, "diff", "--quiet", "HEAD"], stderr=subprocess.DEVNULL) != 0
@@ -411,13 +412,15 @@ def sha12(path):
 
 
 def model_version(ckpt, method, explicit=None):
-    """results_schema.md model_version — 지정값 > ckpt 경로의 xm_ft_v<주>.<부>(e2d_model.md 버전 칸) > finetune 출력 폴더 이름
-    (<out>/checkpoints/<ckpt> 옆 run_meta.json, e2e/finetune.py:173) > ckpt 파일 이름."""
+    """results_schema.md model_version — 지정값 > ckpt 경로의 xm_ft_v<주>.<부>[_<변형>…](e2d_model.md 버전 칸 · MANIFEST 행:
+    xm_ft_v0.1 · xm_ft_v0.1_aw30 · _aw30_p3 · _p3 · _seed1. 끝의 _e<에폭>(Drive 파일 xm_ft_v0.1_aw30_e8.ckpt · Kaggle 출력 폴더 _e10)은 뗌)
+    > finetune 출력 폴더 이름(<out>/checkpoints/<ckpt> 옆 run_meta.json, e2e/finetune.py:173) > ckpt 파일 이름.
+    실물 확인은 JSON ckpt_sha12 · CSV note 의 ckpt_sha12(후보들은 Kaggle 파일 이름이 같아 sha 로만 구분)."""
     if explicit:
         return explicit
-    m = re.search(r"xm_ft_v\d+\.\d+", ckpt or "")
+    m = re.search(r"xm_ft_v\d+\.\d+(?:_[A-Za-z0-9]+)*", ckpt or "")
     if m:
-        return m.group(0)
+        return re.sub(r"(_e\d+)+$", "", m.group(0))
     out = os.path.dirname(os.path.dirname(os.path.abspath(ckpt or ".")))
     if ckpt and os.path.isfile(os.path.join(out, "run_meta.json")):
         return f"{os.path.basename(out)}/{os.path.basename(ckpt)}"
@@ -563,8 +566,8 @@ def rejudge(a):
 # ---------------------------------------------------------------- 실주행(ROS)
 
 def node_command(a, ctx, start, log_csv):
-    """fd_xm_infer 노드 명령 — 노드 README "colcon 없이 바로"(ros2_ws/src/fd_xm_infer/README.md:49-55). 런치 파일은 start_x 등을
-    인자로 안 받아(xm_infer.launch.py:20-46) 쓰지 않음."""
+    """fd_xm_infer 노드 명령 — 노드 README "colcon 없이 바로"(ros2_ws/src/fd_xm_infer/README.md:49-55). 런치 파일(start_x 등도
+    인자로 받음)은 안 쓰고 직접 띄움 — 자식 프로세스(새 세션)의 pid · 신호 · 로그를 하네스가 다루려고."""
     params = [("use_sim_time", True), ("ckpt", os.path.abspath(a.ckpt) if a.ckpt else ""), ("route_source", "csv"),
               ("route_csv", _abs(ctx.route)), ("reverse_route", False),
               ("goal_s", float(ctx.s1) if ctx.segment else -1.0), ("pose_source", a.pose_source),
@@ -806,7 +809,8 @@ def run_live(a):
         meta = dict(run_id=run_id_of(L.ts, method, ctx, seed, a.attempt), timestamp=L.ts.isoformat(timespec="seconds"),
                     repo_rev=repo_rev(), method=method, model_version=mv, scene=scene, scene_version=a.scene_version, seed=seed,
                     log_path=os.path.relpath(os.path.abspath(a.out), REPO), timeout_s=timeout, rc=0, attempt=a.attempt,
-                    note="; ".join(x for x in (a.note, f"pose_source={a.pose_source}", f"intervene={a.intervene}") if x))
+                    note="; ".join(x for x in (a.note, f"pose_source={a.pose_source}", f"intervene={a.intervene}",
+                                               f"ckpt_sha12={nm['ckpt_sha12']}" if nm.get("ckpt_sha12") else "") if x))
         extra = dict(end_reason=name, end_detail=harness or L.ep.detail, t_end_decision=round(L.t_end, 3),
                      harness_failed=harness, start_pose=info["start_pose"], start_check=start_err, pose_source=a.pose_source,
                      goal_station=info["goal_station"], station_end=round(L.ep.station, 2), ckpt=os.path.abspath(a.ckpt),
@@ -853,7 +857,8 @@ def parse_args(argv=None):
     ap.add_argument("--start-yaw-deg", type=float, help="출발 방향만 덮어씀(반시계 바퀴를 레이어로 돌려 띄울 때)")
     ap.add_argument("--scene", help="결과 CSV scene(기본 $FD_SCENE 또는 yaml scene)")
     ap.add_argument("--scene-version", help="결과 CSV scene_version(기본 씬 파일 이름에서)")
-    ap.add_argument("--node-python", default=os.path.join(os.environ.get("CD1", REPO), "envs", "ml_env", "bin", "python"))
+    ap.add_argument("--node-python", default=os.path.join(os.environ.get("CD1", REPO), "envs", "ml_env", "bin", "python"),
+                    help="노드 python — X-Mobility 의존성(gin · torch · lightning · transformers)이 있어야 함(xm_batch.sh 가 먼저 확인)")
     ap.add_argument("--node-cmd", help="노드 명령 앞부분 바꾸기(기본 '<node-python> -u -m fd_xm_infer.node') — 뒤에 --ros-args 가 붙음")
     ap.add_argument("--node-param", action="append", help="노드에 더 넘길 -p 이름:=값 (여러 번)")
     ap.add_argument("--cuda-visible-devices", default="1", help="노드 CUDA_VISIBLE_DEVICES(노드 README:19). 빈칸이면 안 건드림")

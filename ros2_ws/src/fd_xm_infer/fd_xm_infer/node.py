@@ -5,7 +5,7 @@
          route_topic  nav_msgs/Path — 로봇 앞 기준선 20점 0.5 m 간격  (/route, 서버 tools/xm_route.py)
                       route_source=csv 이면 /route 대신 기준선 CSV + 위치(pose_source)로 학습 때와 같은 식으로 만듦
 보내는 것 cmd_topic    geometry_msgs/Twist (/cmd_vel) — linear.x = v · angular.z = ω, 나머지 0
-         ~/path       nav_msgs/Path — 모델이 낸 경로 5점(base_link)     (publish_path)
+         ~/path       nav_msgs/Path — 모델이 낸 경로 5점(base_link, path_scale 로 나눠 m)  (publish_path)
          ~/route      nav_msgs/Path — 모델에 넣은 경로 20점(base_link)  (publish_path)
 서비스   ~/reset      std_srvs/Trigger — 순환 상태(history · sample)와 이전 명령을 0 으로
 
@@ -82,7 +82,7 @@ def _as_bool(v):
 
 
 def _git_rev(path):
-    """e2e/eval_offline.py:364-370."""
+    """e2e/eval_offline.py:382-388."""
     try:
         rev = subprocess.check_output(['git', '-C', path, 'rev-parse', '--short=12', 'HEAD'],
                                       text=True, stderr=subprocess.DEVNULL).strip()
@@ -94,7 +94,7 @@ def _git_rev(path):
 
 
 def _sha12(path):
-    """e2e/eval_offline.py:373-378."""
+    """e2e/eval_offline.py:391-396."""
     h = hashlib.sha256()
     with open(path, 'rb') as f:
         for chunk in iter(lambda: f.read(1 << 20), b''):
@@ -269,6 +269,8 @@ class XmInfer(Node):
         self.pose_jump_m = float(p('pose_jump_m', 0.5, 'csv 모드 위치가 이만큼 뛰면 상태 리셋'))
         self.feed_clamped = _as_bool(p('feed_clamped_action', False, '이전 명령 입력에 자른 값(기본 원래 예측)'))
         self.publish_path = _as_bool(p('publish_path', True, '~/path · ~/route 디버그'))
+        self.path_scale = float(p('path_scale', 1.0, '학습 데이터 PATH_SCALE.json 의 scale(p3 계열 ckpt = 0.3333) — ~/path 를 '
+                                  '이 값으로 나눠 m 로 냄. 명령 v · ω 는 무관'))
         self.log_csv = os.path.expanduser(str(p('log_csv', '', 'tick 마다 한 줄 CSV(빈칸=끔)')))
         self.report_every = max(1, int(p('report_every', 25, 'N tick 마다 지연 P50/P95 로그')))
         self.warmup_iters = int(p('warmup_iters', 3, '시작 때 빈 입력으로 몇 번 돌려 둠(지연 통계 제외)'))
@@ -281,11 +283,13 @@ class XmInfer(Node):
         if self.pose_source not in ('odom', 'ground_truth'):
             raise StopNode(f'pose_source {self.pose_source!r} — odom 또는 ground_truth')
         if not self.ckpt:
-            raise StopNode('ckpt 파라미터가 비었음 — -p ckpt:=<.../checkpoints/last.ckpt>')
+            raise StopNode('ckpt 파라미터가 비었음 — -p ckpt:=<.../checkpoints/<best>.ckpt>(e2d_model.md 버전 칸)')
         if not self.gin:
             raise StopNode('gin 을 못 찾음 — CD1 을 export 하거나 -p gin:=<레포>/' + GIN_REL)
         if self.rate_hz <= 0:
             raise StopNode('rate_hz > 0 이어야 함')
+        if not self.path_scale > 0:
+            raise StopNode(f'path_scale {self.path_scale} — 양수(p3 계열 ckpt 는 0.3333, 원래 축척 1.0)')
 
         self.model = None
         self.cmd_pub = None
@@ -598,7 +602,9 @@ class XmInfer(Node):
 
     def _publish_debug(self, route_pts, path10):
         stamp = self.get_clock().now().to_msg()
-        for pub, pts in ((self.route_pub, route_pts), (self.path_pub, np.asarray(path10).reshape(-1, 2))):
+        # 모델 경로는 학습 라벨 축척(p3 계열 = ×1/3)이라 path_scale 로 나눠 m 로 — 명령에는 안 씀(디버그 발행만)
+        path_m = np.asarray(path10, np.float64).reshape(-1, 2) / self.path_scale
+        for pub, pts in ((self.route_pub, route_pts), (self.path_pub, path_m)):
             msg = Path()
             msg.header.frame_id, msg.header.stamp = self.robot_frame, stamp
             for x, y in pts:

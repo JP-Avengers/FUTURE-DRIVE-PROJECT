@@ -13,15 +13,18 @@
 
 ```bash
 cd $CD1   # = ~/Capstone_Design_1, tmux 안에서
-# 일괄 — 항목마다 레이어 → 씬 → xm_route.py(노드를 띄우고 끔) → 씬 끄기. 준비 실패면 최대 3번
-FD_CKPT=data/checkpoints/xm_ft_v1.0/checkpoints/last.ckpt FD_SEEDS="1 2 3" FD_OUT=data/eval/1124_xmft \
+# ckpt 는 best 파일(동결 후보) — Drive 에서 받은 이름 그대로 두고 sha 를 docs/interfaces/e2d_model.md 버전 칸 · MANIFEST 와 대조
+# (last.ckpt 는 마지막 에폭이라 동결 모델이 아님. 후보들은 Kaggle 파일 이름이 모두 epoch=8-step=10719.ckpt 라 sha 로만 구분)
+sha256sum data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt | cut -c1-12   # aw30 4fdf249cda0a · v0.1 d86970ce1faf · aw30_p3 114284109957
+# 일괄 — 노드 python 사전 확인(import, 실패면 코드 2 → FD_NODE_PYTHON 으로 바꿈) → 항목마다 레이어 → 씬 → xm_route.py(노드를 띄우고 끔) → 씬 끄기. 준비 실패면 최대 3번
+FD_CKPT=data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt FD_SEEDS="1 2 3" FD_OUT=data/eval/1124_xmft \
   eval/xm_batch.sh eval/scenarios/parking_r3_straight_south.yaml eval/scenarios/parking_r3_obs_cones.yaml:ccw
 # → data/eval/1124_xmft/results.csv · runs/<시나리오>[_방향]_s<시드>.json(+ .node.log · .xm_infer.csv · .xm_infer.meta.json) · route_*.log · layers/
 #   끝에 eval/analyze_runs.py 로 스키마 검사(ANALYZE_RUNS_OK / FAIL)
 
 # 씬이 이미 떠 있을 때 한 회(시스템 Jazzy · 도메인 43 셸)
 python3 eval/xm_route.py --scenario eval/scenarios/parking_r3_obs_cones.yaml --direction ccw \
-  --ckpt data/checkpoints/xm_ft_v1.0/checkpoints/last.ckpt --method xmobility_ft --seed 1 \
+  --ckpt data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt --method xmobility_ft --seed 1 \
   --out data/eval/1124_xmft/runs/obs_cones_ccw_s1.json --csv data/eval/1124_xmft/results.csv
 python3 eval/xm_route.py ... --dry-run     # ROS 없이 출발 자세 · 목표 지점 · 노드 명령만 출력
 
@@ -30,11 +33,11 @@ python3 eval/xm_route.py --rejudge logs/nav2/scenario/parking_r3_obs_cones_ccw.j
   --method nav2 --model-version <nav2 설정 커밋> --localization amcl --nav2-map "v0.4b r3 · 2판" --seed 1 --csv data/eval/1124_nav2/results.csv
 ```
 
-- 환경변수(`xm_batch.sh`): `FD_CKPT`(필수) · `FD_METHOD`(`xmobility_ft` 기본 · `xmobility_zeroshot`) · `FD_MODEL_VERSION` · `FD_SEEDS`(기본 `1`) · `FD_OUT` · `FD_CSV` · `FD_SCENE`(비면 yaml `scene`) · `FD_LIDAR`(기본 1) · `FD_XM_CCW_START`(`scene` 기본 · `align`) · `FD_XM_ARGS`(예 `--intervene off`, `--node-param gin:=...` — 제로샷이면 gin 을 여기로).
-- 노드는 `xm_route.py` 가 노드 README 의 "colcon 없이" 방식(`ros2_ws/src/fd_xm_infer/README.md:49-55`)으로 띄웁니다: `envs/ml_env/bin/python -u -m fd_xm_infer.node --ros-args -p ...`, `PYTHONPATH=ros2_ws/src/fd_xm_infer`, `CUDA_VISIBLE_DEVICES=1`, `HF_HUB_OFFLINE=1`(README:19). 런치 파일은 `start_x` · `start_y` · `start_yaw_deg` 를 인자로 받지 않아(`xm_infer.launch.py:20-46`) 쓰지 않습니다.
+- 환경변수(`xm_batch.sh`): `FD_CKPT`(필수) · `FD_METHOD`(`xmobility_ft` 기본 · `xmobility_zeroshot`) · `FD_MODEL_VERSION` · `FD_SEEDS`(기본 `1`) · `FD_OUT` · `FD_CSV` · `FD_SCENE`(비면 yaml `scene`) · `FD_LIDAR`(기본 1) · `FD_XM_CCW_START`(`scene` 기본 · `align`) · `FD_NODE_PYTHON`(노드 python, 기본 `envs/ml_env/bin/python` — 사전 확인에 걸리면 `~/xmobility_test/venv/bin/python`) · `XM_REPO`(사전 확인용, 노드 기본값과 같음) · `FD_XM_ARGS`(예 `--intervene off`, `--node-param gin:=...` — 제로샷이면 gin 을 여기로, p3 계열 ckpt 면 `--node-param path_scale:=0.3333`).
+- 노드는 `xm_route.py` 가 노드 README 의 "colcon 없이" 방식(`ros2_ws/src/fd_xm_infer/README.md:49-55`)으로 띄웁니다: `<--node-python> -u -m fd_xm_infer.node --ros-args -p ...`, `PYTHONPATH=ros2_ws/src/fd_xm_infer`, `CUDA_VISIBLE_DEVICES=1`, `HF_HUB_OFFLINE=1`(README:19). 런치 파일(`start_x` 등도 인자로 받음)은 쓰지 않고 직접 띄웁니다 — 자식 프로세스(새 세션)의 pid · 신호 · 로그를 하네스가 다루려고.
 - 종료 코드: 0 = 판정한 회(통과 여부와 무관, CSV 한 행) · 3 = 준비 실패(행 없음, 일괄이 다시 띄움 — `scenario_batch.sh:96` 과 같은 규칙) · 130 = 신호로 중단. 일괄의 `timeout -k 20 900`(`scenario_batch.sh:89`)에 걸리면 124 → 다시 띄움, 남은 노드는 `<out>.node.pid` 로 끔.
 
-## 3. 한 회 순서 (`xm_route.py` `run_live`, 691행~)
+## 3. 한 회 순서 (`xm_route.py` `run_live`)
 
 | 단계 | 동작 | 출처 · 대응 |
 | --- | --- | --- |
@@ -57,7 +60,7 @@ python3 eval/xm_route.py --rejudge logs/nav2/scenario/parking_r3_obs_cones_ccw.j
 | `timestamp` | `t_goal` 벽시계, ISO 8601 + 시간대 | §2.1 |
 | `repo_rev` | `git rev-parse HEAD` + `git diff --quiet HEAD` 실패면 `-dirty`, 회마다 | `node.py:84-93` 과 같은 dirty 판정 |
 | `method` | `--method`(`xmobility_ft` 기본) | `analyze_runs.py:96` |
-| `model_version` | `--model-version` > ckpt 경로의 `xm_ft_v<주>.<부>` > `<finetune 출력 폴더>/<ckpt>`(옆에 `run_meta.json` 있을 때) > (제로샷이면 `zeroshot:`)ckpt 파일 이름. JSON 에 `ckpt_sha12`(노드 `.meta.json` 에서) | `e2d_model.md` 버전 칸 · `e2e/finetune.py:173` |
+| `model_version` | `--model-version` > ckpt 경로의 `xm_ft_v<주>.<부>[_<변형>…]`(`xm_ft_v0.1` · `xm_ft_v0.1_aw30` · `_aw30_p3` · `_p3` · `_seed1`; 끝의 `_e<에폭>` 은 뗌 — `xm_ft_v0.1_aw30_e8.ckpt` → `xm_ft_v0.1_aw30`) > `<finetune 출력 폴더>/<ckpt>`(옆에 `run_meta.json` 있을 때) > (제로샷이면 `zeroshot:`)ckpt 파일 이름. JSON 과 CSV `note` 에 `ckpt_sha12`(노드 `.meta.json` 에서) — 실물은 sha 로 확인 | `e2d_model.md` 버전 칸 · MANIFEST `checkpoint` 행 · `e2e/finetune.py:173` |
 | `scene` · `scene_version` | `--scene` > `$FD_SCENE` > yaml `scene` · 파일 이름에서 `v0.4b r3` 꼴 | MANIFEST 표기 |
 | `scenario` · `scenario_version` · `direction` | yaml `name` · `version` · 구간은 yaml `direction`, 바퀴는 `--direction`(yaml `directions` 안인지 확인) | `results_schema.md:32-34` |
 | `seed` | `--seed` = 반복 번호. 노드 `seed`(확산 정책 noise, `node.py:241`)에도 같은 값 | 짝 열쇠(`scenario` · `direction` · `seed`) |
@@ -68,28 +71,28 @@ python3 eval/xm_route.py --rejudge logs/nav2/scenario/parking_r3_obs_cones_ccw.j
 | `p95_cte` | `numpy.nanpercentile(c, 95)`, c = `mean_cte` 와 같은 표본 | `results_schema.md:61` |
 | `interventions` | cte(3자리 반올림)가 한도를 **위로 넘는 순간 수**, 궤적 전체 — Nav2 JSON 에도 같은 함수(`count_interventions`). `stop` 모드면 0 또는 1 | `results_schema.md:66` |
 | `log_path` | 회 JSON 경로(레포 루트 기준) | §4 |
-| 선택 열 | `kind`(`analyze_runs.py:255-264` 규칙) · `route` · `wall_s` · 한도 4개(yaml 값, `timeout_s` 는 실제 쓴 값) · `rc`(0) · `attempt` · `note`(`pose_source` · `intervene`). `localization` · `nav2_map` · `recoveries` · `amcl_*` 는 X-Mobility 에서 빈칸 | `results_schema.md` §2.4 |
+| 선택 열 | `kind`(`analyze_runs.py:255-264` 규칙) · `route` · `wall_s` · 한도 4개(yaml 값, `timeout_s` 는 실제 쓴 값) · `rc`(0) · `attempt` · `note`(`pose_source` · `intervene` · `ckpt_sha12`). `localization` · `nav2_map` · `recoveries` · `amcl_*` 는 X-Mobility 에서 빈칸 | `results_schema.md` §2.4 |
 
 회 JSON 은 `nav2_route.py --out` 과 같은 키(`route` · `result` · `spacing_m` · `waypoints` · `lap_sim_s` · `wall_s` · `mean_cte` · `max_cte` · `over_2m_frac` · `recoveries` · `max_stall_s` · [`scenario` · `min_clearance` · `collision`] · `goal_err` · `dist_m` · `plan_m` · `amcl_start_err` · `initialpose_resent` · [`segment`] · `pass`, 대괄호는 nav2 와 같은 조건일 때만, Nav2 전용 칸은 null) + 스키마 칸 · `criteria` · `t_goal` · `end_reason` · `start_check` · 노드 명령 · `track`(앞 5칸 = nav2, 3자리 반올림 = `nav2_route.py:293`).
 
 ## 5. Nav2 와 같은 것 — 옮긴 곳
 
-`nav2_route.py` 는 모듈 수준에서 argparse · `rclpy.init()` · `BasicNavigator()` 를 실행해(`nav2_route.py:34-42` · `:116-118`) import 할 수 없습니다. 판정에 쓰는 순수 계산만 옮겨 적고 줄 번호를 달았습니다(전역 → 인자만 바꿈).
+`nav2_route.py` 는 모듈 수준에서 argparse · `rclpy.init()` · `BasicNavigator()` 를 실행해(`nav2_route.py:34-42` · `:116-118`) import 할 수 없습니다. 판정에 쓰는 순수 계산만 옮겨 적고 줄 번호를 달았습니다(전역 → 인자만 바꿈). 아래 `xm_route.py` 쪽은 함수 이름만 — 줄 번호는 고칠 때마다 밀려 뺐고, 각 함수 docstring 에 `nav2_route.py` 줄 번호가 있습니다.
 
 | `xm_route.py` | `nav2_route.py` |
 | --- | --- |
-| `load_route` (83행) | 50-53 (기준선 CSV run 0, 닫힌 꺾은선) |
-| `cte` (91) | 62-67 |
-| `FOOT` (55) | 70 (= `nav2_params.yaml:212` footprint) |
-| `build_obstacles` (99) | 72-88 (= `sim/make_obstacles.py:34-39` 자리 계산) |
-| `_seg_dist` · `_inside` · `clearance` (121 · 128 · 134) | 91-113 |
-| `quat_yaw` (148) · `GT_PARENT/CHILD` | 139 · 135 |
-| `SAMPLE_DT` 0.1 (48) | 137 |
-| `max_stall` (153) · `STALL_V` · `STALL_STRIDE` | 259-266 |
-| `Ctx` 의 `segment` · `route` · `i_goal` · `plan_len` · 한도 (167) | 48-49 · 198-204 · 282 · 287 · 289 |
-| `summarize` (325) | 258-289 |
+| `load_route` | 50-53 (기준선 CSV run 0, 닫힌 꺾은선) |
+| `cte` | 62-67 |
+| `FOOT` | 70 (= `nav2_params.yaml:212` footprint) |
+| `build_obstacles` | 72-88 (= `sim/make_obstacles.py:34-39` 자리 계산) |
+| `_seg_dist` · `_inside` · `clearance` | 91-113 |
+| `quat_yaw` · `GT_PARENT/CHILD` | 139 · 135 |
+| `SAMPLE_DT` 0.1 | 137 |
+| `max_stall` · `STALL_V` · `STALL_STRIDE` | 259-266 |
+| `Ctx` 의 `segment` · `route` · `i_goal` · `plan_len` · 한도 | 48-49 · 198-204 · 282 · 287 · 289 |
+| `summarize` | 258-289 |
 | 바퀴 기준선 `eval/routes/parking_r3_<방향>.csv` | `scenario_batch.sh:79` |
-| `TIMEOUT_S` 300 (57) | `scenario_batch.sh:89` 가 nav2_route 에 준 `--timeout 300`(yaml `timeout_s` 는 안 씀) |
+| `TIMEOUT_S` 300 | `scenario_batch.sh:89` 가 nav2_route 에 준 `--timeout 300`(yaml `timeout_s` 는 안 씀) |
 | `xm_batch.sh` 씬 띄우기 · 끄기 · 재시도 · 15분 | `scenario_batch.sh:13-15` · `:21-24` · `:67-71` · `:75-78` · `:83-97` |
 
 ## 6. Nav2 와 다른 것

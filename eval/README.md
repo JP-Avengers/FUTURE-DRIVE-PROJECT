@@ -42,7 +42,7 @@ python3 eval/routes/make_refline.py eval/routes/parking_r3_island.yaml   # 꼭�
 
 ## 실행 방법
 
-- **60회 실행 (D)**: (작성 예정 — 명령 한 줄이라도 동작하는 것부터 적어 주세요)
+- **60회 실행 (D)**: X-Mobility 는 `FD_CKPT=<best .ckpt> eval/xm_batch.sh <시나리오 yaml>[:cw|ccw] ...`([`XM_HARNESS.md`](XM_HARNESS.md) §2 — E 초안, ROS 에서 아직 안 돌림), Nav2 는 `sim/nav2/scenario_batch.sh`. 둘 다 `ROS_DOMAIN_ID=43`(`FD_DOMAIN=43` 으로 씬을 띄움). 노드 README 의 손으로 띄우기 예시는 42 = `run_proxy.sh` 기본 — 씬과 같은 도메인이어야 토픽이 보임
 - **결과 분석 (E)**: `python3 eval/analyze_runs.py data/eval/<묶음>/results.csv --expect-n 60` — 아래 "60회 결과 분석 (E)" 절
 
 ## 시나리오 — `eval/scenarios/` (10.14 ~)

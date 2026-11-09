@@ -97,7 +97,7 @@ python e2e/eval_offline.py --xm-repo ~/xmobility_test/X-Mobility -c e2e/configs/
 - `check_xm_dataset.py` — 실제 xm_v1(47,572장) 오류 0 · 경고 0(로컬 · Kaggle 둘 다).
 - `finetune.py` — Kaggle T4 × 2 에서 짧은 시험 통과: 사전학습 ckpt 키 넣은 297 · missing 0 · unexpected 61(모두 예상분) · lr 1e-5, 학습 20스텝 + 검증. 본 학습 10에폭 3회 완료(v0.1 · v0.2 · v0.1_aw30, 결과 `results/`), 11.7 경로 축척 run(v0.1_p3) 진행.
 - `eval_offline.py` — 제로샷 test 4,753프레임 완료(T4 1장 19.6 프레임/초).
-- `fd_xm_infer` — 입력 전처리(영상 · 경로 20점 · 상한)가 export · eval_offline 과 비트 단위로 같음(ROS 없이 대조). **ROS 위에서는 아직 안 돌림.**
+- `fd_xm_infer` — 입력 전처리(영상 · 경로 20점 · 상한)가 export · eval_offline 과 비트 단위로 같음(ROS 없이 대조 — `python -m pytest ros2_ws/src/fd_xm_infer/test -q`, 6개 통과 11.9). **ROS 위에서는 아직 안 돌림.**
 
 ### GPU 메모리별 배치
 

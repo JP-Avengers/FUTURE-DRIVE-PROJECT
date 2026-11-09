@@ -1,7 +1,13 @@
 """X-Mobility 추론 노드(fd_xm_infer) 실행 — ml_env python 으로 띄운다(docs/server207.md:27).
 
-  ros2 launch fd_xm_infer xm_infer.launch.py ckpt:=$CD1/data/checkpoints/xm_ft_<버전>/checkpoints/last.ckpt
-  기준선 CSV 로 경로를 직접 만들 때: route_source:=csv pose_source:=odom (기본 기준선 parking_r3_cw.csv)
+  ros2 launch fd_xm_infer xm_infer.launch.py \
+      ckpt:=$CD1/data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt
+    ckpt = best 파일(docs/interfaces/e2d_model.md 버전 칸 · MANIFEST sha 로 확인). last.ckpt 는 마지막 에폭이라 동결 모델이 아님.
+    p3 계열 ckpt(경로 라벨 ×1/3)면 path_scale:=0.3333 — ~/path 디버그만 영향, 명령은 무관
+  기준선 CSV 로 경로를 직접 만들 때: route_source:=csv pose_source:=odom start_yaw_deg:=-96.0 (기본 기준선 parking_r3_cw.csv)
+    start_x · start_y · start_yaw_deg 를 안 주면 CSV 옆 YAML start — parking_r3_ccw.yaml 은 84° 라 씬 그대로(-96°,
+    parking_v0.4b_r3.usda:27) 띄운 로봇에 반시계 CSV 를 쓰면 odom→지도 변환이 180° 틀림 → 그때는 start_yaw_deg:=-96.0 필수
+    (README "실행")
 
 GPU: Isaac Sim 이 GPU 0 을 쓰므로 CUDA_VISIBLE_DEVICES=1 을 붙이고 device:=cuda 로 두거나 device:=cuda:1(docs/server207.md:26).
 여기 없는 파라미터는 node.py 의 XmInfer.__init__ 참고(런치 인자로 더 넘기려면 아래 ARGS 에 한 줄 추가).
@@ -33,12 +39,16 @@ ARGS = [
     ('route_csv', os.path.join(CD1, 'eval', 'routes', 'parking_r3_cw.csv'), 'csv 모드 기준선', True),
     ('goal_s', '-1.0', 'csv 모드 구간 목표 s(m), 음수 = 계속', False),
     ('pose_source', 'odom', 'csv 모드 위치 — odom(odom+시작 자세) · ground_truth(디버그 전용)', True),
+    ('start_x', 'nan', 'csv·odom 모드 시작 자세 x(m) — nan = CSV 옆 YAML start(node.py 가 float() 로 받음)', True),
+    ('start_y', 'nan', '', True),
+    ('start_yaw_deg', 'nan', '씬 루트 출발 방향(r3 = -96.0) — 반시계 CSV 도 씬 그대로 띄웠으면 -96(YAML 은 84 라 180° 틀림)', True),
     ('jpeg_quality', '90', '학습과 같은 JPEG 왕복(0 = 끔)', False),
     ('v_max', '0.8', 'topics.md:61', False),
     ('w_max', '0.7', 'topics.md:61', False),
     ('stale_timeout_s', '0.5', '영상 · odom 끊김 판정(s)', False),
     ('route_timeout_s', '1.0', '경로 · 위치 끊김 판정(s)', False),
     ('publish_path', 'true', '~/path · ~/route 디버그 토픽', False),
+    ('path_scale', '1.0', 'p3 계열 ckpt(경로 라벨 ×1/3)면 0.3333 — ~/path 만 /scale, 명령은 무관', False),
     ('log_csv', '', 'tick 마다 한 줄 CSV(+ .meta.json). 빈칸 = 끔', True),
     ('report_every', '25', 'N tick 마다 지연 P50/P95 로그', False),
     ('allow_other_cmd_publishers', 'false', '/cmd_vel 발행자 1개 규칙 무시(시험용)', False),

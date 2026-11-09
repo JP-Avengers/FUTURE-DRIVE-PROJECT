@@ -1,10 +1,12 @@
 #!/bin/bash
 # X-Mobility 시나리오 일괄 (E 초안 · D 채택/폐기) — sim/nav2/scenario_batch.sh 와 같은 순서로 항목마다: 레이어(장애물 · 출발 자세)를 만들고
 # 씬을 새로 띄워 eval/xm_route.py 한 번(추론 노드 fd_xm_infer 는 xm_route.py 가 띄우고 끔). 판정은 nav2_route.py 와 같은 식.
-#   FD_CKPT=data/checkpoints/xm_ft_v1.0/checkpoints/last.ckpt eval/xm_batch.sh eval/scenarios/parking_r3_straight_south.yaml eval/scenarios/parking_r3_obs_cones.yaml:ccw ...
+#   FD_CKPT=data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt eval/xm_batch.sh eval/scenarios/parking_r3_straight_south.yaml eval/scenarios/parking_r3_obs_cones.yaml:ccw ...
+#   ckpt 는 best 파일(동결 후보 — 이름 · sha 는 docs/interfaces/e2d_model.md 버전 칸 · MANIFEST). last.ckpt 는 마지막 에폭이라 동결 모델이 아님.
 # 바퀴(장애물) 시나리오는 방향을 "yaml:cw" · "yaml:ccw" 로 붙임(scenario_batch.sh:3-4 와 같음). 인자가 없으면 구간 시나리오 전부.
 # 환경변수
-#   FD_CKPT(필수) · FD_METHOD(xmobility_ft | xmobility_zeroshot) · FD_MODEL_VERSION(비면 ckpt 경로에서) · FD_SEEDS("1" — 항목마다 시드 목록, 반복 번호)
+#   FD_CKPT(필수) · FD_METHOD(xmobility_ft | xmobility_zeroshot) · FD_MODEL_VERSION(비면 ckpt 경로에서 xm_ft_v0.1[_aw30 …]) · FD_SEEDS("1" — 항목마다 시드 목록, 반복 번호)
+#   FD_NODE_PYTHON(노드 python, 기본 $CD1/envs/ml_env/bin/python — 아래 사전 확인에 걸리면 ~/xmobility_test/venv/bin/python 등) · XM_REPO(노드와 같은 기본 ~/xmobility_test/X-Mobility)
 #   FD_OUT(data/eval/xm_<월일_시분>) · FD_CSV($FD_OUT/results.csv) · FD_SCENE(비면 시나리오 yaml 의 scene — scenario_batch.sh 는 r3 고정)
 #   FD_LIDAR(1 — scenario_batch.sh:22 와 같게 켬, RTF 를 Nav2 회와 맞추려고. 모델은 LiDAR 를 안 씀) · FD_XM_CCW_START(scene | align — 아래)
 #   FD_XM_ARGS(xm_route.py 에 더 넘길 인자, 예 "--intervene off --node-param device:=cuda")
@@ -20,6 +22,18 @@ source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=43 RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST   # scenario_batch.sh:15
 [ -n "$FD_CKPT" ] || { echo "FD_CKPT(파인튜닝 .ckpt) 가 필요"; exit 2; }
 [ -f "$FD_CKPT" ] || { echo "ckpt 없음: $FD_CKPT"; exit 2; }
+# 노드 python 사전 확인 — 씬을 띄우기 전에. 모자라면 항목마다 노드 기동 실패(코드 3) → 씬 재시작 ×3 만 하고 결과 행이 없음.
+# ml_env 목록(docs/server207.md:27)엔 gin · pytorch_lightning · transformers 가 없음 → FD_NODE_PYTHON=~/xmobility_test/venv/bin/python 또는 ml_env 에 X-Mobility requirements 설치
+NODE_PY=${FD_NODE_PYTHON:-$CD1/envs/ml_env/bin/python}
+XM_REPO_DIR=${XM_REPO:-$HOME/xmobility_test/X-Mobility}
+[ -x "$NODE_PY" ] || { echo "노드 python 없음: $NODE_PY (FD_NODE_PYTHON 으로 지정)"; exit 2; }
+[ -f "$XM_REPO_DIR/train.py" ] || { echo "X-Mobility 레포 없음: $XM_REPO_DIR (XM_REPO 로 지정 — 노드 xm_repo 기본값과 같음)"; exit 2; }
+PYTHONPATH=$CD1/ros2_ws/src/fd_xm_infer:$XM_REPO_DIR${PYTHONPATH:+:$PYTHONPATH} HF_HUB_OFFLINE=1 "$NODE_PY" - <<'PY' || { echo "노드 python 준비 안 됨($NODE_PY) — 위 import 오류 참고. FD_NODE_PYTHON=~/xmobility_test/venv/bin/python 또는 ml_env 에 X-Mobility requirements 설치"; exit 2; }
+import rclpy, gin, torch, pytorch_lightning, transformers, PIL, yaml   # node.py:34-47 · 120-125 가 import 하는 것
+from fd_xm_infer import core, node                                       # ROS 메시지 · tf2_msgs · std_srvs 포함
+from model.trainer import XMobilityTrainer                               # X-Mobility 레포(XM_REPO) — 나머지 의존성은 여기서 걸림
+print("노드 python 확인:", torch.__version__, "cuda", torch.cuda.is_available())
+PY
 D=${FD_OUT:-data/eval/xm_$(date +%m%d_%H%M)}; mkdir -p $D/runs $D/layers
 CSV=${FD_CSV:-$D/results.csv}
 METHOD=${FD_METHOD:-xmobility_ft}; SEEDS=${FD_SEEDS:-1}; LIDAR=${FD_LIDAR:-1}; CCW=${FD_XM_CCW_START:-scene}
@@ -27,7 +41,8 @@ read -r -a XARGS <<< "${FD_XM_ARGS:-}"
 MV=(); [ -n "$FD_MODEL_VERSION" ] && MV=(--model-version "$FD_MODEL_VERSION")
 ITEMS=("$@"); [ ${#ITEMS[@]} -eq 0 ] && ITEMS=(eval/scenarios/parking_r3_straight_*.yaml eval/scenarios/parking_r3_curve_*.yaml)   # scenario_batch.sh:20
 REV=$(git rev-parse --short=12 HEAD)$(git diff --quiet HEAD || echo -dirty)
-echo "XM_BATCH_START rev=$REV method=$METHOD ckpt=$FD_CKPT seeds=[$SEEDS] out=$D csv=$CSV lidar=$LIDAR ccw_start=$CCW 항목 ${#ITEMS[@]}"
+SHA=$(sha256sum "$FD_CKPT" | cut -c1-12)   # e2d_model.md 버전 칸 · MANIFEST 의 sha 와 대조(후보들은 Kaggle 파일 이름이 같아 sha 로만 구분)
+echo "XM_BATCH_START rev=$REV method=$METHOD ckpt=$FD_CKPT sha=$SHA node_python=$NODE_PY seeds=[$SEEDS] out=$D csv=$CSV lidar=$LIDAR ccw_start=$CCW 항목 ${#ITEMS[@]}"
 case $REV in *-dirty) echo "  주의: 작업 트리가 더러움 — 결과 CSV repo_rev 에 -dirty 가 붙음(eval/README.md: 60회는 커밋 하나로)";; esac
 start_scene() {   # $1 레이어(콜론 구분) · $2 씬 — scenario_batch.sh:21-24 에서 Nav2 를 뺀 것
   tmux new-session -d -s fdsim "cd $CD1 && FD_LAYERS=$1 FD_LIDAR=$LIDAR FD_DOMAIN=43 FD_SCENE=$2 sim/run_proxy.sh headless"
@@ -53,7 +68,7 @@ for it in "${ITEMS[@]}"; do
   echo "$OUT" | grep -E "START|SAVED" | sed "s/^/  /"
   [ -f "$LAYER" ] || { echo "  레이어를 못 만듦 — 건너뜀: $(echo "$OUT" | tail -2 | tr '\n' ' ')"; continue; }
   SCENE=${FD_SCENE:-$(sed -n 's/^scene: *\([^ ]*\).*/\1/p' $f)}
-  LAYERS=$LAYER; ARGS=(--scenario $f --method $METHOD --ckpt $FD_CKPT --csv $CSV --scene $SCENE "${MV[@]}")
+  LAYERS=$LAYER; ARGS=(--scenario $f --method $METHOD --ckpt $FD_CKPT --csv $CSV --scene $SCENE --node-python "$NODE_PY" "${MV[@]}")
   [ -n "$dir" ] && ARGS+=(--direction $dir)
   # START s=16.0 → (-7.083, -20.346, 0.071) 방향 167.0° — 구간이면 레이어가 놓은 출발 자세를 그대로 노드에(scenario_batch.sh:77-78 과 같은 읽기)
   POSE=$(echo "$OUT" | sed -nE 's/^START .*\(([-0-9.]+), ([-0-9.]+), [-0-9.]+\) [^-0-9]*([-0-9.]+).*/\1 \2 \3/p')

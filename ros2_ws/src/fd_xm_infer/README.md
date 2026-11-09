@@ -21,7 +21,7 @@ X-Mobility 의존성(torch · gin · pytorch_lightning · transformers)은 rosde
 ```bash
 export CD1=$HOME/Capstone_Design_1 && cd $CD1
 source /opt/ros/jazzy/setup.bash
-export ROS_DOMAIN_ID=42 RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST   # topics.md:65
+export ROS_DOMAIN_ID=42 RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST   # topics.md:65 — 씬과 같은 도메인으로: run_proxy.sh 기본 42, eval/xm_batch.sh · sim/nav2/scenario_batch.sh 가 띄운 씬은 43
 
 # 빌드(한 번)
 (cd ros2_ws && colcon build --symlink-install --packages-select fd_xm_infer)
@@ -33,14 +33,17 @@ source ros2_ws/install/setup.bash
 # 3) /cmd_vel 발행자가 0 인지(topics.md:63) — 노드도 스스로 확인하고 있으면 시작을 거부함
 ros2 topic info /cmd_vel
 
-# 4) 추론
+# 4) 추론 — ckpt 는 best 파일(이름 · sha 는 e2d_model.md 버전 칸 · MANIFEST; last.ckpt 는 마지막 에폭이라 동결 모델이 아님)
 CUDA_VISIBLE_DEVICES=1 HF_HUB_OFFLINE=1 ros2 launch fd_xm_infer xm_infer.launch.py \
-    ckpt:=$CD1/data/checkpoints/xm_ft_<버전>/checkpoints/last.ckpt \
+    ckpt:=$CD1/data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt \
     log_csv:=$CD1/logs/xm_infer/<이름>.csv
+#    p3 계열 ckpt(경로 라벨 ×1/3, 예 xm_ft_v0.1_aw30_p3)면 path_scale:=0.3333 을 더함 — ~/path(RViz)만 영향, 명령은 무관
 
-# 경로를 기준선 CSV + odom(+ 시작 자세)으로 직접 만들 때(xm_route.py 없이)
+# 경로를 기준선 CSV + odom(+ 시작 자세)으로 직접 만들 때(xm_route.py 없이). 시작 자세 = 씬이 로봇을 띄운 자세(r3 루트 -96°,
+# parking_v0.4b_r3.usda:27). 안 주면 CSV 옆 YAML start 인데 parking_r3_ccw.yaml 은 84° → 반시계 CSV 를 씬 그대로 띄운 로봇에
+# 쓰면 odom→지도 변환이 180° 틀려 경로가 엉뚱함. 로봇을 84° 로 돌려 띄웠을 때만 생략 가능(eval/xm_batch.sh 는 늘 넘김)
 CUDA_VISIBLE_DEVICES=1 ros2 launch fd_xm_infer xm_infer.launch.py ckpt:=<...> route_source:=csv \
-    route_csv:=$CD1/eval/routes/parking_r3_ccw.csv pose_source:=odom
+    route_csv:=$CD1/eval/routes/parking_r3_ccw.csv pose_source:=odom start_x:=-1.756 start_y:=-7.621 start_yaw_deg:=-96.0
 
 # 상태 리셋(새 시도 · 로봇을 옮긴 뒤)
 ros2 service call /xm_infer/reset std_srvs/srv/Trigger
@@ -66,7 +69,7 @@ PYTHONPATH=$CD1/ros2_ws/src/fd_xm_infer:$PYTHONPATH CUDA_VISIBLE_DEVICES=1 \
 | 받음 | `gt_topic` `/ground_truth/tf` | `tf2_msgs/TFMessage` | `route_source=csv` · `pose_source=ground_truth` 일 때만. `World → nova_carter` 만 씀. **디버그 전용** |
 | 받음 | `goal_topic`(기본 끔) | `geometry_msgs/PoseStamped` | 오면 상태 리셋(navigator.py:132-136) |
 | 냄 | `cmd_topic` `/cmd_vel` | `geometry_msgs/Twist` | `linear.x` = v, `angular.z` = ω, 나머지 0. **발행자 1개** |
-| 냄 | `/xm_infer/path` · `/xm_infer/route` | `nav_msgs/Path` | `publish_path`. 모델이 낸 경로 5점 · 모델에 넣은 경로 20점(둘 다 `base_link`) |
+| 냄 | `/xm_infer/path` · `/xm_infer/route` | `nav_msgs/Path` | `publish_path`. 모델이 낸 경로 5점(`path_scale` 로 나눠 m) · 모델에 넣은 경로 20점(둘 다 `base_link`) |
 | 서비스 | `/xm_infer/reset` | `std_srvs/Trigger` | history · sample · 이전 명령 0, csv 모드 사영 힌트 버림 |
 
 모든 구독은 best effort(`qos_profile_sensor_data`) — 발행 쪽이 reliable 이어도 받습니다.
@@ -86,7 +89,7 @@ PYTHONPATH=$CD1/ros2_ws/src/fd_xm_infer:$PYTHONPATH CUDA_VISIBLE_DEVICES=1 \
 | `route_source` | `topic` | `topic`(/route) · `csv`(기준선 CSV + 위치로 직접) |
 | `route_csv` · `reverse_route` · `goal_s` | `<레포>/eval/routes/parking_r3_cw.csv` · false · −1 | csv 모드. `goal_s` ≥ 0 이면 거기서 끊고 끝점 반복(구간 시나리오) |
 | `pose_source` | `odom` | csv 모드 위치 — `odom`(odom + 시작 자세) · `ground_truth` |
-| `start_x` · `start_y` · `start_yaw_deg` | nan | `pose_source=odom` 시작 자세. nan 이면 CSV 옆 YAML(`parking_r3_cw.yaml` 등)의 `start` |
+| `start_x` · `start_y` · `start_yaw_deg` | nan | `pose_source=odom` 시작 자세 = 씬이 로봇을 띄운 자세(r3 −96°). nan 이면 CSV 옆 YAML(`parking_r3_cw.yaml` 등)의 `start` — `parking_r3_ccw.yaml` 은 84° 라 반시계 CSV 를 씬 그대로 띄웠으면 꼭 지정. 런치 인자로도 받음 |
 | `jpeg_quality` | 90 | 학습과 같은 JPEG 왕복. 0 = 끔(학습 입력과 달라짐) |
 | `v_min` · `v_max` · `w_max` | 0.0 · 0.8 · 0.7 | topics.md:61 상한 |
 | `stale_timeout_s` · `route_timeout_s` | 0.5 · 1.0 | 영상 · odom / 경로(csv 모드는 위치) 이 시간보다 오래되면 정지 명령 |
@@ -94,6 +97,7 @@ PYTHONPATH=$CD1/ros2_ws/src/fd_xm_infer:$PYTHONPATH CUDA_VISIBLE_DEVICES=1 \
 | `route_jump_m` · `pose_jump_m` | 1.5 · 0.5 | 경로 · 위치가 이만큼 뛰면 상태 리셋 |
 | `feed_clamped_action` | false | 이전 명령 입력에 자른 값을 넣음(기본은 navigator 처럼 모델 원래 출력) |
 | `publish_path` · `log_csv` · `report_every` · `warmup_iters` | true · `''` · 25 · 3 | 디버그 · 기록 |
+| `path_scale` | 1.0 | p3 계열 ckpt(경로 라벨 ×1/3, 데이터 `PATH_SCALE.json` 의 scale)면 0.3333 — `~/path` 를 이 값으로 나눠 m 로 냄. 명령 v · ω 는 무관(모델 출력 path 는 디버그 발행에만 씀). `.meta.json` params 에 남음 |
 | `allow_other_cmd_publishers` · `pub_check_wait_s` | false · 2.0 | 발행자 1개 규칙 무시(시험용) · 확인 전 발견 대기 |
 | `wall_timeout_s` | 1.0 | 실제 시간으로 이만큼 tick 이 없으면(/clock 멈춤) 0.5 s 마다 정지 명령 |
 
@@ -145,7 +149,7 @@ X-Mobility 줄 번호는 `5837aea` 기준, `navigator.py` = `ros2_deployment/x_m
 
 확인(ROS · GPU 없는 컨테이너, X-Mobility 코드 import · 실행 없음):
 
-- `core.py` 단위 시험 21개(python 3.13 · numpy 2.5 · Pillow 12.3 과 Pillow 11.3 두 환경 통과):
+- `core.py` 단위 시험 21개(python 3.13 · numpy 2.5 · Pillow 12.3 과 Pillow 11.3 두 환경 통과). 그중 학습 · 평가 코드와의 대조(아래 영상 · 경로 · 각도 · 상한)는 `test/test_core.py` 로 레포에 둠 — `python -m pytest ros2_ws/src/fd_xm_infer/test -q`(레포 루트에서. numpy · Pillow · pandas(`e2e/eval_offline.py` 가 import) 만, ROS · torch 불필요. pytest 없으면 `python ros2_ws/src/fd_xm_infer/test/test_core.py`). 노드를 고친 뒤 다시 돌려 "비트 단위 같음" 을 확인:
   - 영상: 학습 길(`export_xmobility.py`:234-236 옮겨 적음 → `eval_offline.decode_image`)과 **비트 단위 같음**(줄 끝 채움 0 · 8 · 64 B 포함). `float32 /255` 와 로더의 `float64 /255 → float32` 는 0~255 전부 같음. 학습 로더의 같은 크기 `tvf.resize` 는 항등(torchvision 0.29).
   - 경로: `eval_offline.route_vectors` · navigator 식(옮겨 적음)과 같음(1~40점). csv 모드 경로가 `export_xmobility.py` 의 `Poly` · `to_robot`(ast 로 떼어 실행) + 238-246 식과 cw · ccw · cw 거꾸로 × 목표 없음/있음 250자세에서 같음. `parking_r3_ccw.csv` = cw 거꾸로(같은 s 점 거리 0.0 mm).
   - 좌표: `transform_points`(쿼터니언) = `to_robot`(자세의 역 tf), 일반 쿼터니언 = 해밀턴 곱. `quat_yaw` · `odom_to_map` = export 식.
