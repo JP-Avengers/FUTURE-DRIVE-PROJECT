@@ -28,8 +28,7 @@ rows = []
 for r in pick:
     i = int(r[8]); txt = (K / f'kf_calib/{i}.yaml').read_text(); k = [float(x) for x in re.search(r'camera_matrix:.*?data: \[([^\]]+)\]', txt, re.S).group(1).replace('\n', ' ').split(',')]
     im = cv2.imread(str(K / f'kf_rgb/{i}.jpg')); h, w = im.shape[:2]
-    Rc = Rot.from_quat(r[4:8]).as_matrix()          # camera_link 자세 → 광학축: x 앞, y 왼쪽, z 위 (ROS) → 광학(z 앞, x 오른쪽, y 아래)
-    Ropt = Rc @ np.array([[0, 0, 1], [-1, 0, 0], [0, -1, 0]]); c = r[1:4]
+    Ropt = Rot.from_quat(r[4:8]).as_matrix(); c = r[1:4]      # traj_camera_id_camera_poses = 광학 좌표계 자세(z 앞, x 오른쪽, y 아래)
     Rw = T[:3, :3] @ Ropt; cw = T[:3, :3] @ c + T[:3, 3]
     u, v = np.meshgrid(np.arange(w), np.arange(h)); dcam = np.stack([(u - k[2]) / k[0], (v - k[5]) / k[4], np.ones_like(u, float)], -1).reshape(-1, 3)
     dw = dcam @ Rw.T; dw /= np.linalg.norm(dw, axis=1, keepdims=True)
