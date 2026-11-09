@@ -89,6 +89,12 @@ def parse_args():
                          "X-Mobility 경로 출력은 Tanh 라 ±1 m 를 못 넘고 우리 path 정답(3.36 s 앞)은 1 m 를 넘어 줄일 수 없는 몫이 생김")
     ap.add_argument("--save-top-k", type=int, default=3, help="val_loss 상위 몇 개를 남길지(+ last). 디스크가 작으면 1")
     ap.add_argument("--no-test", action="store_true", help="학습 뒤 test split 평가 건너뜀")
+    ap.add_argument("--prev-action-dropout", type=float, default=0.0,
+                    help="학습 때 RSSM 의 직전 명령 입력(action[t-1])을 시간 단계마다 이 확률로 0 으로. ChauffeurNet past-motion dropout — "
+                         "직전 명령 베끼기(copycat) 줄이기(11.9 교사 강제 입력 평가: 직전 교사 명령을 주면 Nav2 기울기 0.38 → 0.89). "
+                         "정답(batch['action'])은 그대로, 평가 · 노드(observe_step)는 영향 없음. 기본 0 = 끔")
+    ap.add_argument("--prev-action-noise", type=float, default=0.0,
+                    help="학습 때 직전 명령 입력의 v · ω 채널에 더할 가우스 잡음 표준편차(m/s · rad/s). 기본 0 = 끔")
     ap.add_argument("--seed", type=int, default=None, help="pl.seed_everything(workers=True). 기본 None = 안 정함. 같은 설정 2회 차이(분산)를 잴 때 0 · 1")
     ap.add_argument("--wandb", choices=["offline", "online", "disabled"], default="offline")
     ap.add_argument("--wandb-entity", default=None)
@@ -145,6 +151,29 @@ def main():
         os.chdir(cwd)
     epochs, precision, freeze = finetune()
 
+    if a.prev_action_dropout > 0 or a.prev_action_noise > 0:
+        # RSSM.forward 는 action[:, t-1] 을 입력으로 받고(X-Mobility rssm.py:152), 손실은 batch['action'] 을 따로 정답으로 읽음
+        # (losses.py:392) → 여기서 입력만 흐리면 정답은 그대로. 정책은 action 을 안 읽음(action_policy.py). 학습 모드에서만.
+        from model.x_mobility.rssm import RSSM
+        _orig_rssm_forward = RSSM.forward
+        p_drop, sigma = a.prev_action_dropout, a.prev_action_noise
+
+        def _rssm_forward(self, input_embedding, action, use_sample=True):
+            if self.training:
+                act = action
+                if sigma > 0:   # 6칸 [v, 0, 0, 0, 0, ω] 중 v · ω 만
+                    ch = torch.zeros(act.shape[-1], device=act.device, dtype=act.dtype)
+                    ch[0] = 1
+                    ch[-1] = 1
+                    act = act + torch.randn_like(act) * sigma * ch
+                if p_drop > 0:
+                    keep = (torch.rand(act.shape[:2], device=act.device) >= p_drop).to(act.dtype).unsqueeze(-1)
+                    act = act * keep
+                action = act
+            return _orig_rssm_forward(self, input_embedding, action, use_sample)
+
+        RSSM.forward = _rssm_forward
+        print(f"[직전 명령 입력] 학습 때 드롭아웃 p={p_drop} · 잡음 σ={sigma} — RSSM 입력만, 정답 · 평가 그대로")
     model = XMobilityTrainer()                # lr · weight_decay · pct_start = gin 값
     keys = None
     if ckpt:
@@ -180,7 +209,8 @@ def main():
                 repo_rev=git_rev(REPO), xm_repo=xm, xm_rev=git_rev(xm), configs=cfgs, gin_extra=a.gin,
                 dataset=data, checkpoint=ckpt, checkpoint_sha12=sha12(ckpt) if ckpt else None, keys=keys,
                 epochs=epochs, precision=precision, freeze_prefixes=list(freeze), ddp_backend=a.ddp_backend, monitor=a.monitor,
-                trainable_params=n_train, seed=a.seed, torch=torch.__version__, lightning=pl.__version__)
+                trainable_params=n_train, seed=a.seed, prev_action_dropout=a.prev_action_dropout,
+                prev_action_noise=a.prev_action_noise, torch=torch.__version__, lightning=pl.__version__)
     rank0 = os.environ.get("LOCAL_RANK", "0") == "0"   # DDP 는 이 스크립트를 GPU 수만큼 다시 띄움
     if rank0:
         with open(os.path.join(out, "run_meta.json"), "w", encoding="utf-8") as f:
