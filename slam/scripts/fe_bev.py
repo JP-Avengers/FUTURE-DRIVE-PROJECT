@@ -23,8 +23,19 @@ if '--ortho' in a:
     cv2.imwrite(str(O / 'ortho_grid.png'), img); print('정사 영상', img.shape, 'lo', qlo)
 cid = np.loadtxt(E / run / 'traj_camera_id_camera_poses.txt', comments='#', ndmin=2); K = E / run / 'keyframes'
 tp = cid[:, 1:4]; s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(tp, axis=0), axis=1))]
+import open3d as o3d
+from scipy.spatial import cKDTree
+pc = o3d.io.read_point_cloud(str(E / run / 'cloud_cloud.ply')).voxel_down_sample(0.05); X = np.asarray(pc.points) @ T[:3, :3].T + T[:3, 3]
+xt = cKDTree(X[:, :2]); camw = cid[:, 1:4] @ T[:3, :3].T + T[:3, 3]; hloc = np.full(len(cid), np.nan)
+for j, c in enumerate(camw):                                   # 키프레임마다 회차 자체 점군의 카메라 아래 바닥 높이(반경 0.6m, 하위 10%)
+    idx = xt.query_ball_point(c[:2], 0.6)
+    if len(idx) > 20: hloc[j] = np.percentile(X[idx, 2], 10)
+ok_ = np.isfinite(hloc); hloc[~ok_] = np.interp(np.where(~ok_)[0], np.where(ok_)[0], hloc[ok_])
+hloc = ndimage.median_filter(hloc, 5)
+print(run, '카메라-자체 바닥 높이 중앙', round(float(np.median(camw[:, 2] - hloc)), 2))
 P_, V_ = [], []
-for r in cid:
+for jj, r in enumerate(cid):
+    Z0 = hloc[jj]
     i = int(r[8]); txt = (K / f'kf_calib/{i}.yaml').read_text()
     k = [float(x) for x in re.search(r'camera_matrix:.*?data: \[([^\]]+)\]', txt, re.S).group(1).replace('\n', ' ').split(',')]
     im = cv2.imread(str(K / f'kf_rgb/{i}.jpg')).astype(np.float32); h, w = im.shape[:2]
