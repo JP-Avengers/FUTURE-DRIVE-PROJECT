@@ -75,6 +75,8 @@ def parse_args():
                     help="DDP 통신 백엔드 — Windows 는 nccl 이 없어 gloo(기본). X-Mobility 데이터 로더가 "
                          "DistributedSampler 를 써서 GPU 1장이어도 DDP 프로세스 그룹이 필요함")
     ap.add_argument("--max-steps", type=int, default=-1)
+    ap.add_argument("--ddp-timeout-min", type=float, default=10.0,
+                    help="DDP 집합 통신 대기 한도(분). 한 rank 가 멈추면 이 시간 뒤 둘 다 죽음 — torch 기본 30분(11.9 Kaggle B run 이 30분 멈춘 뒤 죽음)")
     ap.add_argument("--accumulate-grad-batches", type=int, default=1,
                     help="기울기 누적 — 배치를 줄여도 실효 배치를 지킴(T4: --gin XMobilityIsaacSimDataModule.batch_size=2 와 함께 2). "
                          "OneCycle 은 Lightning estimated_stepping_batches 로 잡혀 누적을 반영함")
@@ -211,7 +213,8 @@ def main():
         if v is not None:
             kw[k] = int(v) if v > 1 else v
     trainer = pl.Trainer(max_epochs=epochs, max_steps=a.max_steps, precision=precision, sync_batchnorm=True,
-                         accelerator=a.accelerator, devices=a.devices, strategy=DDPStrategy(find_unused_parameters=True, process_group_backend=a.ddp_backend),
+                         accelerator=a.accelerator, devices=a.devices, strategy=DDPStrategy(find_unused_parameters=True, process_group_backend=a.ddp_backend,
+                                                                timeout=datetime.timedelta(minutes=a.ddp_timeout_min)),
                          callbacks=[pl.callbacks.ModelSummary(-1), pl.callbacks.LearningRateMonitor(), ckpt_cb, timer],
                          max_time=a.max_time, logger=[logger, csv_logger], accumulate_grad_batches=a.accumulate_grad_batches, **kw)
     trainer.fit(model, datamodule=dm)
