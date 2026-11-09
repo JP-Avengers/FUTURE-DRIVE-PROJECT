@@ -1,0 +1,66 @@
+{
+ "started": "2026-11-09T00:22:45",
+ "argv": [
+  "/tmp/FUTURE-DRIVE-PROJECT/e2e/eval_offline.py",
+  "--xm-repo",
+  "/tmp/X-Mobility",
+  "-c",
+  "/tmp/FUTURE-DRIVE-PROJECT/e2e/configs/finetune_parking_r3.gin",
+  "-d",
+  "/kaggle/input/dataset-04-xm-v1-p3/xm_v1_0_p3",
+  "--split",
+  "test",
+  "-p",
+  "/kaggle/input/fd-xm-ckpts-2/xm_ft_v0.1_aw30_p3_e8.ckpt",
+  "-o",
+  "/kaggle/working/eval_aw30_p3_test",
+  "--device",
+  "cuda:0"
+ ],
+ "repo_rev": "2bbbdf903382",
+ "xm_repo": "/tmp/X-Mobility",
+ "xm_rev": "5837aead8902",
+ "configs": [
+  "/tmp/FUTURE-DRIVE-PROJECT/e2e/configs/finetune_parking_r3.gin"
+ ],
+ "gin_extra": [],
+ "gin_skip": [
+  "train",
+  "evaluate_observation",
+  "evaluate_prediction",
+  "finetune"
+ ],
+ "dataset": "/kaggle/input/dataset-04-xm-v1-p3/xm_v1_0_p3",
+ "split": "test",
+ "max_files": null,
+ "checkpoint": "/kaggle/input/fd-xm-ckpts-2/xm_ft_v0.1_aw30_p3_e8.ckpt",
+ "checkpoint_sha12": "114284109957",
+ "keys": {
+  "loaded": 297,
+  "missing": [],
+  "unexpected_expected": 0,
+  "unexpected_other": [],
+  "ckpt_hparams": {
+   "lr": 1e-05,
+   "weight_decay": 0.01,
+   "scheduler_pct_start": 0.2
+  }
+ },
+ "device": "cuda:0",
+ "cuda_device": "Tesla T4",
+ "teacher_forcing": false,
+ "policy_diffusion": false,
+ "seed": 0,
+ "input_image_size": [
+  320,
+  512
+ ],
+ "torch": "2.11.0+cu130",
+ "finished": "2026-11-09T00:26:43",
+ "elapsed_s": 235.4,
+ "frames_per_s": 20.19,
+ "images_resized": 0,
+ "files": 6,
+ "frames": 4753,
+ "route_len_mismatch": 0
+}

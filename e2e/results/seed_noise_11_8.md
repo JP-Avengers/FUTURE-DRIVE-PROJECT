@@ -75,3 +75,18 @@ python e2e/rollout_drift.py $R -o e2e/results/reeval_v1.1_11_7/rollout_drift_v1.
 # 위 표의 소수 · 배수 · 바퀴별 = steer_diag.diag · rollout_drift.drift_file(H=10) 을 각 frames.csv(전체 · 시나리오 · 파일별)에 적용 +
 # summary.json(ω · v MAE · 부호 · ADE · FDE) + run_meta.json(best_score ÷ 가중) — 레포 밖 스크립트(레포 함수 재사용), 배수 = (x − v0.1) / |seed1 − v0.1|
 ```
+
+## 11.9 추가 — 콘 반시계 녹화의 바닥 (seed1 을 v1.1 test 로, Kaggle `fd-xm-eval` v5)
+
+| 지표 (v1.1 test) | v0.1 | seed1 | 바닥 |
+| --- | --- | --- | --- |
+| 자동 교사 ω 기울기 | 0.86 | 0.87 | 0.01 |
+| 자동 교사 2 s 이탈 (m) | 0.027 | 0.028 | 0.001 |
+| Nav2(콘 반시계 653) ω 기울기 | 0.49 | 0.49 | 0.00 |
+| Nav2 2 s 이탈 (m) | 0.158 | 0.162 | 0.004 |
+| Nav2 ω MAE | 0.1501 | 0.1539 | 0.0038 |
+| 좌회전 지시 ω MAE (261) | 0.208 | 0.218 | 0.010 |
+
+- 자동 교사 행은 v1.0 test 와 같은 파일이라 같은 값(재현 확인). Nav2 이탈 바닥은 녹화마다 다르다(슬라럼 시계 0.001 · 콘 반시계 0.004).
+- 이 바닥으로 p3 의 콘 반시계 손해(이탈 +0.017 m = 4배, ω MAE +0.012 = 3배)가 실제로 판정됨 — `xm_ft_v0.1_aw30_p3/README.md` 표 2.
+- 파일: `xm_ft_v0.1_seed1/eval_ft_v1.1test_summary.json`.
