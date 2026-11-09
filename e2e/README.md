@@ -37,6 +37,16 @@
 | `plot_training.py` | 학습 곡선 — `<out>/csv/metrics.csv`(finetune.py 가 남김) → 에폭별 검증 표 `curves.md` · 그림 `curves.png`(matplotlib 있을 때). 보고서 표 E-14 |
 | `kaggle_finetune.ipynb` | Kaggle 무료 GPU(T4 × 2)용 노트북 — 시험(40배치 1에폭, 스텝 시간 실측) + 제로샷 오프라인 평가 → 본 학습(남은 시간에 맞춰 에폭 수 자동) + 학습 곡선 + 파인튜닝 오프라인 평가. 실험은 `RUN_NAME` · `EXTRA_ARGS` · `SAVE_TOP_K` + Input 데이터셋으로 바꿈. 준비 순서는 노트북 첫 칸 |
 | `kaggle_eval.ipynb` | 여러 ckpt 를 같은 test 에서 재평가 + 체크포인트 평균(`avg_ckpt.py`) 평가. 학습 없음 · HF 토큰 필요 없음(CLI push 로 실행). T4 2장에서 2개씩 동시에 |
+| `steer_diag.py` | 조향 진단 — frames.csv 에서 교사 \|ω\|>0.1 프레임의 예측/교사 1차 회귀 기울기 · 급회전 크기 · 부호 반대 · 지연을 시나리오 · 장애물 3 m 안/밖 · 잡음 중으로 나눠 봄. 여러 run 을 `이름=frames.csv` 로, `--common` 은 공통 파일만(PLAN 규칙 2 ①②) |
+| `rollout_drift.py` | 2 s 적분 이탈 — 같은 출발 자세에서 예측 · 교사 (v, ω) 를 1 · 2 s 적분한 끝점의 가로 차(평균 · p95 · 코너 창 · 잡음 창). 개루프 대리 지표(PLAN 규칙 2 ③) |
+| `teacher_style.py` | 같은 자리(경로 s 2 m 칸 · 방향)에서 자동 교사와 Nav2 교사가 꺾는 세기 · 들쭉날쭉함 비교(REPORT 한계 13) |
+| `teacher_id.py` | 교사 구분 검사 — 같은 자리의 두 교사 프레임에서 모델이 다른 ω 를 내는지(추종비 r)와 어느 입력이 표지인지(`results/teacher_id_11_7.md`) |
+| `resplit_xm.py` | split 맞바꿈 · 새 녹화 묶음 반영(`--preset v1.1`, 새 시나리오 폴더는 `--allow-new-scenario`), 원본은 읽기만 |
+| `oversample_xm.py` | train 시나리오 N배 복사(xm_v1_2 = v1.1 + Nav2 ×3, xm_v1_3 = ×2) |
+| `scale_path_xm.py` | 경로 정답 축척(`path` 열 × 1/3, `PATH_SCALE.json`) — Tanh 출력 범위 안으로. `eval_offline.py` 가 ADE · FDE 를 다시 m 로 나눔 |
+| `avg_ckpt.py` | 체크포인트 가중치 평균(model soup) — torch 있는 곳(Kaggle `kaggle_eval.ipynb`)에서 |
+| `setup_windows.ps1` · `SETUP_LOCAL.md` | 집 PC(RTX 5060 Ti) 학습 준비 스크립트와 설명서 |
+| `PLAN.md` · `REPORT_DRAFT.md` | 11.7 → 11.30 날짜별 계획 · 모델 고르는 규칙 / 결과보고서 E 파트 초안 |
 | `configs/finetune_parking_r3.gin` | 파인튜닝 설정 — X-Mobility `base_train_config.gin` 위에 `ENABLE_SEMANTIC=False` · 에폭 · lr · 배치만 바꿈 |
 
 `finetune.py` 가 원본 `train.py` 와 다른 점:
@@ -94,6 +104,7 @@ python e2e/eval_offline.py --xm-repo ~/xmobility_test/X-Mobility -c e2e/configs/
 | GPU | 설정 | 실측 |
 | --- | --- | --- |
 | T4 15 GB | `--gin XMobilityIsaacSimDataModule.batch_size=2 --accumulate-grad-batches 2` | 배치 4 는 첫 스텝 OOM, 배치 2 최대 10.4 GB · 0.60 s/스텝 · 에폭 약 28분(2장) |
+| RTX 5060 Ti 16 GB(1장, `setup_windows.ps1`) | `-BatchSize 2 -Accum 4`(실효 8) | 11.8 측정 예정 — 시험 `run_meta.json` 의 `peak_gpu_mem_gb` · `step_time_s` 를 여기에 |
 | 24 GB 이상 | 기본(배치 4) | 안 재봄 — 2) 짧은 시험의 `peak_gpu_mem_gb` 로 확인 |
 
 실효 배치(배치 × 누적 × GPU 수)를 같게 두면 lr 그대로 써도 됩니다. `run_meta.json` 에 `batch_size` · `accumulate_grad_batches` · `effective_batch` 가 남습니다.

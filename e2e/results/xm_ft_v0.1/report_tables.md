@@ -34,7 +34,7 @@
 
 ## MANIFEST checkpoint 행 초안
 
-| 11.6 | `checkpoint` | `xm_ft` | v0.1 | `data/checkpoints/xm_ft_v0.1/` | 【크기】 | 【sha12】 | `xm_parking_r3 (xm_v1) + X-Mobility 사전학습 ckpt(sha 339c68f9e027) → e2e/finetune.py(레포 e14ef9d85756, X-Mobility 5837aead8902), 10 에폭 · 16-mixed` | E | `best = validation/losses/action 최소(0.3223867416381836), global_step 11910, world_size 2, 키 missing 0` |
+| 11.6 | `checkpoint` | `xm_ft` | v0.1 | `data/checkpoints/xm_ft_v0.1/` | 0.96G | d86970ce1faf | `xm_parking_r3 (xm_v1) + X-Mobility 사전학습 ckpt(sha 339c68f9e027) → e2e/finetune.py(레포 e14ef9d85756, X-Mobility 5837aead8902), 10 에폭 · 16-mixed` | E | `best = validation/losses/action 최소(0.3223867416381836), global_step 11910, world_size 2, 키 missing 0` |
 
 ## 표 E-15. test split 개루프 지표 (제로샷 · 파인튜닝)
 
