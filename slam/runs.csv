@@ -79,3 +79,4 @@ fems2,2026-11-09,fems1 + fecen,0.5,multi-session (INIT_DB=fems1) IMU,4399,1,671,
 fems3,2026-11-09,fems2 + fe422a,0.5,multi-session (INIT_DB=fems2) IMU,4846,1,831,,,,,,,새 세션 → 이전 세션 링크 218개
 fems4,2026-11-09,fems3 + fe422b,0.5,multi-session (INIT_DB=fems3) IMU,3277,1,938,,,,,,,새 세션 → 이전 세션 링크 362개(feone 184 · fe422a 178)
 fems5,2026-11-09,fems4 + feit1w,0.5,multi-session (INIT_DB=fems4) IMU,4001,2,1069,532,653.6,44.34,4.53,-2.95~+0.17,,손 촬영 6회차 묶음(6세션). 근접 링크 388. 새 세션 → 이전 세션 링크 146개. v0.5 사진 매칭은 IT1 입구 40쌍만 성공 → 정합 미확정
+build_v05e,2026-11-10,fems5(손 촬영 6회차) + map_v0.5,,"fems_transfer(fecen 정합 → fems5 강체) · fe_tsdf --zfix(4cm) · fe_mesh_fill · fe_route_guard · fe_floor_update",,,,,,,,,"덧붙임 삼각형 150만(v0.5 262만 → 412만). 겹친 바닥 높이 차 중앙 -1.6cm. 통로 ±2.35m 안 솟은 조각 12개·바닥 중복 제거(삼각형 3.0만). 바닥 지도 conf=0 칸 31,596(316㎡)을 손 촬영 바닥으로(conf=4)","분기점 b-fe-align-cp1 가정(A1~A5) 위의 결과. 높이 보정 중앙 +0.58m(손 촬영 묶음 맵 높이 흐름). 주행 시점 미리보기는 v0.5와 거의 같음(통로 무변경). C에게 미전달"
