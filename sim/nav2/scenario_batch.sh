@@ -17,12 +17,14 @@ D=${FD_OUT:-logs/nav2/scenario}; mkdir -p $D
 REC=${FD_RECORD:-0}; TDIR=${FD_TEACHER_DIR:-$PWD/data/teacher/nav2_v1}
 NAVARG=(); [ "$REC" = 1 ] && NAVARG=(cmd_vel_out:=nav2/cmd_vel)
 SEED=0
+# 씬 · 지도(11.10) — 기본 r3. 다른 판: FD_SCENE=sim/scenes/parking/parking_v0.8_r2.usda FD_NAV2_MAP=$PWD/data/nav2/parking_v0.8_r2/map.yaml
+SCENE=${FD_SCENE:-sim/scenes/parking/parking_v0.4b_r3.usda}; NAVMAP=${FD_NAV2_MAP:-$PWD/data/nav2/parking_v0.4b_r3/map.yaml}
 ITEMS=("$@"); [ ${#ITEMS[@]} -eq 0 ] && ITEMS=(eval/scenarios/parking_r3_straight_*.yaml eval/scenarios/parking_r3_curve_*.yaml)
 start_scene() {   # $1 레이어 · $2 로그 이름 · $3 launch 시작 자세 인자
-  tmux new-session -d -s fdsim "cd ~/Capstone_Design_1 && FD_LAYERS=$1 FD_LIDAR=1 FD_DOMAIN=43 FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/run_proxy.sh headless"
+  tmux new-session -d -s fdsim "cd ~/Capstone_Design_1 && FD_LAYERS=$1 FD_LIDAR=1 FD_DOMAIN=43 FD_SCENE=$SCENE sim/run_proxy.sh headless"
   sleep 5
   for i in $(seq 1 40); do sleep 3; L=$(ls -t logs/run_proxy/headless_*.log | head -1); grep -q "PROXY_TIMELINE playing" "$L" 2>/dev/null && break; done
-  setsid ros2 launch sim/nav2/nav2.launch.py map:=$PWD/data/nav2/parking_v0.4b_r3/map.yaml localization:=amcl $3 "${NAVARG[@]}" > $D/launch_$2.log 2>&1 &
+  setsid ros2 launch sim/nav2/nav2.launch.py map:=$NAVMAP localization:=amcl $3 "${NAVARG[@]}" > $D/launch_$2.log 2>&1 &
   LP=$!
   for i in $(seq 1 60); do n=$(grep -c "Managed nodes are active" $D/launch_$2.log 2>/dev/null); [ "${n:-0}" -ge 3 ] && break; sleep 1; done
   sleep 3
@@ -34,7 +36,7 @@ rec_start() {   # $1 다리가 따를 기준선 · $2 방향 · $3 이름 · $4 
     --summary $D/teacher_$3.json > $D/teacher_$3.log 2>&1 &
   BP=$!
   sleep 3
-  tmux new-session -d -s fdrec "cd ~/Capstone_Design_1 && FD_DOMAIN=43 FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda FD_TEACHER_DIR=$TDIR sim/record_teacher.sh nav2 $2 $3 > $D/rec_$3.log 2>&1"
+  tmux new-session -d -s fdrec "cd ~/Capstone_Design_1 && FD_DOMAIN=43 FD_SCENE=$SCENE FD_TEACHER_DIR=$TDIR sim/record_teacher.sh nav2 $2 $3 > $D/rec_$3.log 2>&1"
   for i in $(seq 1 90); do grep -q "Recording\.\.\." $D/rec_$3.log 2>/dev/null && break; tmux has-session -t "=fdrec" 2>/dev/null || break; sleep 0.5; done
   RO=$(sed -n 's/^REC_START \([^ ]*\) .*/\1/p' $D/rec_$3.log | head -1)
   grep -q "Recording\.\.\." $D/rec_$3.log 2>/dev/null || { echo "  녹화가 안 뜸: $(tail -2 $D/rec_$3.log | tr '\n' ' ')"; return 1; }
