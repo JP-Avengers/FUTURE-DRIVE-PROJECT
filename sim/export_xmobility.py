@@ -10,12 +10,16 @@
   path            10 = 5점 × (x, y), 로봇 좌표계 — 실제로 지나간 미래 위치 t + k·0.84 s(k = 0..4).
                   간격은 공개 샘플(0.5 m/s 에서 0.42 m 간격, 멈출 때 줄어듦)에서 추정
 의미 분할 열은 없음 → 학습 설정에서 ENABLE_SEMANTIC=False.
+--exec-cmd(기본 끔, 11.10 E — D 동의): exec_command 열(6차원, driving_command 와 같은 꼴)에 /cmd_vel = 실제로 실행된 명령
+  (잡음 녹화에서는 라벨 + 잡음, DAgger 에서는 모델 명령)을 같이 저장. /cmd_vel 은 헤더 없는 Twist 라 녹화 시각(record_teacher.sh
+  --use-sim-time = 시뮬 시각)으로 맞춤. 프레임 고르기 · 다른 열은 옵션이 없을 때와 똑같음(못 찾은 프레임은 NaN, index 에 수).
+  X-Mobility 로더는 정해진 열만 읽으므로 이 열은 기존 학습에 영향 없음 — e2e 쪽에서 직전 명령 입력으로 쓸 때만 읽는다.
 
 샘플링 5 Hz(카메라 20 Hz 중 헤더 시각으로 고름 — 녹화 수신 시각은 최대 0.5 s 흔들려서 쓰지 않음). /teacher/status 의 ph == FOLLOW 인 구간만 쓰고, 끊긴 곳(바퀴 사이 정지 ·
 WAIT · STOP)마다 run 파일을 나눔 — 로더가 한 파일 안의 연속 행을 시퀀스로 묶기 때문.
 위치: /ground_truth/tf(World → nova_carter)가 있으면 그것, 없으면(raw_v1) /chassis/odom + 씬 시작 자세.
 
-사용: python export_xmobility.py <묶음 폴더> <출력 폴더> [--scenario 이름] [--split train]
+사용: python export_xmobility.py <묶음 폴더> <출력 폴더> [--scenario 이름] [--split train] [--exec-cmd]
   → <출력>/<split>/<scenario>/run_<묶음>_<NN>.pqt + <출력>/index/<묶음>.json
 실행 환경(server207): source /opt/ros/jazzy/setup.bash 후 pandas · pyarrow 있는 python(~/xmobility_test/venv).
 """
@@ -36,7 +40,7 @@ import yaml
 from PIL import Image as PILImage
 from rclpy.serialization import deserialize_message
 
-from geometry_msgs.msg import TwistStamped
+from geometry_msgs.msg import Twist, TwistStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
@@ -146,6 +150,8 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--scenario", default=None, help="출력 하위 폴더 이름(기본: operator 로 정함)")
     ap.add_argument("--split", default="train")
+    ap.add_argument("--exec-cmd", action="store_true",
+                    help="/cmd_vel(실행 명령)을 exec_command 열로 같이 저장 — 기본 끔, 라벨(driving_command)은 그대로")
     a = ap.parse_args()
 
     bundle = a.bundle.rstrip("/")
@@ -179,10 +185,26 @@ def main():
     # 1차: 카메라 외 토픽
     status_t, status_v, cmd_t, cmd_v = [], [], [], []
     odom, gt, spd_t, spd_v = [], [], [], []
-    rd = open_reader(mcap, ["/teacher/status", "/teacher/cmd_vel", "/chassis/odom", "/ground_truth/tf"])
+    ex_t, ex_v, ex_type = [], [], None
+    topics = ["/teacher/status", "/teacher/cmd_vel", "/chassis/odom", "/ground_truth/tf"]
+    if a.exec_cmd:
+        types = {m.name: m.type for m in open_reader(mcap, topics).get_all_topics_and_types()}
+        ex_type = types.get("/cmd_vel")
+        assert ex_type in ("geometry_msgs/msg/Twist", "geometry_msgs/msg/TwistStamped"), f"--exec-cmd: /cmd_vel 없음 · 형식 {ex_type}"
+        topics.append("/cmd_vel")
+    rd = open_reader(mcap, topics)
     while rd.has_next():
         topic, data, bt = rd.read_next()
-        if topic == "/teacher/status":
+        if topic == "/cmd_vel":
+            if ex_type.endswith("TwistStamped"):
+                m = deserialize_message(data, TwistStamped)
+                ex_t.append(stamp(m.header))
+                tw = m.twist
+            else:
+                tw = deserialize_message(data, Twist)
+                ex_t.append(bt * 1e-9)          # 헤더 없음 → 녹화 시각(--use-sim-time 이라 시뮬 시각)
+            ex_v.append((tw.linear.x, tw.angular.z))
+        elif topic == "/teacher/status":
             d = json.loads(deserialize_message(data, String).data)
             status_t.append(float(d["t"]))
             status_v.append(d)
@@ -202,7 +224,7 @@ def main():
                 if tr.header.frame_id == "World" and tr.child_frame_id == "nova_carter":
                     q = tr.transform.rotation
                     gt.append((stamp(tr.header), tr.transform.translation.x, tr.transform.translation.y, quat_yaw(q)))
-    for lst in (status_t, cmd_t, spd_t):
+    for lst in (status_t, cmd_t, spd_t, ex_t):
         assert lst == sorted(lst), "시각이 정렬되지 않음"
 
     if gt:
@@ -260,6 +282,10 @@ def main():
             obstacle_dist=float(st["od"]) if st.get("od") is not None else float("nan"),
             lap=int(st.get("lap", 0)),
         ))
+        if a.exec_cmd:
+            ex = last_le(ex_t, ex_v, t)
+            rows[-1]["exec_command"] = (np.array([ex[0], 0, 0, 0, 0, ex[1]], np.float64) if ex is not None
+                                        else np.full(6, np.nan))
 
     # 끊긴 곳마다 run 나눔
     runs, cur = [], []
@@ -288,10 +314,22 @@ def main():
                 dropped_short=sum(1 for _ in rows) - sum(len(r) for r in runs),
                 pose_vs_status_m=dict(median=float(np.median(dev)) if dev else None, max=float(np.max(dev)) if dev else None),
                 files=files)
+    if a.exec_cmd:
+        kept = [r for run in runs for r in run]
+        dw = np.array([r["exec_command"][5] - r["driving_command"][5] for r in kept])
+        nz = np.array([r["teacher_noise"] != 0 for r in kept], bool)
+        ok = ~np.isnan(dw)
+        med = lambda v: round(float(np.median(np.abs(v))), 4) if len(v) else None  # noqa: E731
+        # 점검: 잡음 없는 프레임에서 실행 ≈ 라벨이어야 함(시각이 맞으면 거의 0) — 크면 /cmd_vel 시각이 어긋난 것
+        info["exec_cmd"] = dict(topic="/cmd_vel", type=ex_type, msgs=len(ex_t), missing_frames=int((~ok).sum()),
+                                dw_abs_median_noise0=med(dw[ok & ~nz]), dw_abs_median_noise=med(dw[ok & nz]),
+                                noise_frames=int(nz.sum()))
     os.makedirs(os.path.join(a.out, "index"), exist_ok=True)
     json.dump(info, open(os.path.join(a.out, "index", name + ".json"), "w"), ensure_ascii=False, indent=1)
     print(f"{name} {scenario}/{a.split} samples={info['samples']} runs={len(runs)} pose={pose_src} "
-          f"dev_med={info['pose_vs_status_m']['median']:.3f} max={info['pose_vs_status_m']['max']:.3f}", flush=True)
+          f"dev_med={info['pose_vs_status_m']['median']:.3f} max={info['pose_vs_status_m']['max']:.3f}"
+          + (f" exec_cmd 빠짐={info['exec_cmd']['missing_frames']} |dω| 중앙값 잡음0={info['exec_cmd']['dw_abs_median_noise0']}"
+             f" 잡음={info['exec_cmd']['dw_abs_median_noise']}" if a.exec_cmd else ""), flush=True)
 
 
 if __name__ == "__main__":
