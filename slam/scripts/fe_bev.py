@@ -1,12 +1,15 @@
 """대응점 고르기용 그림: (1) 손 촬영 회차의 컬러 BEV(10cm, 정합 T 좌표) (2) v0.5 바닥 정사 영상 — 둘 다 5m 격자·좌표 표시.
 경로(검정 선)와 경로 거리 표시(10m마다)도 BEV에 그림. 위가 +y, 오른쪽이 +x.
-사용: fe_bev.py <run> <T.npy> <out_dir> [--maxd 6] [--ortho]"""
+사용: fe_bev.py <run> <T.npy> <out_dir> [--maxd 6] [--ortho] [--t0 시각 --t1 시각 --tag _s0]
+  --t0/--t1: 키프레임 타임스탬프 범위만 사용(묶음 맵의 세션 하나), 출력 이름은 <run><tag>_bev*"""
 import sys, re, numpy as np, cv2
 from pathlib import Path
 from scipy import ndimage
 from scipy.spatial.transform import Rotation as Rot
 a = sys.argv; run, tf, O = a[1], a[2], Path(a[3]); O.mkdir(parents=True, exist_ok=True)
 MAXD = float(a[a.index('--maxd') + 1]) if '--maxd' in a else 6.0; C = 0.1
+T0_ = float(a[a.index('--t0') + 1]) if '--t0' in a else -np.inf; T1_ = float(a[a.index('--t1') + 1]) if '--t1' in a else np.inf
+TAG = a[a.index('--tag') + 1] if '--tag' in a else ''
 E = Path.home() / 'b_slam/exports'; P = Path.home() / 'b_slam/deliver/map_v0.5'; T = np.load(tf)
 F = np.load(P / 'floor_height.npz'); G = F['grid'].astype(np.float32); Z0 = float(np.median(G[np.isfinite(G)]))
 def grid_draw(img, lo, H, step=5.0):
@@ -35,6 +38,7 @@ hloc = ndimage.median_filter(hloc, 5)
 print(run, '카메라-자체 바닥 높이 중앙', round(float(np.median(camw[:, 2] - hloc)), 2))
 P_, V_ = [], []
 for jj, r in enumerate(cid):
+    if not (T0_ <= r[0] <= T1_): continue
     Z0 = hloc[jj]
     i = int(r[8]); txt = (K / f'kf_calib/{i}.yaml').read_text()
     k = [float(x) for x in re.search(r'camera_matrix:.*?data: \[([^\]]+)\]', txt, re.S).group(1).replace('\n', ' ').split(',')]
@@ -51,6 +55,10 @@ ix = ((P_[:, 0] - lo[0]) / C).astype(int); iy = ((P_[:, 1] - lo[1]) / C).astype(
 order = np.argsort(-V_[:, 3]); lin = ix * n[1] + iy; best = np.zeros(n[0] * n[1], int) - 1; best[lin[order]] = order
 img = np.zeros((n[1], n[0], 3), np.uint8); m = best >= 0; bx, by = np.unravel_index(np.where(m)[0], (n[0], n[1]))
 img[n[1] - 1 - by, bx] = np.clip(V_[best[m], :3], 0, 255).astype(np.uint8)
+cv2.imwrite(str(O / f'{run}{TAG}_bev_raw.png'), img)            # 격자·경로 표시 없는 원본(대응점 측정용)
+np.savez(O / f'{run}{TAG}_bev.npz', lo=lo, cell=C, T=T)
+if TAG:                                                            # 세션 BEV는 원본만(그림 표시 생략)
+    print(run + TAG, 'BEV', img.shape, 'lo', np.round(lo, 2), '키프레임', int(((cid[:, 0] >= T0_) & (cid[:, 0] <= T1_)).sum())); raise SystemExit
 tw = (tp @ T[:3, :3].T + T[:3, 3])[:, :2]; pts = np.c_[((tw[:, 0] - lo[0]) / C), n[1] - 1 - ((tw[:, 1] - lo[1]) / C)].astype(np.int32)
 cv2.polylines(img, [pts.reshape(-1, 1, 2)], False, (255, 0, 255), 1)
 for d_ in range(0, int(s[-1]) + 1, 10):
