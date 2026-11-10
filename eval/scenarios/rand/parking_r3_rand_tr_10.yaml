@@ -1,0 +1,18 @@
+# 실제 주차장 r3 — 무작위 장애물 배치 parking_r3_rand_tr_10 (11.05, D, eval/scenarios/gen_rand_obstacles.py --seed 1010).
+# 장애물 자리 = 기준선 길이 s(시계 방향) · lateral(시계 방향 진행의 왼쪽 + — 화단 반대쪽, − 는 화단 쪽).
+# 용도: 학습(Nav2 교사 녹화)
+name: parking_r3_rand_tr_10
+version: v1
+scene: sim/scenes/parking/parking_v0.4b_r3.usda
+route: eval/routes/parking_r3_cw.csv
+directions: [cw, ccw]
+start: {x: -1.756, y: -7.621, yaw_deg: -96.0}
+goal: {lap: 1, radius_m: 1.0}
+obstacles:
+  - {name: ped_0, type: cylinder, s: 6.25, lateral: 0.10, size: [0.60, 1.70], color: [0.09, 0.15, 0.19]}
+  - {name: ped_1, type: cylinder, s: 27.38, lateral: -0.13, size: [0.55, 1.85], color: [0.09, 0.23, 0.1]}
+  - {name: box_2, type: box, s: 53.90, lateral: -0.38, size: [0.68, 0.41, 0.93], yaw_deg: 5.7, color: [0.48, 0.42, 0.23]}
+  - {name: cone_3, type: cone, s: 77.93, lateral: -0.09, size: [0.37, 0.66], color: [0.93, 0.43, 0.08]}
+deviation_limit_m: 2.0
+stall_limit_s: 10
+timeout_s: 300
