@@ -224,7 +224,10 @@ nav.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", lambda m: _ap.a
 _ip = nav.create_publisher(PoseWithCovarianceStamped, "/initialpose", 10)
 amcl_err = lambda: math.hypot(_ap[-1][0] - track[-1][1], _ap[-1][1] - track[-1][2]) if _ap else float("inf")   # noqa: E731
 _t, _last, n_init = time.time(), time.time(), 0
-while amcl_err() > 0.5 and time.time() - _t < 30:
+GT_LOC = os.environ.get("FD_NAV2_LOC", "amcl") == "gt"   # 11.10 — nav2.launch.py localization:=gt(정답 map → odom)면 AMCL 이 없어 확인을 건너뜀(교사 녹화용, 평가 아님)
+if GT_LOC:
+    _ap.append((track[-1][1], track[-1][2]))
+while not GT_LOC and amcl_err() > 0.5 and time.time() - _t < 30:
     if time.time() - _last > (1.0 if n_init else 5.0) and _ip.get_subscription_count() > 0:   # 처음 5 s 는 launch 초기 자세를 기다림
         m = PoseWithCovarianceStamped()
         m.header.frame_id, m.header.stamp = "map", nav.get_clock().now().to_msg()
@@ -232,11 +235,11 @@ while amcl_err() > 0.5 and time.time() - _t < 30:
         _ip.publish(m)
         _last, n_init = time.time(), n_init + 1
     rclpy.spin_once(nav, timeout_sec=0.2)
-print(f"NAV2_ROUTE_AMCL 출발 위치 오차 {amcl_err():.3f} m · /initialpose 다시 보냄 {n_init}회", flush=True)
+print(f"NAV2_ROUTE_AMCL 출발 위치 오차 {amcl_err():.3f} m · /initialpose 다시 보냄 {n_init}회" + (" (localization gt — 확인 건너뜀)" if GT_LOC else ""), flush=True)
 if amcl_err() > 0.5:
     print("NAV2_ROUTE_NO_AMCL AMCL 위치가 출발 자리와 안 맞음", flush=True)
     raise SystemExit(3)
-amcl_start_err = round(amcl_err(), 3)
+amcl_start_err = None if GT_LOC else round(amcl_err(), 3)
 if not nav.nav_through_poses_client.wait_for_server(timeout_sec=30.0):   # goThroughPoses 의 대기도 끝이 없음
     print("NAV2_ROUTE_NO_NAV2 NavigateThroughPoses 액션 서버를 30 s 안에 못 찾음", flush=True)
     raise SystemExit(3)

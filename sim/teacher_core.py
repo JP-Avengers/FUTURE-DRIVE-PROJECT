@@ -370,7 +370,8 @@ class TeacherCore:
                 self._lap_reset(t)
                 self._new_v()
             else:
-                w_pp = math.copysign(max(0.1, min(0.8 * self.w_max, abs(he_tgt))), he_tgt)
+                # 최소 0.25 rad/s(11.10) — 0.1 이면 v0.8 바닥에서 로봇이 안 돌아 오차 4~5° 에 멈춤(raw_v08_v1 반시계 묶음 39분 정지). ALIGN 은 내보내기에서 빠짐
+                w_pp = math.copysign(max(0.25, min(0.8 * self.w_max, abs(he_tgt))), he_tgt)
         elif self.phase == "FOLLOW":
             st = self.st
             if not self.label_only:
