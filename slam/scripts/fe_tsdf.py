@@ -1,5 +1,6 @@
 """손 촬영 묶음 맵 키프레임(컬러 정렬 depth) → 정합 T 적용한 v0.5 좌표 컬러 TSDF 메시 + 같은 좌표의 camera_link 궤적.
-사용: fe_tsdf.py <run> <T.npy> <out_dir> [--voxel 0.04] [--maxd 4.0] [--mind 0.4]"""
+사용: fe_tsdf.py <run> <T.npy> <out_dir> [--voxel 0.04] [--maxd 4.0] [--mind 0.4] [--zfix] [--t0 시각 --t1 시각] [--smin m] [--tag _x]
+  --t0/--t1: 키프레임 타임스탬프 범위(묶음 맵 세션 하나), --smin: 그 범위 안 경로 거리 m 이후 키프레임만, 출력 이름 <run><tag>_*"""
 import sys, re, numpy as np, open3d as o3d, cv2
 from pathlib import Path
 from scipy.spatial.transform import Rotation as Rot
@@ -30,9 +31,14 @@ if '--zfix' in a:
     if np.isnan(DZ).any(): DZ[np.isnan(DZ)] = np.nanmedian(DZ)
     print(f'높이 보정: 관측 {np.isfinite(raw).sum()}/{len(cid)}장, 보정량 중앙 {np.median(DZ):+.2f}m, 범위 {np.percentile(DZ, 5):+.2f}~{np.percentile(DZ, 95):+.2f}m, 세션 구간 {len(jump) - 1}', flush=True)
     np.save(O / f'{run}_zfix.npy', DZ)
+T0_, T1_, SMIN = opt('--t0', -np.inf), opt('--t1', np.inf), opt('--smin', 0.0); TAG = a[a.index('--tag') + 1] if '--tag' in a else ''
+use = (cid[:, 0] >= T0_) & (cid[:, 0] <= T1_); iu = np.where(use)[0]
+su = np.r_[0, np.cumsum(np.linalg.norm(np.diff(cid[iu, 1:4], axis=0), axis=1))]; use[iu[su < SMIN]] = False
+if use.sum() < len(cid): print(f'키프레임 선택: 시간 범위 {len(iu)}장 중 경로 {SMIN:g}m 이후 {use.sum()}장', flush=True)
 vol = o3d.pipelines.integration.ScalableTSDFVolume(voxel_length=VOX, sdf_trunc=4 * VOX, color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
 n = 0
 for jr, r in enumerate(cid):
+    if not use[jr]: continue
     i = int(r[8]); dp = K / f'kf_depth/{i}.png'
     if not dp.exists(): continue
     txt = (K / f'kf_calib/{i}.yaml').read_text()
@@ -47,9 +53,9 @@ for jr, r in enumerate(cid):
     vol.integrate(rgbd, Kc, np.linalg.inv(Tw)); n += 1
     if n % 200 == 0: print(f'  {n}장', flush=True)
 mesh = vol.extract_triangle_mesh(); mesh.compute_vertex_normals()
-o3d.io.write_triangle_mesh(str(O / f'{run}_tsdf_{round(VOX * 100)}cm.ply'), mesh)
-tr = np.loadtxt(E / run / 'traj_optimized_poses.txt', comments='#', ndmin=2); pw = tr[:, 1:4] @ T[:3, :3].T + T[:3, 3]
+o3d.io.write_triangle_mesh(str(O / f'{run}{TAG}_tsdf_{round(VOX * 100)}cm.ply'), mesh)
+tr = np.loadtxt(E / run / 'traj_optimized_poses.txt', comments='#', ndmin=2); tr = tr[(tr[:, 0] >= T0_) & (tr[:, 0] <= T1_)]; pw = tr[:, 1:4] @ T[:3, :3].T + T[:3, 3]
 o_ = np.argsort(cid[:, 0]); pw[:, 2] += np.interp(tr[:, 0], cid[o_, 0], DZ[o_])          # 높이 보정을 궤적에도
 qw = (Rot.from_matrix(T[:3, :3]) * Rot.from_quat(tr[:, 4:8])).as_quat()
-np.savetxt(O / f'{run}_trajectory_camera_link.txt', np.c_[tr[:, 0], pw, qw], fmt='%.6f', header='timestamp x y z qx qy qz qw (v0.5 좌표)')
+np.savetxt(O / f'{run}{TAG}_trajectory_camera_link.txt', np.c_[tr[:, 0], pw, qw], fmt='%.6f', header='timestamp x y z qx qy qz qw (v0.5 좌표)')
 print(f'{run}: 키프레임 {n}/{len(cid)} 통합 → 꼭짓점 {len(mesh.vertices):,}, 삼각형 {len(mesh.triangles):,} → {O}')
