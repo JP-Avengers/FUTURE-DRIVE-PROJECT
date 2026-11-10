@@ -20,7 +20,7 @@
 ## 인계 방법
 
 - 실물 위치: server207 `$CD1/data/checkpoints/` — [`MANIFEST.md`](../../MANIFEST.md) 에 버전 기록
-- 현황(11.9): 모든 ckpt 는 E 로컬에만 있음 · Git 에 안 올림(용량) · D 에게 **전달 전**(서버 `data/checkpoints/` 에 아직 없음 — MANIFEST 의 서버 경로는 받은 뒤 채움). **팀 Drive 업로드 예정(11.9)**, 파일 이름은 Kaggle 데이터셋 `fd-xm-ckpts` 와 같게: **`xm_ft_v0.1_e8.ckpt`**(= v0.1 best `epoch=8-step=10719.ckpt`, sha `d86970ce1faf`) · **`xm_ft_v0.1_aw30_e8.ckpt`**(= aw30 best, sha `4fdf249cda0a`). `xm_ft_v0.1_aw30_p3`(sha `114284109957`, 11.9 교차 평가 완료 · 종합 1위 후보)도 같은 식(`xm_ft_v0.1_aw30_p3_e8.ckpt`)으로
+- 현황(11.10): Git 에 안 올림(용량). **11.9 E Drive 폴더에 3개 업로드 · D 에 링크 전달**(링크는 메시지로만 — 이 레포는 공개라 적지 않음). 11.10 Drive 크기 = 로컬 원본과 바이트 단위로 같음 확인. 서버 `data/checkpoints/` 배치는 D(11.11 노드 시험 때, sha 대조). 파일 이름은 Kaggle 데이터셋 `fd-xm-ckpts` 와 같게: **`xm_ft_v0.1_e8.ckpt`**(= v0.1 best `epoch=8-step=10719.ckpt`, sha `d86970ce1faf`) · **`xm_ft_v0.1_aw30_e8.ckpt`**(= aw30 best, sha `4fdf249cda0a`). `xm_ft_v0.1_aw30_p3`(sha `114284109957`, 11.9 교차 평가 완료 · 종합 1위 후보)도 같은 식(`xm_ft_v0.1_aw30_p3_e8.ckpt`)으로
 - D 가 할 것: 받은 파일을 이름 그대로 `$CD1/data/checkpoints/xm_ft_v0.1/checkpoints/xm_ft_v0.1_e8.ckpt` · `.../xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt` 에 두고 `sha256sum <파일> | cut -c1-12` 로 위 sha 확인 → 첫 노드 시험(`eval/XM_HARNESS.md` §2, `--dry-run` 먼저)은 v0.1 로 충분, DAgger 주행은 aw30(또는 결정된 1순위). `eval/xm_batch.sh` 가 시작 줄에 sha 를 찍고 결과 CSV `note` 에 `ckpt_sha12` 를 남김
 - 납기: 모델 동결: 11.23
 
