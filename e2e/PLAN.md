@@ -63,6 +63,7 @@
 - DAgger 데이터는 **train 에만**(val · test 는 그대로). 섞는 비율은 그냥 합침(기본 DAgger).
 - 모델이 2 m 넘게 벗어나면 하네스가 끝내므로, 그 전까지의 되돌아오는 구간이 핵심 데이터.
 - 일정: 11.7–9 노드 시험 → 11.10–13 D 녹화(모델 v0.1 `d86970ce1faf` — 11.7 D 에 안내, v0.2 는 탈락) → export → 11.16–23 재학습에 포함. 노드 시험이 11.13 넘게 늦어지면 접는다.
+- **11.10: 일괄 한 줄로** — `FD_DAGGER=1 eval/xm_batch.sh eval/scenarios/parking_r3_lap.yaml:cw …`(라벨 교사 · 녹화 → 모델 → 교사 SIGTERM, `eval/XM_HARNESS.md` §2.1). 서버 없이 쓴 분기라 첫 회 로그 확인 필요.
 - D 에게 부탁할 것: ① `xm_route.py` 로 모델이 모는 동안 `teacher.py --label-only --route … --dir cw|ccw --laps N` + `record_teacher.sh` 를 같이 띄워 줄 수 있는지 ② 녹화 묶음을 `--scenario r3_dagger` 로 export. (둘 다 제가 서버 없이 시험 못 하는 부분.)
 
 ## Kaggle 예산

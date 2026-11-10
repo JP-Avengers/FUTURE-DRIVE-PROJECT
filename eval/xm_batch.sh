@@ -10,6 +10,12 @@
 #   FD_OUT(data/eval/xm_<월일_시분>) · FD_CSV($FD_OUT/results.csv) · FD_SCENE(비면 시나리오 yaml 의 scene — scenario_batch.sh 는 r3 고정)
 #   FD_LIDAR(1 — scenario_batch.sh:22 와 같게 켬, RTF 를 Nav2 회와 맞추려고. 모델은 LiDAR 를 안 씀) · FD_XM_CCW_START(scene | align — 아래)
 #   FD_XM_ARGS(xm_route.py 에 더 넘길 인자, 예 "--intervene off --node-param device:=cuda")
+#   FD_DAGGER(0 | 1, 11.10 E) — 1 이면 회마다 씬을 띄운 뒤 라벨 교사(sim/teacher.py --label-only, /cmd_vel 안 냄)와 녹화
+#     (sim/auto_teacher.sh → record_teacher.sh)를 먼저 켜고, 모델이 모는 동안 그 자리 교사 라벨을 남김(DAgger, e2e/PLAN.md).
+#     xm_route.py 가 끝나면(바퀴 끝 · 2 m 개입 · 시간 초과) 교사에 SIGTERM → auto_teacher 가 녹화를 닫음(AUTO_DONE).
+#     녹화 = FD_DAGGER_DIR(기본 data/teacher/dagger_v1)/<묶음>, 메모 = <시나리오>_<방향>_dagger. 내보내기는
+#     sim/export_xmobility.py <묶음> <출력> --scenario r3_dagger --split train --exec-cmd(실행 명령 = 모델 명령).
+#     장애물 없는 바퀴(eval/scenarios/parking_r3_lap.yaml:cw|ccw)에서만 — 장애물 장면의 자동 교사 라벨은 '장애물로 직진'이라 틀림.
 # 반시계 바퀴: 씬은 시계 방향(−96°)을 보고 뜸 — Nav2 회와 같은 조건(scene, 기본). align 이면 로봇 방향을 parking_r3_ccw.yaml 의 start(84°)로
 # 덮는 레이어를 하나 더 얹음(Nav2 회와 조건이 달라짐 — XM_HARNESS.md 질문 1).
 # 결과: $FD_OUT/runs/<이름>_s<시드>[_a<시도>].json(+ .node.log · .xm_infer.csv · .meta.json) · route_*.log · layers/ · results.csv, 끝에 XM_BATCH_DONE.
@@ -85,8 +91,20 @@ for it in "${ITEMS[@]}"; do
       name=${tag}_s$seed$([ $try -gt 1 ] && echo _a$try); J=$D/runs/$name.json
       echo "SCENARIO $tag seed $seed 시도 $try $(date +%T) ${POSE}"
       start_scene $LAYERS $SCENE
+      if [ "${FD_DAGGER:-0}" = 1 ]; then   # 라벨 교사 + 녹화를 모델보다 먼저(auto_teacher 는 /cmd_vel 발행자가 있으면 거부)
+        ROUTE_CSV=$(sed -n 's/^route: *\([^ #]*\).*/\1/p' $f)
+        tmux new-session -d -s fddag "cd $CD1 && FD_DOMAIN=43 FD_SCENE=$SCENE FD_TEACHER_DIR=${FD_DAGGER_DIR:-data/teacher/dagger_v1} sim/auto_teacher.sh csv:$ROUTE_CSV ${dir:-cw} 1 ${tag}_dagger -- --label-only > $D/dagger_$name.log 2>&1"
+        for i in $(seq 1 90); do grep -q "^AUTO_REC" $D/dagger_$name.log 2>/dev/null && break; sleep 1; done
+        grep -q "^AUTO_REC" $D/dagger_$name.log 2>/dev/null && echo "  DAgger $(grep '^AUTO_REC' $D/dagger_$name.log)"           || echo "  DAgger 녹화가 안 뜸 — $D/dagger_$name.log 확인(모델 회는 그대로 돌림)"
+      fi
       timeout -k 20 900 python3 -u eval/xm_route.py "${ARGS[@]}" --seed $seed --attempt $try --out $J "${XARGS[@]}" > $D/route_$name.log 2>&1   # scenario_batch.sh:89
       rc=$?
+      if [ "${FD_DAGGER:-0}" = 1 ]; then   # 교사 끄기(SIGTERM → 요약 · TEACHER_EXIT) → auto_teacher 가 녹화 닫고 QC(긴 녹화는 몇 분)
+        pkill -TERM -f "sim/teacher.py" 2>/dev/null
+        for i in $(seq 1 600); do grep -q "^AUTO_DONE" $D/dagger_$name.log 2>/dev/null && break; tmux has-session -t "=fddag" 2>/dev/null || break; sleep 1; done
+        grep -E "^(AUTO_DONE|TEACHER_EXIT)" $D/dagger_$name.log | sed "s/^/  DAgger /"
+        tmux kill-session -t "=fddag" 2>/dev/null
+      fi
       grep -E "XM_ROUTE_(DONE|END|START_CHECK|READY|NO_|CMD_BUSY|SIM_STALL|CSV_FAIL|WARN)" $D/route_$name.log | sed "s/^/  /" | cut -c1-400
       [ $rc -eq 124 ] && echo "  시간 초과(벽시계 15분)"
       kill_node $J.node.pid

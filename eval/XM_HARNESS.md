@@ -37,6 +37,25 @@ python3 eval/xm_route.py --rejudge logs/nav2/scenario/parking_r3_obs_cones_ccw.j
 - 노드는 `xm_route.py` 가 노드 README 의 "colcon 없이" 방식(`ros2_ws/src/fd_xm_infer/README.md:49-55`)으로 띄웁니다: `<--node-python> -u -m fd_xm_infer.node --ros-args -p ...`, `PYTHONPATH=ros2_ws/src/fd_xm_infer`, `CUDA_VISIBLE_DEVICES=1`, `HF_HUB_OFFLINE=1`(README:19). 런치 파일(`start_x` 등도 인자로 받음)은 쓰지 않고 직접 띄웁니다 — 자식 프로세스(새 세션)의 pid · 신호 · 로그를 하네스가 다루려고.
 - 종료 코드: 0 = 판정한 회(통과 여부와 무관, CSV 한 행) · 3 = 준비 실패(행 없음, 일괄이 다시 띄움 — `scenario_batch.sh:96` 과 같은 규칙) · 130 = 신호로 중단. 일괄의 `timeout -k 20 900`(`scenario_batch.sh:89`)에 걸리면 124 → 다시 띄움, 남은 노드는 `<out>.node.pid` 로 끔.
 
+### 2.1 DAgger 녹화 (D, 11.13 예정 — 노드 시험이 된 뒤)
+
+모델이 모는 동안 자동 교사를 라벨 전용(`sim/teacher.py --label-only`, `/cmd_vel` 안 냄)으로 같이 띄워 그 자리 교사 라벨을 남깁니다(`e2e/PLAN.md` "DAgger"). 일괄 스크립트가 회마다 씬 → 라벨 교사 · 녹화(`auto_teacher.sh`) → 모델(`xm_route.py`, 2 m 넘게 벗어나면 개입으로 멈춤) → 교사 SIGTERM → 녹화 닫기 순서로 돌립니다. 장애물 없는 바퀴에서만(장애물 장면의 자동 교사 라벨은 '장애물로 직진'이라 틀림).
+
+```bash
+cd $CD1 && git pull
+# cw · ccw × 시드 3 = 6 바퀴. 반시계는 출발 방향을 맞춤(align — 출발 제자리 회전 없이, xm_v3 와 같은 뜻)
+FD_DAGGER=1 FD_XM_CCW_START=align FD_CKPT=<ckpt> FD_SEEDS="1 2 3" FD_OUT=data/eval/1113_dagger \
+  eval/xm_batch.sh eval/scenarios/parking_r3_lap.yaml:cw eval/scenarios/parking_r3_lap.yaml:ccw
+# → 녹화 data/teacher/dagger_v1/<묶음>/ (회마다 '  DAgger AUTO_REC …' · '  DAgger AUTO_DONE … qc=OK' 줄) + 모델 바퀴 결과 results.csv
+# 내보내기 — 실행 명령(exec_command) = 모델이 낸 명령, 라벨 = 교사
+source /opt/ros/jazzy/setup.bash
+for b in data/teacher/dagger_v1/*/; do ~/xmobility_test/venv/bin/python sim/export_xmobility.py $b data/teacher/xm_dagger_v1 --scenario r3_dagger --split train --exec-cmd; done
+```
+
+- 시험하지 않은 부분(서버 없음): `FD_DAGGER` 분기(`eval/xm_batch.sh`)는 `bash -n` · 경로 추출만 확인. 첫 회 로그 `data/eval/1113_dagger/dagger_*.log` 에 `AUTO_REC` · `TEACHER_EXIT` · `AUTO_DONE` 이 다 있는지 보고 나머지를 돌려 주세요.
+- 손으로 할 때(같은 순서): 씬(도메인 43) → `FD_DOMAIN=43 FD_TEACHER_DIR=data/teacher/dagger_v1 sim/auto_teacher.sh csv:eval/routes/parking_r3_cw.csv cw 1 parking_r3_lap_cw_dagger -- --label-only` 가 `AUTO_REC` 를 찍은 뒤 → `python3 eval/xm_route.py --scenario eval/scenarios/parking_r3_lap.yaml --direction cw --ckpt <ckpt> ...` → 끝나면 `pkill -TERM -f sim/teacher.py`(교사가 요약을 쓰고 끝나면 녹화도 닫힘).
+- 모델이 몇 m 못 가고 개입되면 그 회는 짧은 녹화만 남습니다 — 되돌아오는 장면이 핵심이라 짧아도 씁니다.
+
 ## 3. 한 회 순서 (`xm_route.py` `run_live`)
 
 | 단계 | 동작 | 출처 · 대응 |
