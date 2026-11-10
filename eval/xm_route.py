@@ -23,7 +23,7 @@
 
 nav2_route.py 는 import 하면 argparse · rclpy · Nav2 가 바로 돌아(모듈 수준 코드) 가져올 수 없다 — 판정에 쓰는 순수 계산만 아래에 옮겨
 적고 줄 번호를 달았다. 같은지는 nav2_route.py 의 문장을 ast 로 떼어 같은 궤적에 돌려 대조함(XM_HARNESS.md "확인").
-필요: 판정 · CSV 는 numpy · PyYAML(시스템 python3), 실주행은 + rclpy(시스템 Jazzy). 노드는 ml_env python(노드 README, --node-python —
+필요: 판정 · CSV 는 numpy · PyYAML(시스템 python3), 실주행은 + rclpy(시스템 Jazzy). 노드는 ~/xmobility_test/venv python(D 11.10 노드 시험, --node-python —
 xm_batch.sh 가 씬을 띄우기 전에 import 로 확인).
 """
 import argparse
@@ -857,7 +857,7 @@ def parse_args(argv=None):
     ap.add_argument("--start-yaw-deg", type=float, help="출발 방향만 덮어씀(반시계 바퀴를 레이어로 돌려 띄울 때)")
     ap.add_argument("--scene", help="결과 CSV scene(기본 $FD_SCENE 또는 yaml scene)")
     ap.add_argument("--scene-version", help="결과 CSV scene_version(기본 씬 파일 이름에서)")
-    ap.add_argument("--node-python", default=os.path.join(os.environ.get("CD1", REPO), "envs", "ml_env", "bin", "python"),
+    ap.add_argument("--node-python", default=os.path.expanduser("~/xmobility_test/venv/bin/python"),
                     help="노드 python — X-Mobility 의존성(gin · torch · lightning · transformers)이 있어야 함(xm_batch.sh 가 먼저 확인)")
     ap.add_argument("--node-cmd", help="노드 명령 앞부분 바꾸기(기본 '<node-python> -u -m fd_xm_infer.node') — 뒤에 --ros-args 가 붙음")
     ap.add_argument("--node-param", action="append", help="노드에 더 넘길 -p 이름:=값 (여러 번)")

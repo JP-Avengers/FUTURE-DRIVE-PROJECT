@@ -33,7 +33,7 @@ python3 eval/xm_route.py --rejudge logs/nav2/scenario/parking_r3_obs_cones_ccw.j
   --method nav2 --model-version <nav2 설정 커밋> --localization amcl --nav2-map "v0.4b r3 · 2판" --seed 1 --csv data/eval/1124_nav2/results.csv
 ```
 
-- 환경변수(`xm_batch.sh`): `FD_CKPT`(필수) · `FD_METHOD`(`xmobility_ft` 기본 · `xmobility_zeroshot`) · `FD_MODEL_VERSION` · `FD_SEEDS`(기본 `1`) · `FD_OUT` · `FD_CSV` · `FD_SCENE`(비면 yaml `scene`) · `FD_LIDAR`(기본 1) · `FD_XM_CCW_START`(`scene` 기본 · `align`) · `FD_NODE_PYTHON`(노드 python, 기본 `envs/ml_env/bin/python` — 사전 확인에 걸리면 `~/xmobility_test/venv/bin/python`) · `XM_REPO`(사전 확인용, 노드 기본값과 같음) · `FD_XM_ARGS`(예 `--intervene off`, `--node-param gin:=...` — 제로샷이면 gin 을 여기로, p3 계열 ckpt 면 `--node-param path_scale:=0.3333`).
+- 환경변수(`xm_batch.sh`): `FD_CKPT`(필수) · `FD_METHOD`(`xmobility_ft` 기본 · `xmobility_zeroshot`) · `FD_MODEL_VERSION` · `FD_SEEDS`(기본 `1`) · `FD_OUT` · `FD_CSV` · `FD_SCENE`(비면 yaml `scene`) · `FD_LIDAR`(기본 1) · `FD_XM_CCW_START`(`scene` 기본 · `align`) · `FD_NODE_PYTHON`(노드 python, 기본 `~/xmobility_test/venv/bin/python` — D 11.10 노드 시험에서 확인, ml_env 엔 gin 없음) · `FD_ANALYZE_PYTHON`(끝의 스키마 검사, 기본 노드 python) · `XM_REPO`(사전 확인용, 노드 기본값과 같음) · `FD_XM_ARGS`(예 `--intervene off`, `--node-param gin:=...` — 제로샷이면 gin 을 여기로, p3 계열 ckpt 면 `--node-param path_scale:=0.3333`).
 - 노드는 `xm_route.py` 가 노드 README 의 "colcon 없이" 방식(`ros2_ws/src/fd_xm_infer/README.md:49-55`)으로 띄웁니다: `<--node-python> -u -m fd_xm_infer.node --ros-args -p ...`, `PYTHONPATH=ros2_ws/src/fd_xm_infer`, `CUDA_VISIBLE_DEVICES=1`, `HF_HUB_OFFLINE=1`(README:19). 런치 파일(`start_x` 등도 인자로 받음)은 쓰지 않고 직접 띄웁니다 — 자식 프로세스(새 세션)의 pid · 신호 · 로그를 하네스가 다루려고.
 - 종료 코드: 0 = 판정한 회(통과 여부와 무관, CSV 한 행) · 3 = 준비 실패(행 없음, 일괄이 다시 띄움 — `scenario_batch.sh:96` 과 같은 규칙) · 130 = 신호로 중단. 일괄의 `timeout -k 20 900`(`scenario_batch.sh:89`)에 걸리면 124 → 다시 띄움, 남은 노드는 `<out>.node.pid` 로 끔.
 
@@ -149,7 +149,7 @@ for b in data/teacher/dagger_v1/*/; do ~/xmobility_test/venv/bin/python sim/expo
 안 한 것:
 
 - **실제 ROS · Isaac Sim 실행** — QoS · 발견 지연, `get_publishers_info_by_topic` 결과, 실제 노드에 SIGINT 가 새 세션 그룹으로 가서 정지 명령 5번이 나가는지, `tmux` · `run_proxy.sh` GPU 사용 검사(`run_proxy.sh:55-57`)와 노드 정리 순서, `make_obstacles.py` START 줄 읽기(정규식은 `scenario_batch.sh:78` 에서 옮김), `align` 레이어가 실제로 로봇을 돌리는지.
-- **노드 실행** — ml_env python 이 시스템 Jazzy rclpy(python 3.12)를 import 하는지(노드 README 가 적은 방식이지만 노드 자체도 아직 실제 실행 전, 노드 README "안 한 것"). 모델 로드 시간(`--ready-timeout` 300 s).
+- **노드 실행** — 11.10 D 시험으로 확인: `~/xmobility_test/venv`(Python 3.12 · torch 2.5.1+cu124)가 시스템 Jazzy rclpy 와 같이 import 됨(ml_env 는 gin 없음 → 기본값을 venv 로). v0.1 3회 통과 · 첫 /cmd_vel 약 8 s · 모델 P95 21.9 ms(A5000).
 - **출발 확인 한도**(0.5 m · 10°)가 실제 씬에서 맞는지 — 물리 안착 · odom 원점.
 - **실데이터 판정 대조** — 서버의 Nav2 JSON(`logs/nav2/scenario*`)을 `--rejudge` 로 다시 판정해 저장값과 같은지(다르면 `XM_ROUTE_REJUDGE_DIFF` 줄).
 - **DAgger 같이 띄우기** — 이 하네스(모델이 /cmd_vel)와 `sim/teacher.py --label-only`(라벨 /teacher/cmd_vel 만) · `sim/record_teacher.sh` 를 한 번에 띄워 모델이 가는 자리의 교사 라벨을 녹화하는 것. 도구는 다 있고 묶은 적이 없음 — 순서 · 부탁은 `e2e/PLAN.md` "DAgger". /cmd_vel 발행자는 노드 하나여야 함(`sim/check_proxy_topics.py`)이므로 teacher 는 꼭 `--label-only`.
