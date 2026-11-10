@@ -39,6 +39,8 @@ _CACHE = {}
 
 def load_route(path):
     R = np.array([(float(r["s"]), float(r["x"]), float(r["y"])) for r in csv.DictReader(open(path)) if r.get("run", "0") == "0"])
+    if len(R) > 2 and math.hypot(R[-1, 1] - R[0, 1], R[-1, 2] - R[0, 2]) < 1e-6:
+        R = R[:-1]   # 끝점 = 시작점(parking_r3_cw.csv s 89.96 = 0) — 그대로 두면 닫는 구간 길이 0 → κ ≈ 1e6, 출발 근처 프레임이 합을 덮음(11.10 xm_v3)
     s, x, y = R[:, 0], R[:, 1], R[:, 2]
     xe, ye = np.append(x, x[0]), np.append(y, y[0])          # 닫힌 고리
     th = np.unwrap(np.arctan2(np.diff(ye), np.diff(xe)))
