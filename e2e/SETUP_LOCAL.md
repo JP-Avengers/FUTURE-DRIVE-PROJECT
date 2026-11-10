@@ -24,6 +24,8 @@
 
 - 왜 드롭아웃: 교사 강제 입력 평가에서 모델이 직전 명령 입력을 거의 그대로 이어 가는 것을 확인(`results/tf_eval_11_9/README.md`). 학습 때 그 입력을 흐려 덜 기대게 함.
 - 집 run 은 torch **2.7.1+cu128**, Kaggle 학습은 **2.11.0+cu130** — "같은 설정, 다른 torch". aw30(Kaggle)과 비교할 때 시드 바닥(`results/seed_noise_11_8.md`)보다 큰 차이만 봄.
+- E4 가 경로 축척 1/2 이면 데이터는 집 PC 에서 직접 만듦(업로드 불필요, 몇 분). 11.10 노트북에서 같은 두 줄로 만든 v1.1 이 원본 v1.1 과 같음 확인(RESPLIT.json 뺀 sha12 `872a64f9d0e7`):
+  `.\.venv-xm\Scripts\python.exe e2e\resplit_xm.py C:\fd\data\xm_v1 C:\fd\data\xm_v1_1 --preset v1.1` → `.\.venv-xm\Scripts\python.exe e2e\scale_path_xm.py C:\fd\data\xm_v1_1 C:\fd\data\xm_v1_1_p2 --scale 0.5`. 노드는 `path_scale:=0.5`.
 - 결과 받기: 학습이 끝나면 블록 마지막 줄(`home_after_train.ps1`)이 평가 → 곡선 → Kaggle 비공개 데이터셋 `henryseo711/fd-xm-home-<run>` 업로드까지 함. 노트북 Claude 에게 run 이름만 알려 주면 됨.
 
 **도착 후(약 1시간 + 본 학습)** — PowerShell 일반 콘솔, 아래 블록을 그대로:
