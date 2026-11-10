@@ -4,7 +4,8 @@
 # 나눔(묶음 단위): raw_v1 은 마지막 반시계 묶음 val · 마지막 시계 묶음 test,
 #                  nav2_v1 은 콘(반시계) val · 슬라럼(시계) test — 같은 시나리오 반대 방향은 train 에 남김. 나머지 train.
 #                  nav2_v2(무작위 장애물 배치)는 rand_tr_18 양방향 val · rand_tr_19 양방향 test.
-# 사용: [FD_XM_SRC="…"] sim/export_xmobility.sh [출력 폴더=data/teacher/xm_v1] [병렬=8]
+# 추가 인자: FD_XM_ARGS(기본 없음) — export_xmobility.py 에 그대로 붙임. 예 FD_XM_ARGS="--exec-cmd"(실행 명령 열, 11.10 E · D 동의)
+# 사용: [FD_XM_SRC="…"] [FD_XM_ARGS="…"] sim/export_xmobility.sh [출력 폴더=data/teacher/xm_v1] [병렬=8]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT=${1:-data/teacher/xm_v1}
@@ -23,7 +24,7 @@ for src in ${FD_XM_SRC:-raw_v1 nav2_v1}; do ls -d data/teacher/$src/*/; done | w
   grep -q "rand_tr_18" "$b/meta.yaml" 2>/dev/null && sp=val
   grep -q "rand_tr_19" "$b/meta.yaml" 2>/dev/null && sp=test
   echo "$b $sp"
-done | xargs -P "$JOBS" -L 1 bash -c '"$0" sim/export_xmobility.py "$1" "'"$OUT"'" --split "$2"' "$PY" \
+done | xargs -P "$JOBS" -L 1 bash -c '"$0" sim/export_xmobility.py "$1" "'"$OUT"'" --split "$2" '"${FD_XM_ARGS:-}" "$PY" \
   2>&1 | tee "$OUT/export.log"
 "$PY" - "$OUT" <<'EOF'
 import glob, json, os, sys
