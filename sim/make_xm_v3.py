@@ -2,10 +2,14 @@
 Nav2 반시계 녹화는 시계 방향 자세(−96°)로 출발해 첫 ~3 s 를 제자리 180° 회전에 씀 → 같은 출발 장면에 '출발' · '제자리 회전' 두 정답이 생겨
 2차 모델이 출발 직후 제자리에서 좌우로 돌다 멈춤(11.05 평가 3회). 규칙: 각 Nav2 런의 앞에서부터, 경로 5번째 점(로봇 기준)의 방향이
 정면 ±30° 안에 처음 들어오는 행 전까지를 버림. 그 밖 파일은 하드링크.
-사용: python make_xm_v3.py [--dry]"""
+사용: python make_xm_v3.py [--dry] [원본 폴더=data/teacher/xm_v2] [출력 폴더=원본 이름의 xm_v2 → xm_v3]
+  예) 11.10 실행 명령 열 판: python make_xm_v3.py data/teacher/xm_v2_exec data/teacher/xm_v3_exec"""
 import glob, math, os, shutil, sys
 import numpy as np, pandas as pd
-SRC = os.path.expanduser("~/Capstone_Design_1/data/teacher/xm_v2"); DST = SRC.replace("xm_v2", "xm_v3")
+_pos = [a for a in sys.argv[1:] if not a.startswith("--")]
+SRC = os.path.abspath(os.path.expanduser(_pos[0] if _pos else "~/Capstone_Design_1/data/teacher/xm_v2"))
+DST = os.path.abspath(os.path.expanduser(_pos[1])) if len(_pos) > 1 else SRC.replace("xm_v2", "xm_v3")
+assert SRC != DST, "출력 폴더가 원본과 같음"
 DRY = "--dry" in sys.argv
 tot_drop = tot = 0
 for f in sorted(glob.glob(f"{SRC}/*/*/*.pqt")):
