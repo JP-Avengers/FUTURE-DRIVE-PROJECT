@@ -1,0 +1,22 @@
+# 주차장 v0.8 r3 (11.10) — v0.8 r2 + AMCL 대책 (D 11.10 요청). 형상 · 바닥 텍스처 · 테두리는 v0.8 r2 와 같음.
+# (D 가 말하는 'r3' = 예전 v0.4b r3 와 다른 판)
+base: parking.yaml
+
+out: ~/jinwoo/out/pipeline/map_v08r3
+
+cars:
+  models:                              # 지운 차 자리에 단순 차 모델 (몸체 + 캐빈 + 바퀴 상자) — Visual 에 합침 + 충돌 상자 (pipeline/cars.py models)
+    length_range_m: [4.2, 4.9]         # B 사각형은 스캔 덩어리라 짧게 잡힌 것이 있음 → 실제 차 길이 범위로
+    height_range_m: [1.4, 1.8]
+    width_m: 1.8
+    clearance_m: 0.18
+    min_extra_m2: 6.0                  # cars.extra 덩어리 중 이 넓이 이상만 차 자리로 (작은 부스러기 · 동쪽 차로 잔상 제외)
+    slot_w_m: 2.5                      # 덩어리를 이웃 차 방향으로 주차칸 간격만큼 채움
+    slot_l_m: 5.0
+    seed: 0
+    path_clear_m: 1.0                  # 촬영 경로에서 1 m 안 덩어리 자리는 뺌, B 차는 원래 사각형으로 (로봇이 지나간 곳엔 차 없음)
+    min_length_m: 3.5                  # 통로 쪽 면을 스캔에 맞춘 뒤 다른 차 · 연석 · 경계벽 · 남은 물체와 겹치면 뒤에서 이 길이까지 줄임 (덩어리 자리는 그래도 겹치면 뺌)
+    prim: Visual                       # 차 모델을 Visual 에 합침 (D 요청 · make_map --prim Visual 에도 보이게)
+
+edge:
+  cut_collision: {keep_below_m: 0.1}   # 경계 밖 스캔 조각을 충돌 메쉬에서도 자름 (보이는 메쉬와 같은 기준). 바닥 높이 + 0.1 m 아래는 그대로

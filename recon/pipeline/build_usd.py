@@ -208,7 +208,7 @@ def main():
     f = cfg.get("fill", {})
     report["fill"] = {}
     sf = cfg.get("single_floor")
-    floor_col = objects = None
+    floor_col = objects = car_scan_xy = None
     n_floor_tris = 0                  # 바닥 한 장 삼각형 수 — scene = 바닥 + 물체 순서라 앞쪽 n 개가 바닥 (바닥 텍스처에서 나눔)
     if sf and ground is not None:     # 바닥 한 장: 스캔의 바닥 층(여러 날 조각이 겹침)을 빼고, 바닥 높이 지도로 매끈한 한 장을 새로 깜
         paths = fill_path_xy(cfg, poses, T)
@@ -303,6 +303,9 @@ def main():
                                                  ground, cc.get("float_h_m", 0.0))
         if len(scene.triangles) - n_floor_tris != len(keep):      # scene = 바닥 + objects 순서라 뒤쪽 삼각형이 objects 와 같아야 함
             raise SystemExit("cars: 씬 물체 삼각형 수가 objects 와 다름")
+        cxyz = np.asarray(objects.vertices)[np.asarray(objects.triangles)[~keep]].mean(1) if (~keep).any() else np.zeros((0, 3))
+        ch = cxyz[:, 2] - ground.height(cxyz[:, :2]) if ground is not None else cxyz[:, 2]
+        car_scan_xy = cxyz[(ch > 0.3) & (ch < 1.2), :2]         # 지운 차 스캔 (라이다 높이) — 차 모델 통로 쪽 면 맞추기에 씀
         report["cars"] = dict(boxes=len(rows), object_tris_before=len(keep), object_tris_removed=int((~keep).sum()), leftover_tris_removed=n_left, floating_tris_removed=n_float)
         scene = cars.cut(scene, np.r_[np.ones(n_floor_tris, bool), keep])
         objects = cars.cut(objects, keep)
@@ -385,7 +388,31 @@ def main():
         materials.update(edge_mats)
         er = report["edge"]
         print(f"      테두리: 경계선 {er['outline_m']} m · 연석 {er['curb_h_m'] * 100:g} cm · 인도 {er['sidewalk_m']} m · 나무 {er['trees']}그루"
-              f" | 경계 밖 지운 삼각형 바닥 {er.get('floor_tris_removed', 0):,} · 물체 {er.get('visual_tris_removed', 0):,}")
+              f" | 경계 밖 지운 삼각형 바닥 {er.get('floor_tris_removed', 0):,} · 물체 {er.get('visual_tris_removed', 0):,}"
+              + (f" · 충돌 {er['collision_tris_removed']:,}" if "collision_tris_removed" in er else ""))
+    cm = (cfg.get("cars") or {}).get("models")
+    if cm:                            # 지운 차 자리에 단순 차 모델 (v0.8 r3, 11.10 — AMCL: 라이다가 볼 물체) · Visual · Collision 양쪽
+        rows = cars.read(os.path.join(os.path.expanduser(cfg["input"]["root"]), cfg["cars"]["objects"]))
+        block = []                    # 차가 겹치면 안 되는 것: 남은 물체(건물 · 덤불 · 나무, 라이다 높이) + 연석 + 경계벽
+        for name, m in visuals.items():
+            if name in ("Floor", "Sidewalk") or not len(m.triangles):
+                continue
+            cxyz = np.asarray(m.vertices)[np.asarray(m.triangles)].mean(1)
+            ch = cxyz[:, 2] - ground.height(cxyz[:, :2])
+            block.append(cxyz[:, :2] if name == "Curb" else cxyz[(ch > 0.3) & (ch < 1.2), :2])
+        if "Boundary" in colliders and len(colliders["Boundary"].triangles):
+            block.append(np.asarray(colliders["Boundary"].sample_points_uniformly(20000).points)[:, :2])
+        car_vis, car_col, n_cars = cars.models(rows, cfg["cars"].get("extra"), ground, cm, fill_path_xy(cfg, poses, T),
+                                                 car_scan_xy, np.vstack(block) if block else None)
+        if cm.get("prim", "Visual") == "Visual":   # D 11.10: Visual · Collision 양쪽 — make_map --prim Visual 등 Visual 이름으로 읽는 쪽도 차를 보게
+            visuals["Visual"] = visuals["Visual"] + car_vis
+        else:
+            visuals[cm["prim"]] = car_vis
+        colliders["Collision"] = colliders["Collision"] + car_col
+        colliders["Collision"].vertex_colors = o3d.utility.Vector3dVector()
+        report["car_models"] = dict(cars=n_cars, visual_tris=len(car_vis.triangles), collision_tris=len(car_col.triangles), **cars.slots.last,
+                                     width_m=cm.get("width_m", 1.8), slots_xy_yawdeg_l_h=cars.models.slots)
+        print(f"      차 모델: {n_cars}대 (B 목록 {len(rows)} + 덩어리 자리 {n_cars - len(rows)}) — {cm.get('prim', 'Visual')} prim + 충돌 상자 | {cars.slots.last}")
     if materials:                     # 보기용 텍스처 메쉬 (view_ply 로 텍스처째, 요철 · 거칠기는 USD 에만) — 바닥 + 테두리
         import shutil
         shutil.rmtree(os.path.join(out, "floor_textured"), ignore_errors=True)

@@ -219,6 +219,23 @@ def run(cfg, root, visuals, colliders, ground):
         st[f"{name.lower()}_tris_removed"] = int((~keep).sum())
         visuals[name] = _cut(m, keep)
 
+    # 2a) 충돌 메쉬도 같은 기준으로 (v0.8 r3, 11.10 — D: 경계 밖 스캔 조각이 Nav2 지도 테두리에 두꺼운 띠, 라이다가 보는 형상과 다름).
+    #     바닥 높이 + keep_below_m 아래(충돌 바닥 · 연석 높이)는 그대로 — 로봇이 디딜 바닥은 줄이지 않음
+    cc = e.get("cut_collision")
+    if cc and "Collision" in colliders:
+        m = colliders["Collision"]
+        c = np.asarray(m.vertices)[np.asarray(m.triangles)].mean(1)
+        h = c[:, 2] - ground.height(c[:, :2])
+        keep = (d_out(c[:, :2]) <= tol) & (look(dist_isl, c[:, :2]) <= tol)
+        for r in trees:
+            d = np.hypot(c[:, 0] - float(r["x"]), c[:, 1] - float(r["y"]))
+            keep &= ~((d < float(r["length_m"]) / 2 * e.get("tree_cut_scale", 1.0)) & (h > 0.3))
+        if e.get("tall_cut_m"):
+            keep &= ~((h > e["tall_cut_m"]) & (look(dist_in, c[:, :2]) < e.get("tall_band_m", 4.0)))
+        keep |= h < (cc.get("keep_below_m", 0.1) if isinstance(cc, dict) else 0.1)
+        st["collision_tris_removed"] = int((~keep).sum())
+        colliders["Collision"] = _cut(m, keep)
+
     # 2b) 경계 안쪽 바닥 구멍 메우기: 다듬은 경계 안으로 들어온 스캔 바닥 가장자리 구멍 (주차장 140조각 · 20 m²) —
     #     안 메우면 로봇 카메라에 바닥이 뚫려 보임. 높이는 바닥 지도, 색은 가까운 바닥 정점 색
     if "Floor" in visuals:
