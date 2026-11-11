@@ -18,9 +18,9 @@ AW30 = "--gin XMobilityLoss.action_weight=30"
 EXEC = "--prev-action-source exec"
 PAD05 = "--prev-action-dropout 0.5"
 
-# 행 수(train): v1.4 = 68,441(RESPLIT · 11.10 확인), xm_v08r3_v1 train = 28,548(MANIFEST 11.11) → v1.5 = 96,989.
+# 행 수(train): v1.4 = 68,441(RESPLIT · 11.10 확인), xm_v08r3_v1 train = 28,548 · xm_v08r3_nav2_v1 train = 15,551(MANIFEST 11.11) → v1.5 = 112,540.
 # 시퀀스 ≈ 행 / 4(xm_v1 38k행 → 9,529 · v1.3 48,082 → 11,987 실측 비 0.249)
-ROWS = {"v1.4": 68441, "v1.5": 68441 + 28548}
+ROWS = {"v1.4": 68441, "v1.5": 68441 + 28548 + 15551}
 STEP_S = 0.66                                  # Kaggle T4×2 본 학습 실측(v0.1 0.655 · aw30 0.657)
 WORLD, BATCH, ACCUM = 2, 2, 2
 
@@ -51,14 +51,14 @@ def runs(v15_ds):
                           max_epochs=10, budget=10.0, kernel="fd-xm-finetune",
                           note="E4 불통과 · E1 채택일 때: v1.4(잡음 · DAgger 포함) + 드롭아웃만"),
         "v15_aw30": dict(run="xm_ft_v1.5_aw30", extra=AW30, data=[v15_ds, PRE], ver="v1.5",
-                         max_epochs=7, budget=10.5, kernel="fd-xm-finetune-aw30",
+                         max_epochs=6, budget=10.5, kernel="fd-xm-finetune-aw30",
                          note="E4 · E1 둘 다 불통과일 때: 새 맵 데이터만 더한 aw30"),
-        # v1.5 — D 의 xm_v08r3_v1 이 와서 데이터셋을 만든 뒤. 10 에폭은 12 h 에 안 들어가 7 에폭(= v1.4 10 에폭과 최적화 스텝 거의 같음)
+        # v1.5 — D 의 xm_v08r3_v1 이 와서 데이터셋을 만든 뒤. 10 에폭은 12 h 에 안 들어가 6 에폭(에폭 ≈ 89분, = v1.4 10 에폭과 최적화 스텝 거의 같음)
         "v15_exec": dict(run="xm_ft_v1.5_aw30_exec", extra=f"{AW30} {EXEC}", data=[v15_ds, PRE], ver="v1.5",
-                         max_epochs=7, budget=10.5, kernel="fd-xm-finetune",
+                         max_epochs=6, budget=10.5, kernel="fd-xm-finetune",
                          note="v1.5(= v1.4 + v0.8 r3 자동 교사 45바퀴) × E4 설정"),
         "v15_exec_pad05": dict(run="xm_ft_v1.5_aw30_exec_pad05", extra=f"{AW30} {EXEC} {PAD05}", data=[v15_ds, PRE], ver="v1.5",
-                               max_epochs=7, budget=10.5, kernel="fd-xm-finetune-aw30",
+                               max_epochs=6, budget=10.5, kernel="fd-xm-finetune-aw30",
                                note="v1.5 × E5 설정"),
     }
 

@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# v1.5 한 줄 (노트북 · Git Bash): D 의 xm_v08r3_v1 zip → v1.5(= v1.4 + v0.8 r3 자동 교사 45바퀴) → Kaggle dataset-08-xm-v1-5
-#   → 기준선 평가 커널(aw30 · 제로샷 × v1.5 test · val) push → 끝나면 결과를 받아 v08r3_auto 칸 요약.
-#   bash e2e/build_v15.sh ~/Downloads/<D zip>           # 단계마다 STEP 줄, 실패면 FAIL 줄로 멈춤. 다시 돌리면 끝난 단계는 건너뜀
-#   NO_EVAL=1 bash e2e/build_v15.sh <zip>               # 데이터셋까지만(평가 커널은 안 돌림 — 할당량 아낄 때)
+# v1.5 한 줄 (노트북 · Git Bash): D 의 v0.8 r3 zip 들 → v1.5(= v1.4 + v0.8 r3 자동 교사 45바퀴 + v0.8 r3 Nav2 장애물 27회) → Kaggle dataset-08-xm-v1-5
+#   → 기준선 평가 커널(aw30 · 제로샷 × v1.5 test · val) push → 끝나면 결과를 받아 v08r3_* 칸 요약.
+#   bash e2e/build_v15.sh ~/Downloads/<xm_v08r3_v1 zip> ~/Downloads/<xm_v08r3_nav2_v1 zip>   # 순서 상관없음, 하나만 와도 됨
+#   NO_EVAL=1 bash e2e/build_v15.sh <zip> ...           # 데이터셋까지만(평가 커널은 안 돌림 — 할당량 아낄 때)
+# 단계마다 STEP 줄, 실패면 FAIL 줄로 멈춤. 다시 돌리면 끝난 단계는 건너뜀(zip 구성이 바뀌면 ~/Downloads/fd_d3 를 지우고)
 # 기준 수치(MANIFEST 11.11): xm_v08r3_v1 = 45파일 · train 28,548 · val 4,001 · test 4,157 · sha12 418ae8d2dc1b
+#                           xm_v08r3_nav2_v1 = 27파일 · train 15,551 · val 1,290 · test 643 · sha12 20810dc21e85
 set -uo pipefail
-ZIP=${1:?D 의 xm_v08r3_v1 zip 경로}
+[ $# -ge 1 ] || { echo "D 의 v0.8 r3 zip 경로(1–2개)"; exit 2; }
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 DL=$HOME/Downloads; W=$DL/fd_d3; UP=$W/up; mkdir -p "$W" "$UP"
 V14=$(cygpath -m "$DL/fd_d2/up/xm_v1_4")
@@ -17,35 +19,47 @@ fail() { echo "FAIL $*"; exit 1; }
 cd "$REPO" || fail "레포 없음"
 [ -f "$V14/RESPLIT.json" ] || fail "v1.4 없음: $V14"
 
-# 1. 풀기
-if [ ! -d "$W/v08r3" ]; then
-  rm -rf "$W/v08r3.tmp"; mkdir -p "$W/v08r3.tmp"
-  python -c "import zipfile,sys;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$ZIP" "$W/v08r3.tmp" || fail "unzip"
-  mv "$W/v08r3.tmp" "$W/v08r3"
-fi
-t=$(find "$W/v08r3" -maxdepth 4 -type d -name train | head -1); [ -n "$t" ] || fail "train 폴더 없음"
-V08=$(cygpath -m "$(dirname "$t")")
-python - "$V08" <<'EOF' || fail "D 데이터가 MANIFEST 와 다름"
+# 1. 풀기 — zip 마다 폴더 하나, 시나리오 폴더 이름으로 무엇인지 확인
+ADDS=(); WANT_TRAIN=68441; k=0
+for ZIP in "$@"; do
+  k=$((k + 1)); U=$W/add$k
+  if [ ! -d "$U" ]; then
+    rm -rf "$U.tmp"; mkdir -p "$U.tmp"
+    python -c "import zipfile,sys;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$ZIP" "$U.tmp" || fail "unzip $ZIP"
+    mv "$U.tmp" "$U"
+  fi
+  t=$(find "$U" -maxdepth 4 -type d -name train | head -1); [ -n "$t" ] || fail "train 폴더 없음: $ZIP"
+  R=$(cygpath -m "$(dirname "$t")")
+  n=$(python - "$R" <<'EOF'
 import glob, os, sys
+import pyarrow.parquet as pq
 r = sys.argv[1]
-n = {s: len(glob.glob(f"{r}/{s}/*/*.pqt")) for s in ("train", "val", "test")}
-print("파일 수", n, "· 시나리오", sorted({os.path.basename(os.path.dirname(p)) for p in glob.glob(f"{r}/*/*/*.pqt")}))
-assert sum(n.values()) == 45, f"45파일이어야 함(MANIFEST 11.11): {n}"
+want = {"v08r3_auto": 45, "v08r3_nav2_obs": 27}      # MANIFEST 11.11
+sc = sorted({os.path.basename(os.path.dirname(p)) for p in glob.glob(f"{r}/*/*/*.pqt")})
+nf = len(glob.glob(f"{r}/*/*/*.pqt"))
+assert len(sc) == 1 and sc[0] in want, f"모르는 시나리오 {sc} — v08r3_auto 또는 v08r3_nav2_obs 여야 함"
+assert nf == want[sc[0]], f"{sc[0]}: {nf}파일(MANIFEST {want[sc[0]]})"
+tr = sum(pq.ParquetFile(f).metadata.num_rows for f in glob.glob(f"{r}/train/*/*.pqt"))
+print(sc[0], nf, "파일 · train", tr, "행", file=sys.stderr)
+print(tr)
 EOF
-echo "STEP unzip ok $V08"
+) || fail "D 데이터가 MANIFEST 와 다름: $ZIP"
+  ADDS+=(--add "$R"); WANT_TRAIN=$((WANT_TRAIN + n))
+done
+echo "STEP unzip ok ${#ADDS[@]} 인자 · 기대 train $WANT_TRAIN 행"
 
 # 2. v1.5 만들기 · 점검
 DST=$(cygpath -m "$UP")/xm_v1_5
 if [ ! -f "$DST/RESPLIT.json" ]; then
   rm -rf "$DST"
-  python e2e/resplit_xm.py "$V14" "$DST" --add "$V08" --allow-new-scenario --check > "$W/resplit.log" 2>&1
+  python e2e/resplit_xm.py "$V14" "$DST" "${ADDS[@]}" --allow-new-scenario --check > "$W/resplit.log" 2>&1
   rc=$?; tail -30 "$W/resplit.log"
   [ $rc -eq 0 ] || fail "resplit rc=$rc ($W/resplit.log)"
 fi
-python - "$DST" <<'EOF' || fail "v1.5 점검"
+python - "$DST" "$WANT_TRAIN" <<'EOF' || fail "v1.5 점검"
 import glob, sys
 import pyarrow.parquet as pq
-r, want = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 68441 + 28548
+r, want = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 68441 + 28548 + 15551
 rows, lack = {}, []
 for s in ("train", "val", "test"):
     rows[s] = 0
@@ -123,8 +137,8 @@ mkdir -p "$OUT" && python -m kaggle kernels output henryseo711/fd-xm-eval -p "$(
 python - "$OUT" <<'EOF'
 import json, os, sys
 o = sys.argv[1]
-print("| 태그 | split | 전체 w_mae | r3_auto w_mae | r3_nav2_obs w_mae · 부호 | v08r3_auto w_mae · 부호 |")
-print("|---|---|---|---|---|---|")
+print("| 태그 | split | 전체 w_mae | r3_auto w_mae | r3_nav2_obs w_mae · 부호 | v08r3_auto w_mae · 부호 | v08r3_nav2_obs w_mae · 부호 |")
+print("|---|---|---|---|---|---|---|")
 for t in ("aw30", "zs"):
     for sp in ("test", "val"):
         f = f"{o}/eval_{t}_{sp}/summary.json"
@@ -135,6 +149,7 @@ for t in ("aw30", "zs"):
         fmt = lambda x: "-" if x is None else f"{x:.3f}"
         print(f"| {t} | {sp} | {s['overall']['w_mae']:.3f} | {fmt(g('r3_auto','w_mae'))} | "
               f"{fmt(g('r3_nav2_obs','w_mae'))} · {fmt(g('r3_nav2_obs','w_sign_agree'))} | "
-              f"{fmt(g('v08r3_auto','w_mae'))} · {fmt(g('v08r3_auto','w_sign_agree'))} |")
+              f"{fmt(g('v08r3_auto','w_mae'))} · {fmt(g('v08r3_auto','w_sign_agree'))} | "
+              f"{fmt(g('v08r3_nav2_obs','w_mae'))} · {fmt(g('v08r3_nav2_obs','w_sign_agree'))} |")
 EOF
 echo "DONE out=$OUT"

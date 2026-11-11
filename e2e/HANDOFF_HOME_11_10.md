@@ -1,6 +1,6 @@
 # 집 PC 인수인계 (11.10 밤 → 집 도착 후)
 
-노트북에서 11.10에 한 일과 집 PC(RTX 5060 Ti 16 GB, `C:\fd\FUTURE-DRIVE-PROJECT`)에서 할 일을 정리했습니다. 집 PC의 Claude Code에 이 파일을 그대로 주면 이어서 진행할 수 있습니다.
+노트북에서 11.10에 한 일과 집 PC(RTX 5060 Ti 16 GB, `C:\fd\FUTURE-DRIVE-PROJECT`)에서 할 일을 정리했습니다. 이 파일 순서대로 하면 이어서 진행할 수 있습니다.
 
 ## 0. 지금 상황 (한 줄씩)
 
@@ -31,7 +31,7 @@ dir data\checkpoints\xm_ft_v0.1_aw30_pad05_e10              # run_meta.json · c
   ```powershell
   .\e2e\home_after_train.ps1 -Run data\checkpoints\xm_ft_v0.1_aw30_pad05_e10 -Data C:\fd\data\xm_v1
   ```
-  끝나면 노트북 Claude에 "E1 올림"이라고 알립니다. 판정은 결정 1(`PLAN.md` "11.9 계획"의 기준)로 합니다.
+  끝나면 노트북 쪽에 "E1 올림"이라고 알립니다. 판정은 결정 1(`PLAN.md` "11.9 계획"의 기준)로 합니다.
 - **죽었거나 안 돌았으면** 학습 창의 마지막 30줄이나 오류를 그대로 보냅니다. 다시 돌리지 말고 2번(E4)으로 먼저 갑니다. 되먹임이 원인으로 확인돼서 E4가 더 급합니다.
 - **집에서 직접 판정하려면**(선택) aw30 기준 파일이 필요합니다. 노트북의 `Downloads\xm_ft_aw30_kaggle\xm_ft_v0.1_aw30_e10\eval_test\frames.csv`를 Kaggle에서 받아서:
   ```powershell
@@ -75,7 +75,7 @@ $CK = "$HOME\Downloads\xm_pretrained_from_seed_try2\pretrained\x_mobility-nav2-s
 .\e2e\home_after_train.ps1 -Run data\checkpoints\xm_ft_v1.4_aw30_exec_e10 -Data C:\fd\data\xm_v1_4
 ```
 
-노트북 Claude에 "E4 올림"이라고 알립니다. 노트북에서 할 판정은 두 가지입니다.
+노트북 쪽에 "E4 올림"이라고 알립니다. 노트북에서 할 판정은 두 가지입니다.
 - **장애물 진단**: `obstacle_diag.py`, 기본 평가 · 중앙 장애물 · 회피 중의 크기 비. 기준은 aw30의 0.18(test) · 0.23(val)이고, 이게 오르는지 봅니다.
 - **오프라인 지표**: v1.4 test에서 aw30과 비교합니다. aw30의 v1.4 test는 w_mae 0.082, Nav2 ω 부호 0.75, 자동 교사 w_mae 0.026입니다(`Downloads\xm_eval_kaggle_v7_xm_v3`).
 
@@ -87,7 +87,7 @@ $CK = "$HOME\Downloads\xm_pretrained_from_seed_try2\pretrained\x_mobility-nav2-s
 | Kaggle 다운로드 401 · 403 | `$HOME\.kaggle\access_token` 또는 `kaggle.json`이 있는지(`SETUP_LOCAL.md` "챙길 것" 3번) |
 | 시험 OOM | `-BatchSize 2 -Accum 4`가 기본. 그대로인지 확인(배치 4는 16 GB에서 OOM, 11.6 실측) |
 | `git pull` 충돌 | 집 PC에서 고친 파일이 있으면 `git stash` 뒤 pull |
-| 그 밖 | 오류 화면이나 마지막 30줄을 노트북 Claude에 |
+| 그 밖 | 오류 화면이나 마지막 30줄을 노트북 쪽에 |
 
 ## 5. 일정 (`PLAN.md` 표가 기준)
 
@@ -123,8 +123,8 @@ $CK = "$HOME\Downloads\xm_pretrained_from_seed_try2\pretrained\x_mobility-nav2-s
 ```powershell
 .\.venv-xm\Scripts\python.exe -m kaggle datasets download henryseo711/dataset-08-xm-v1-5 -p C:\fd\data --unzip
 dir C:\fd\data\xm_v1_5                                     # train · val · test · index 가 바로 보여야 함(한 단계 안쪽이면 -Data 를 그쪽으로)
-.\e2e\setup_windows.ps1 -Data C:\fd\data\xm_v1_5 -Ckpt $CK -ExtraGin 'XMobilityLoss.action_weight=30' -ExtraArgs '--prev-action-source','exec','--save-top-k','3' -MaxEpochs 7 -HoursBudget 16
+.\e2e\setup_windows.ps1 -Data C:\fd\data\xm_v1_5 -Ckpt $CK -ExtraGin 'XMobilityLoss.action_weight=30' -ExtraArgs '--prev-action-source','exec','--save-top-k','3' -MaxEpochs 6 -HoursBudget 18
 ```
-- v1.5 train 은 96,989행(v1.4 의 1.4배). 에폭 수는 Kaggle 판과 같게 **7** — 출력된 본 학습 명령이 `--gin NUM_EPOCHS=7` 인지 확인(작게 나오면 `-HoursBudget` 을 올림, 시험 로그 `step_time_s` × `steps_per_epoch` × 7 로 시간 계산).
-- `-o 'C:\fd\FUTURE-DRIVE-PROJECT\data\checkpoints\xm_ft_v1.5_aw30_exec_e7'`. 올리기: `-Data C:\fd\data\xm_v1_5`.
-- 시험에서 v0.8 r3 파일(`v08r3_auto`)도 `exec_command` 를 읽는지 = `exec_stats` 의 train 행이 96,989 근처인지.
+- v1.5 train 은 112,540행(v1.4 + v0.8 r3 자동 교사 + v0.8 r3 Nav2 장애물, v1.4 의 1.6배). 에폭 수는 Kaggle 판과 같게 **6** — 출력된 본 학습 명령이 `--gin NUM_EPOCHS=6` 인지 확인(작게 나오면 `-HoursBudget` 을 올림, 시험 로그 `step_time_s` × `steps_per_epoch` × 6 으로 시간 계산).
+- `-o 'C:\fd\FUTURE-DRIVE-PROJECT\data\checkpoints\xm_ft_v1.5_aw30_exec_e6'`. 올리기: `-Data C:\fd\data\xm_v1_5`.
+- 시험에서 v0.8 r3 파일(`v08r3_auto`)도 `exec_command` 를 읽는지 = `exec_stats` 의 train 행이 112,540 근처인지.

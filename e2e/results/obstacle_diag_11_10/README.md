@@ -26,6 +26,8 @@
 
 ## 11.10 밤 xm_v3 결과 — **(나) 직전 명령 되먹임**, 다봉 평균 아님
 
+> **11.11 정정**: 아래 판독의 근거(교사 입력 0.83–0.85)는 직전 교사 명령을 그대로 복사해도 0.99–1.04 가 나와 (가) · (나) 를 가르지 못함 → 판정 보류, `../obstacle_curve_11_11/README.md`.
+
 - 데이터: v1.4(= D `07_xm_v3_exec` + v1.1 맞바꿈 + 잡음 · DAgger train, Kaggle `dataset-07-xm-v1-4`)의 val · test. 장애물 녹화 = 무작위 rand_tr_18(val) · rand_tr_19(test) 양방향 + 슬라럼(val) · 콘(test). 평가 = Kaggle `fd-xm-eval`(aw30 `4fdf249cda0a` 기본 · `--teacher-forcing`, 제로샷 `339c68f9e027`), 결과 `Downloads/xm_eval_kaggle_v7_xm_v3`. 표 = `xm_v3_test.md` · `xm_v3_val.md`, 프레임별 = `*_frames.csv`.
 - **고친 버그**(같은 커밋): `parking_r3_cw.csv` 끝점 = 시작점(s 89.96 = 0)이라 닫는 구간 길이 0 → κ ≈ 1e6, 출발 근처(rand_tr_19 box_0 s 7.6) 프레임의 a 가 ±1e5 가 되어 합을 덮고 크기 비가 모델과 상관없이 1.00 으로 나왔음. 끝점을 빼고 다시 냄(|a 교사| 최대 0.95). 앞의 미리 본 표(슬라럼 s 22 · 32, 콘 s 68)는 출발 근처 프레임이 없어 영향 없음.
 

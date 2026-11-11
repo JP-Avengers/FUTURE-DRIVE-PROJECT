@@ -7,7 +7,7 @@
 .DESCRIPTION
   -Next (HANDOFF_HOME_11_10.md 6절과 같은 이름)
     6A  E5 = v1.4 + aw30 + 실행 명령 입력 + 직전 명령 드롭아웃 0.5, 10 에폭 → xm_ft_v1.4_aw30_exec_pad05_e10
-    6B  E6 = v1.5 + aw30 + 실행 명령 입력, 7 에폭 → xm_ft_v1.5_aw30_exec_e7 (dataset-08-xm-v1-5 가 없으면 받음)
+    6B  E6 = v1.5 + aw30 + 실행 명령 입력, 6 에폭 → xm_ft_v1.5_aw30_exec_e6 (dataset-08-xm-v1-5 가 없으면 받음)
   기다리는 run 이 실패(ckpt 없음)하면 업로드 없이 다음 run 으로 감(-StopOnFail 이면 멈춤).
   로그: logs\home_chain_<시각>.log (Start-Transcript).
 
@@ -88,8 +88,8 @@ try {
                 $data = $t.Parent.FullName
             }
         }
-        $out = 'data\checkpoints\xm_ft_v1.5_aw30_exec_e7'
-        $a2 += @{ ExtraArgs = @('--prev-action-source', 'exec', '--save-top-k', '3'); MaxEpochs = 7; HoursBudget = 16 }
+        $out = 'data\checkpoints\xm_ft_v1.5_aw30_exec_e6'
+        $a2 += @{ ExtraArgs = @('--prev-action-source', 'exec', '--save-top-k', '3'); MaxEpochs = 6; HoursBudget = 18 }
     }
     Say "다음: $Next → $out (시험 → 확인 → 본 학습)"
     $a2.Data = $data; $a2.OutDir = $out

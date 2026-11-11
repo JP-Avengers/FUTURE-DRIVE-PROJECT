@@ -3,7 +3,7 @@
   집 PC 학습이 끝난 뒤 한 줄: 오프라인 평가(test) → 학습 곡선 → 결과 파일 · best ckpt 를 비공개 Kaggle 데이터셋으로 올림 (E)
 
 .DESCRIPTION
-  노트북의 Claude 는 집 PC 에 직접 접근하지 못하므로, 결과를 Kaggle 비공개 데이터셋(henryseo711/fd-xm-home-<run>)으로 올려 받는다.
+  노트북은 집 PC 에 직접 접근하지 못하므로, 결과를 Kaggle 비공개 데이터셋(henryseo711/fd-xm-home-<run>)으로 올려 받는다.
   올리는 것: run_meta.json · gin_operative.txt · metrics.csv · curves.md(.png) · report_tables.md · eval_test 의 summary.json ·
   frames.csv · run_meta.json · best ckpt(<run>_best.ckpt, 약 1 GB). 같은 run 을 다시 올리면 새 판(version)으로 바뀜.
   Kaggle 토큰: $HOME\.kaggle\access_token(또는 kaggle.json) — SETUP_LOCAL.md "챙길 것" 3번.
@@ -105,6 +105,6 @@ try {
         & $Py -m kaggle datasets version -p $stage -m ("update " + $name)
         if ($LASTEXITCODE -ne 0) { throw "업로드 실패 — Kaggle 토큰($HOME\.kaggle) 확인" }
     }
-    Write-Host ("올림: https://www.kaggle.com/datasets/{0}/{1} (best sha12 {2}) — 노트북 Claude 에게 이 run 이름을 알려 주세요" -f $KaggleUser, $slug, $sha) -ForegroundColor Green
+    Write-Host ("올림: https://www.kaggle.com/datasets/{0}/{1} (best sha12 {2}) — 노트북 쪽에 이 run 이름을 알려 주세요" -f $KaggleUser, $slug, $sha) -ForegroundColor Green
 }
 finally { Pop-Location }

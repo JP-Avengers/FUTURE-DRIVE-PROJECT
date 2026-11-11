@@ -26,7 +26,7 @@
 - 집 run 은 torch **2.7.1+cu128**, Kaggle 학습은 **2.11.0+cu130** — "같은 설정, 다른 torch". aw30(Kaggle)과 비교할 때 시드 바닥(`results/seed_noise_11_8.md`)보다 큰 차이만 봄.
 - E4 가 경로 축척 1/2 이면 데이터는 집 PC 에서 직접 만듦(업로드 불필요, 몇 분). 11.10 노트북에서 같은 두 줄로 만든 v1.1 이 원본 v1.1 과 같음 확인(RESPLIT.json 뺀 sha12 `872a64f9d0e7`):
   `.\.venv-xm\Scripts\python.exe e2e\resplit_xm.py C:\fd\data\xm_v1 C:\fd\data\xm_v1_1 --preset v1.1` → `.\.venv-xm\Scripts\python.exe e2e\scale_path_xm.py C:\fd\data\xm_v1_1 C:\fd\data\xm_v1_1_p2 --scale 0.5`. 노드는 `path_scale:=0.5`.
-- 결과 받기: 학습이 끝나면 블록 마지막 줄(`home_after_train.ps1`)이 평가 → 곡선 → Kaggle 비공개 데이터셋 `henryseo711/fd-xm-home-<run>` 업로드까지 함. 노트북 Claude 에게 run 이름만 알려 주면 됨.
+- 결과 받기: 학습이 끝나면 블록 마지막 줄(`home_after_train.ps1`)이 평가 → 곡선 → Kaggle 비공개 데이터셋 `henryseo711/fd-xm-home-<run>` 업로드까지 함. 노트북 쪽에 run 이름만 알려 주면 됨.
 
 **도착 후(약 1시간 + 본 학습)** — PowerShell 일반 콘솔, 아래 블록을 그대로:
 
@@ -41,7 +41,7 @@ $CK = "$HOME\Downloads\xm_pretrained_from_seed_try2\pretrained\x_mobility-nav2-s
 # 시험 로그에 "[직전 명령 입력] 학습 때 드롭아웃 p=0.5" 가 찍혔는지 확인
 # 출력된 본 학습 명령: --gin NUM_EPOCHS=10 인지 확인(아니면 -HoursBudget 을 올려 다시) → -o 만 아래로 바꿔 붙여 넣기
 #   -o 'C:\fd\FUTURE-DRIVE-PROJECT\data\checkpoints\xm_ft_v0.1_aw30_pad05_e10'
-# 학습 끝: 평가 → 곡선 → Kaggle 업로드(노트북 Claude 가 받아 판정)
+# 학습 끝: 평가 → 곡선 → Kaggle 업로드(노트북에서 받아 판정)
 .\e2e\home_after_train.ps1 -Run data\checkpoints\xm_ft_v0.1_aw30_pad05_e10 -Data C:\fd\data\xm_v1
 # E2: 위 setup 줄의 '0.5' → '1.0' 로 다시(설치 · 시험은 건너뜀), -o 와 home_after_train 의 이름은 xm_ft_v0.1_aw30_pad10_e10
 ```
