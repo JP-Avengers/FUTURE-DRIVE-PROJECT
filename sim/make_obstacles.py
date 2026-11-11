@@ -6,7 +6,7 @@
     FD_LAYERS=<out.usda> FD_LIDAR=1 FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/run_proxy.sh headless
 레포 루트(= $CD1)에서:
     envs/isaacsim_env/bin/python sim/make_obstacles.py eval/scenarios/parking_r3_obs_south_box.yaml sim/scenes/parking/obstacles/parking_r3_obs_south_box.usda \
-        [--mesh data/usd/parking_v0.4b_r3/usd/parking_mesh.usdc]
+        [--mesh data/usd/parking_v0.8_r3/usd/parking_mesh.usdc]   # 기본은 시나리오 scene 과 같은 판
 끝에 장애물마다 월드 좌표 · 바닥 높이를 찍는다(평가 · 교사 스크립트가 같은 값을 쓰도록 레이어 customLayerData 에도 남김).
 시나리오의 start 가 기준선 길이(start: {s: ...})로 적혀 있으면 로봇 출발 자세도 이 레이어에서 덮어쓴다(구간 시나리오 — 그 자리에서 띄움).
 그 자세는 START 줄로 찍음 — Nav2 launch 의 x0 · y0 · yaw0_deg(AMCL 초기 자세)로 넘김(sim/nav2/scenario_batch.sh 가 함).
@@ -24,9 +24,13 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 ap = argparse.ArgumentParser()
 ap.add_argument("scenario")
 ap.add_argument("out")
-ap.add_argument("--mesh", default="data/usd/parking_v0.4b_r3/usd/parking_mesh.usdc", help="바닥 높이를 잴 충돌 메쉬")
+ap.add_argument("--mesh", default=None, help="바닥 높이를 잴 충돌 메쉬(기본: 시나리오 scene 과 같은 판 data/usd/<씬 이름>/usd/parking_mesh.usdc, 없으면 v0.4b r3)")
 a = ap.parse_args()
 sc = yaml.safe_load(open(a.scenario))
+if a.mesh is None:   # 11.11 — v0.8 r3 확정 뒤 씬 판을 따라감(그 전엔 늘 r3 메쉬, v0.8 r3 와 장애물 바닥 차이 최대 2.6 cm)
+    cand = os.path.join("data/usd", os.path.splitext(os.path.basename(sc.get("scene", "")))[0], "usd/parking_mesh.usdc")
+    a.mesh = cand if os.path.exists(cand) else "data/usd/parking_v0.4b_r3/usd/parking_mesh.usdc"
+print(f"MESH {a.mesh}")
 
 R = np.array([(float(r["s"]), float(r["x"]), float(r["y"])) for r in csv.DictReader(open(sc["route"])) if r.get("run", "0") == "0"])
 

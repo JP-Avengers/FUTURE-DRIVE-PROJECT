@@ -3,7 +3,7 @@
 # 용도: 학습(Nav2 교사 녹화)
 name: parking_r3_rand_tr_02
 version: v1
-scene: sim/scenes/parking/parking_v0.4b_r3.usda
+scene: sim/scenes/parking/parking_v0.8_r3.usda
 route: eval/routes/parking_r3_cw.csv
 directions: [cw, ccw]
 start: {x: -1.756, y: -7.621, yaw_deg: -96.0}

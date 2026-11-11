@@ -47,9 +47,9 @@ DIR = os.environ.get("FD_DIR", "cw")
 LAYER = os.environ["FD_LAYER"]
 POSE = os.environ.get("FD_POSE", "")
 SPEED = int(os.environ.get("FD_SPEED", "3"))
-SCENE = os.environ.get("FD_SCENE", f"{CD1}/sim/scenes/parking/parking_v0.4b_r3.usda")
-NAV2_MAP = os.environ.get("FD_NAV2_MAP", f"{CD1}/data/nav2/parking_v0.4b_r3/map.yaml")   # 씬과 같은 판의 지도(make_map.py)
-MAPVER = os.environ.get("FD_MAPVER", "v0.4b r3")   # 화면에 적는 맵 판
+SCENE = os.environ.get("FD_SCENE", f"{CD1}/sim/scenes/parking/parking_v0.8_r3.usda")
+NAV2_MAP = os.environ.get("FD_NAV2_MAP", f"{CD1}/data/nav2/parking_v0.8_r3/map.yaml")   # 씬과 같은 판의 지도(make_map.py)
+MAPVER = os.environ.get("FD_MAPVER", "v0.8 r3")   # 화면에 적는 맵 판
 ODIR = os.path.splitext(OUT)[0] + "_logs"
 os.makedirs(ODIR, exist_ok=True)
 SC = yaml.safe_load(open(os.path.join(CD1, SCN), encoding="utf-8"))

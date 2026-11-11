@@ -26,7 +26,7 @@ HEAD = """# 실제 주차장 r3 — 무작위 장애물 배치 {name} (11.05, D,
 # 용도: {use}
 name: {name}
 version: v1
-scene: sim/scenes/parking/parking_v0.4b_r3.usda
+scene: sim/scenes/parking/parking_v0.8_r3.usda
 route: eval/routes/parking_r3_cw.csv
 directions: [cw, ccw]
 start: {{x: -1.756, y: -7.621, yaw_deg: -96.0}}

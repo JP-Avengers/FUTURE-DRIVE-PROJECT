@@ -17,11 +17,11 @@ D=${FD_OUT:-logs/nav2/scenario}; mkdir -p $D
 REC=${FD_RECORD:-0}; TDIR=${FD_TEACHER_DIR:-$PWD/data/teacher/nav2_v1}
 NAVARG=(); [ "$REC" = 1 ] && NAVARG=(cmd_vel_out:=nav2/cmd_vel)
 SEED=0
-# 씬 · 지도(11.10) — 기본 r3. 다른 판: FD_SCENE=sim/scenes/parking/parking_v0.8_r2.usda FD_NAV2_MAP=$PWD/data/nav2/parking_v0.8_r2/map.yaml
+# 씬 · 지도 — 기본 v0.8 r3(11.11 60회 평가 씬 확정, 예전 기본 v0.4b r3). 다른 판: FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda FD_NAV2_MAP=$PWD/data/nav2/parking_v0.4b_r3/map.yaml
 # FD_NAV2_LOC=gt — 정답 위치(AMCL 없음, nav2_route.py 의 AMCL 출발 확인도 건너뜀). 교사 녹화용(평가는 amcl)
 export FD_NAV2_LOC=${FD_NAV2_LOC:-amcl}
 # FD_NAV2_ARGS — nav2.launch.py 에 더 넘길 인자(예 "scan_min_h:=-0.20 scan_range_max:=15.0", 11.11)
-SCENE=${FD_SCENE:-sim/scenes/parking/parking_v0.4b_r3.usda}; NAVMAP=${FD_NAV2_MAP:-$PWD/data/nav2/parking_v0.4b_r3/map.yaml}
+SCENE=${FD_SCENE:-sim/scenes/parking/parking_v0.8_r3.usda}; NAVMAP=${FD_NAV2_MAP:-$PWD/data/nav2/parking_v0.8_r3/map.yaml}
 ITEMS=("$@"); [ ${#ITEMS[@]} -eq 0 ] && ITEMS=(eval/scenarios/parking_r3_straight_*.yaml eval/scenarios/parking_r3_curve_*.yaml)
 start_scene() {   # $1 레이어 · $2 로그 이름 · $3 launch 시작 자세 인자
   tmux new-session -d -s fdsim "cd ~/Capstone_Design_1 && FD_LAYERS=$1 FD_LIDAR=1 FD_DOMAIN=43 FD_SCENE=$SCENE sim/run_proxy.sh headless"
