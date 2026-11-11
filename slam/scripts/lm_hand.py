@@ -6,20 +6,27 @@ import sys, re, json, numpy as np, cv2
 from pathlib import Path
 from scipy.spatial.transform import Rotation as Rot
 a = sys.argv; name, t0, t1, O = a[1], float(a[2]), float(a[3]), Path(a[4]); O.mkdir(parents=True, exist_ok=True)
-E = Path.home() / 'b_slam/exports'; T0 = 1794124668.845110149; K = E / 'fems5/keyframes'
+# 회차별 녹화 시작 시각(동기 자료의 record 시각 - 경과 초) → 묶음 맵 세션
+STARTS = {'s1_feit1': 1794124668.845110149, 's0_feone': 1794125588.140298765, 's3_fe422a': 1794124955.963293117,
+          's4_fe422b': 1794126399.139781564, 's5_feit1w': 1794125224.199861750, 's2_fecen': 1794126170.003673757}
+SESS = a[a.index('--sess') + 1] if '--sess' in a else 's1_feit1'
+E = Path.home() / 'b_slam/exports'; T0 = STARTS[SESS]; K = E / 'fems5/keyframes'
+PLS = a[a.index('--nr') + 1] if '--nr' in a else 'nr3'
 def calib(p): return [float(x) for x in re.search(r'camera_matrix:.*?data: \[([^\]]+)\]', p.read_text(), re.S).group(1).replace('\n', ' ').split(',')]
 PL = {'ms': (E / 'fems5/traj_camera_id_camera_poses.txt', np.load(E / 'align_fems5_ms_from_fecen.npy')),
-      'nr1': (E / 'nr1/fems5c/traj_camera_id_camera_poses.txt', np.eye(4)), 'nr2': (E / 'nr2/fems5c/traj_camera_id_camera_poses.txt', np.eye(4))}
+      'nr2': (E / f'{PLS}/fems5c/traj_camera_id_camera_poses.txt', np.eye(4))}     # 'nr2' 키 = 최신 비강체 배치(--nr, 기본 nr3)
 CID = {k: np.loadtxt(f, comments='#', ndmin=2) for k, (f, _) in PL.items()}
 c0 = CID['ms']; sel = np.where((c0[:, 0] > T0 + t0) & (c0[:, 0] < T0 + t1))[0]
 def world(tag, j, u, v, z):
     r = CID[tag][j]; T = PL[tag][1]; k = calib(K / f'kf_calib/{int(r[8])}.yaml')
     p = np.array([(u - k[2]) / k[0] * z, (v - k[5]) / k[4] * z, z]); return T[:3, :3] @ Rot.from_quat(r[4:8]).as_matrix() @ p + T[:3, :3] @ r[1:4] + T[:3, 3]
 obs = []                                                   # (j, u, v, z)
-if '--blue' in a:
+if '--blue' in a or '--red' in a:
     for j in sel:
         i = int(c0[j, 8]); im = cv2.imread(str(K / f'kf_rgb/{i}.jpg')); dp = cv2.imread(str(K / f'kf_depth/{i}.png'), -1); h = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
-        m = ((h[..., 0] > 95) & (h[..., 0] < 125) & (h[..., 1] > 110) & (h[..., 2] > 60)).astype(np.uint8); m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        if '--blue' in a: m = ((h[..., 0] > 95) & (h[..., 0] < 125) & (h[..., 1] > 110) & (h[..., 2] > 60))
+        else: m = (((h[..., 0] < 7) | (h[..., 0] > 172)) & (h[..., 1] > 170) & (h[..., 2] > 90))      # 진한 빨강(벽돌 보도·단풍보다 채도 높음)
+        m = cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
         n, lab, st, cen = cv2.connectedComponentsWithStats(m)
         if n < 2: continue
         q = 1 + np.argmax(st[1:, 4]);
@@ -48,4 +55,4 @@ for tag in PL:
     if len(W): out[tag] = np.median(W, 0).round(3).tolist(); print(f'{name} 손 촬영({tag}): ({out[tag][0]:+.2f},{out[tag][1]:+.2f},{out[tag][2]:+.2f}) 관측 {len(W)}, 흩어짐 최대 {np.linalg.norm(W[:, :2] - np.median(W, 0)[:2], axis=1).max():.2f}m')
 for j in sel[::max(1, len(sel) // 6)]:
     p = CID['ms'][j, 1:4] @ PL['ms'][1][:3, :3].T + PL['ms'][1][:3, 3]; print(f'   카메라 kf{int(c0[j, 8])} t+{c0[j, 0] - T0:.1f}s ms ({p[0]:+.1f},{p[1]:+.1f}) nr2 ({CID["nr2"][j, 1]:+.1f},{CID["nr2"][j, 2]:+.1f})')
-json.dump(dict(name=name, hand=out, obs=[[int(c0[j, 8]), u, v, z] for j, u, v, z in obs]), open(O / f'{name}_hand.json', 'w'), indent=1)
+json.dump(dict(name=name, sess=SESS, hand=out, obs=[[int(c0[j, 8]), u, v, z] for j, u, v, z in obs]), open(O / f'{name}_hand.json', 'w'), indent=1)

@@ -21,12 +21,14 @@ for s, tr in TR.items():
         if 20 < u < 620 and 20 < v < 460: vis.append((s, int(r[8]), u, v, pc[2]))
 print(f'{name}: 추정 위치 ({c0[0]:+.2f},{c0[1]:+.2f}) 를 {R:g}m 안에서 본 v0.5 키프레임 {len(vis)}장', {s: sum(x[0] == s for x in vis) for s in TR})
 obs = []
-if '--blue' in a:
+if '--blue' in a or '--red' in a:
     for s, i, u, v, z in vis:
         im = cv2.imread(str(P / f'keyframes_{s}/rgb/{i}.jpg')); h = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
-        m = ((h[..., 0] > 95) & (h[..., 0] < 125) & (h[..., 1] > 110) & (h[..., 2] > 60)).astype(np.uint8); m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        if '--blue' in a: m = ((h[..., 0] > 95) & (h[..., 0] < 125) & (h[..., 1] > 110) & (h[..., 2] > 60))
+        else: m = (((h[..., 0] < 7) | (h[..., 0] > 172)) & (h[..., 1] > 150) & (h[..., 2] > 70))
+        m = cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
         n, lab, st, cen = cv2.connectedComponentsWithStats(m)
-        cand = [q for q in range(1, n) if st[q, 4] >= 25 and np.hypot(*(cen[q] - (u, v))) < RAD]
+        cand = [q for q in range(1, n) if st[q, 4] >= (25 if '--blue' in a else 8) and np.hypot(*(cen[q] - (u, v))) < RAD]
         if not cand: continue
         q = max(cand, key=lambda q: st[q, 4]); obs.append((s, i, float(cen[q][0]), float(cen[q][1])))
         cv2.rectangle(im, (st[q, 0], st[q, 1]), (st[q, 0] + st[q, 2], st[q, 1] + st[q, 3]), (0, 255, 0), 2); cv2.circle(im, (int(u), int(v)), 6, (0, 0, 255), 2)
@@ -61,5 +63,5 @@ if len(obs) >= 2:
     json.dump(dict(v05=p.round(3).tolist(), rays=int(len(idx)), angle=float(ang), resid_med=float(np.median(res[idx]))), open(O / f'{name}_v05.json', 'w'))
     if '--cps_in' in a:
         cps = json.load(open(opt('--cps_in', ''), encoding='utf-8')); h = HJ['hand']['ms']
-        cps = [c for c in cps if c['name'] != name] + [dict(name=name, bev='fems5_s1_feit1', x=round(h[0], 2), y=round(h[1], 2), dx=round(float(p[0] - h[0]), 2), dy=round(float(p[1] - h[1]), 2), type='point', w=1.0, group=name)]
+        cps = [c for c in cps if c['name'] != name] + [dict(name=name, bev='fems5_' + HJ.get('sess', 's1_feit1'), x=round(h[0], 2), y=round(h[1], 2), dx=round(float(p[0] - h[0]), 2), dy=round(float(p[1] - h[1]), 2), type='point', w=1.0, group=name)]
         json.dump(cps, open(opt('--cps_out', ''), 'w', encoding='utf-8'), ensure_ascii=False, indent=1); print('   대응점 추가 →', opt('--cps_out', ''))
