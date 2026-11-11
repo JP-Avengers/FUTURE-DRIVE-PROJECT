@@ -402,6 +402,10 @@ def main():
             block.append(cxyz[:, :2] if name == "Curb" else cxyz[(ch > 0.3) & (ch < 1.2), :2])
         if "Boundary" in colliders and len(colliders["Boundary"].triangles):
             block.append(np.asarray(colliders["Boundary"].sample_points_uniformly(20000).points)[:, :2])
+        sj = os.path.join(out, "floor_tex", "stalls.json")   # 바닥 텍스처에서 찾은 주차칸 (floor_texture.stalls) — 차를 칸에 맞춰 놓는 데 씀 (cars.arrange)
+        if cm.get("arrange") and os.path.exists(sj):
+            sd_ = json.load(open(sj, encoding="utf-8"))
+            cm = dict(cm, _stalls=sd_["stalls"], _lines=sd_["lines"])
         car_vis, car_col, n_cars = cars.models(rows, cfg["cars"].get("extra"), ground, cm, fill_path_xy(cfg, poses, T),
                                                  car_scan_xy, np.vstack(block) if block else None)
         if cm.get("prim", "Visual") == "Visual":   # D 11.10: Visual · Collision 양쪽 — make_map --prim Visual 등 Visual 이름으로 읽는 쪽도 차를 보게

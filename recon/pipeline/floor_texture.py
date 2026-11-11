@@ -331,6 +331,7 @@ def finish(out_dir, floor, c, root):
 
     # 바닥 구역 (B ground_zones: grid[ix, iy], 1 아스팔트 · 2 풀 · 3 붉은 보도) · 실제 바닥 메쉬가 깔린 곳
     fs = c.get("fill_stalls") or {}
+    stall_det = stall_orig = None
     zones_path = os.path.join(root, fs["zones"]) if fs.get("zones") else None
     if zones_path and os.path.exists(zones_path):
         z = np.load(zones_path)
@@ -458,6 +459,15 @@ def finish(out_dir, floor, c, root):
             fill |= bad & ~rect & ~ndimage.binary_dilation(paint, iterations=3)
             st["holes_filled_m2"] = round(float(bad.sum()) * cell * cell, 1)
         img, n_patch = _fill_asphalt(img, fill, src, gsd, asphalt, local, lum, asph_c, coarse, up, smooth_valid, k, cell, fs)
+        if c.get("stalls"):   # 주차칸 다듬기 (pipeline/stalls.py, v0.9): 차 자리 · 구멍을 채운 뒤의 그림에서 주차선을 찾아, 구불거리는 원래 선을 지우고(여기)
+            import stalls     # 반듯한 선은 맨 끝에 다시 그림. 채우기 전 그림에서 찾으면 안 찍힌 곳 · 차 그림자의 밝은 얼룩이 선으로 잡힘 (11.11)
+            stall_det = stalls.detect(img, on_floor, xs, ys, c["stalls"])
+            st["stalls"] = stall_det["stats"]
+            er = stall_det["erase"] & on_floor
+            stall_orig = (np.clip(img, 0, 1) * 255).astype(np.uint8)   # 지우기 전 그림 — 실제로 찍힌 선의 화소를 반듯한 자리로 옮길 때 씀 (stalls.draw style photo)
+            if er.any():
+                img, _ = _fill_asphalt(img, er, src, gsd, asphalt, local, img @ LUMA, asph_c, coarse, up, smooth_valid, k, cell, fs)
+                fill = fill | er
         _save(fill.astype(np.float32)[::4, ::4], os.path.join(out_dir, "fill_mask_4cm.png"))
         st.update(cars=len(cars), filled_m2=round(float(fill.sum()) * cell * cell, 1),
                   filled_in_cars_m2=round(float((fill & rect).sum()) * cell * cell, 1), patches=n_patch)
@@ -482,6 +492,11 @@ def finish(out_dir, floor, c, root):
         img = np.clip(img * (1 + add * D)[..., None], 0, 1)
         st["detail"] = dict(before_rel_std_p50=round(float(np.median(cur_rel[::50, ::50][mask[::50, ::50] > 0.5])) * 100, 2),
                             added_rel_std_p50=round(float(np.median(add[::50, ::50][mask[::50, ::50] > 0.5])) * 100, 2))
+    if stall_det is not None:
+        import stalls
+        st["stalls"]["drawn_m2"] = round(stalls.draw(img, stall_det, xs, ys, on_floor, c["stalls"], orig=stall_orig), 1)
+        st["stalls"]["photo_strip"] = stall_det["stats"].get("photo_strip")
+        stalls.save(os.path.join(out_dir, "stalls.json"), stall_det)
     path = os.path.join(out_dir, "floor_color.jpg")
     _save(img, path, quality=c.get("jpeg_quality", 92))
     return path, st

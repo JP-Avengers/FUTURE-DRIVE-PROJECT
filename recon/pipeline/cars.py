@@ -229,6 +229,202 @@ def slots(rows, extra, c, path_xy=None, scan_xy=None, block_xy=None):
     return kept
 
 
+def arrange(sl, stalls, c, path_xy=None, block_xy=None):
+    """차 자리를 가지런히 (v0.9, 11.11 — 스캔 덩어리에서 나온 자리 · 방향이 들쭉날쭉). 보완(만든 것): 어느 칸에 차가 있었는지는 측정, 칸 안 자리는 만든 것.
+    1) 주차칸(stalls.py 가 바닥 텍스처에서 찾은 사각형 [cx, cy, yaw, 폭, 길이, 줄, 기준선 쪽 x, y])에 든 차 = 칸 가운데 줄 · 칸 방향, 통로 쪽 끝에서 setback_m 들여 놓음
+    2) 칸을 못 찾은 차 = 이웃끼리(중심 link_m 안 · 방향 link_deg 안) 묶어 같은 방향 · 같은 간격(pitch_m 이상) · 통로 쪽 면 한 줄로
+    3) 옮긴 뒤 다른 차 · 막는 점(연석 · 경계벽 · 남은 물체) · 촬영 경로(path_clear_m)와 겹치면 그 차는 원래 자리로
+    → (자리 목록, 통계)"""
+    W = c.get("width_m", 1.8)
+    a = c.get("arrange") if isinstance(c.get("arrange"), dict) else {}
+    P = np.asarray(path_xy)[:, :2] if path_xy is not None else None
+    tree = cKDTree(P) if P is not None else None
+    out = [tuple(o) for o in sl]
+    how = [""] * len(out)
+    taken = set()
+    S = np.asarray(stalls, float).reshape(-1, 8) if stalls is not None and len(stalls) else np.zeros((0, 8))
+    pairs = []                                                                    # 1) 주차칸에 맞춤: 차 중심이 칸 안(+ stall_reach_m)인 쌍을 가까운 것부터
+    for i, (x, y, yaw, L, H) in enumerate(out):                                   #    방향은 안 봄 — B 가 덩어리를 나눈 차는 방향이 칸과 어긋난 것이 있음 (칸이 더 믿을 만함)
+        for j, (cx, cy, sy, sw, sl_, _, mx, my) in enumerate(S):
+            u, v = np.array([np.cos(sy), np.sin(sy)]), np.array([-np.sin(sy), np.cos(sy)])
+            d = np.array([x - cx, y - cy])
+            if abs(d @ u) < sl_ / 2 + a.get("stall_reach_m", 1.2) and abs(d @ v) < sw / 2 + a.get("stall_reach_m", 1.2):
+                pairs.append((float(np.hypot(*d)), i, j))
+    match = {}
+    for _, i, j in sorted(pairs):
+        if i not in match and j not in taken:
+            match[i] = j
+            taken.add(j)
+    for i, j in match.items():
+        x, y, yaw, L, H = out[i]
+        cx, cy, sy, sw, sl_, _, mx, my = S[j]
+        u = np.array([np.cos(sy), np.sin(sy)])
+        e0, e1 = np.array([mx, my]), np.array([mx, my]) + sl_ * u               # 칸의 두 끝 (기준선 쪽 · 반대쪽)
+        lane, back = (e0, e1) if tree is None or tree.query(e0)[0] <= tree.query(e1)[0] else (e1, e0)
+        inward = (back - lane) / max(np.linalg.norm(back - lane), 1e-9)
+        sb = a.get("setback_m", 0.35)
+        if sl_ >= 4.0:
+            Ln = max(min(L, sl_ - 2 * sb), c.get("min_length_m", 3.5))
+            cen = lane + inward * (sb + Ln / 2)
+        else:                                                                     # 칸막이가 짧게만 보인 줄: 칸 가운데
+            Ln, cen = L, np.array([cx, cy])
+        ny = sy if np.cos(yaw - sy) >= 0 else sy + np.pi                          # 차 머리 방향은 그대로
+        out[i] = (float(cen[0]), float(cen[1]), float(ny), float(Ln), H)
+        how[i] = "stall"
+    free = [i for i in range(len(out)) if not how[i]]                              # 2) 칸 없는 차: 이웃 묶음
+    seen = set()
+    for i in free:
+        if i in seen:
+            continue
+        grp, todo = [], [i]
+        while todo:
+            q = todo.pop()
+            if q in seen:
+                continue
+            seen.add(q)
+            grp.append(q)
+            for r in free:
+                if r in seen:
+                    continue
+                dy = abs((out[q][2] - out[r][2] + np.pi / 2) % np.pi - np.pi / 2)
+                if np.hypot(out[q][0] - out[r][0], out[q][1] - out[r][1]) < a.get("link_m", 3.6) and dy < np.radians(a.get("link_deg", 30)):
+                    todo.append(r)
+        if len(grp) < 2:
+            continue
+        ang = np.array([out[q][2] for q in grp])
+        ax = 0.5 * np.arctan2(np.sin(2 * ang).mean(), np.cos(2 * ang).mean())      # 축 평균 (180° 뒤집힌 차도 같은 축)
+        u, v = np.array([np.cos(ax), np.sin(ax)]), np.array([-np.sin(ax), np.cos(ax)])
+        xy = np.array([[out[q][0], out[q][1]] for q in grp])
+        m = xy.mean(0)
+        lat, lon = (xy - m) @ v, (xy - m) @ u
+        if np.ptp(lat) < np.ptp(lon):                                             # 앞뒤로 늘어선 묶음(평행 주차 · 두 줄)은 방향만 맞춤
+            for q in grp:
+                ny = ax if np.cos(out[q][2] - ax) >= 0 else ax + np.pi
+                out[q] = (out[q][0], out[q][1], float(ny), out[q][3], out[q][4])
+                how[q] = "group"
+            continue
+        o = np.argsort(lat)
+        pitch = max(a.get("pitch_m", 2.5), float(np.ptp(lat)) / (len(grp) - 1))
+        new_lat = (np.arange(len(grp)) - (len(grp) - 1) / 2) * pitch + lat.mean()
+        sgn = 1.0
+        if tree is not None:
+            jn = tree.query(m)[1]
+            sgn = 1.0 if (P[jn] - m) @ u >= 0 else -1.0
+        Ls = np.array([out[q][3] for q in grp])
+        face = float(np.median(sgn * lon + Ls / 2))                                # 통로 쪽 면을 한 줄로
+        for rank, gi in enumerate(o):
+            q = grp[gi]
+            cen = m + new_lat[rank] * v + sgn * (face - Ls[gi] / 2) * u
+            ny = ax if np.cos(out[q][2] - ax) >= 0 else ax + np.pi
+            out[q] = (float(cen[0]), float(cen[1]), float(ny), out[q][3], out[q][4])
+            how[q] = "group"
+    # 2a) 남은 차: 가까운 긴 주차선(line_min_m 이상, line_reach_m 안)이 있으면 그 선에 직각으로, 선에서 setback_m 띄워 (칸막이가 안 찍힌 줄)
+    LN = [np.asarray(q, float) for q in (c.get("_lines") or []) if np.hypot(q[2] - q[0], q[3] - q[1]) >= a.get("line_min_m", 6.0)]
+    on_line = {}
+    for i in [q for q in range(len(out)) if not how[q]]:
+        x, y, yaw, L, H = out[i]
+        best = None
+        for li, q in enumerate(LN):
+            d = (q[2:] - q[:2]) / np.linalg.norm(q[2:] - q[:2])
+            n = np.array([-d[1], d[0]])
+            t, r = (np.array([x, y]) - q[:2]) @ d, (np.array([x, y]) - q[:2]) @ n
+            if -a.get("pitch_m", 2.5) < t < np.linalg.norm(q[2:] - q[:2]) + a.get("pitch_m", 2.5) and abs(r) < a.get("line_reach_m", 4.0):
+                if best is None or abs(r) < abs(best[0]):
+                    best = (r, t, li, d, n)
+        if best is None:
+            continue
+        r, t, li, d, n = best
+        sd = n * (1.0 if r >= 0 else -1.0)
+        cen = LN[li][:2] + t * d + sd * (a.get("setback_m", 0.35) + L / 2)
+        ax = float(np.arctan2(sd[1], sd[0]))
+        out[i] = (float(cen[0]), float(cen[1]), ax if np.cos(yaw - ax) >= 0 else ax + np.pi, L, H)
+        how[i] = "line"
+        on_line.setdefault((li, r >= 0), []).append((t, i, d))
+    for grp in on_line.values():                                                  # 같은 선 위의 차끼리 간격 pitch_m 이상
+        grp.sort()
+        ts = np.array([g_[0] for g_ in grp])
+        for q in range(1, len(ts)):
+            ts[q] = max(ts[q], ts[q - 1] + a.get("pitch_m", 2.5))
+        ts += np.mean([g_[0] for g_ in grp]) - ts.mean()
+        for (t0_, i, d), t1_ in zip(grp, ts):
+            out[i] = (float(out[i][0] + (t1_ - t0_) * d[0]), float(out[i][1] + (t1_ - t0_) * d[1]), *out[i][2:])
+    # 2b) 그래도 남은 차: far_stall_m 안의 빈 주차칸으로 (B 가 한 덩어리를 옆으로 나눠 놓은 차 — 실제로는 칸마다 한 대씩)
+    for i in [q for q in range(len(out)) if not how[q]]:
+        x, y, yaw, L, H = out[i]
+        cand = [(float(np.hypot(x - S[j][0], y - S[j][1])), j) for j in range(len(S)) if j not in taken]
+        cand = [q for q in cand if q[0] < a.get("far_stall_m", 6.5)]
+        if not cand:
+            continue
+        j = min(cand)[1]
+        taken.add(j)
+        cx, cy, sy, sw, sl_, _, mx, my = S[j]
+        u = np.array([np.cos(sy), np.sin(sy)])
+        e0, e1 = np.array([mx, my]), np.array([mx, my]) + sl_ * u
+        lane, back = (e0, e1) if tree is None or tree.query(e0)[0] <= tree.query(e1)[0] else (e1, e0)
+        inward = (back - lane) / max(np.linalg.norm(back - lane), 1e-9)
+        sb = a.get("setback_m", 0.35)
+        Ln = max(min(L, sl_ - 2 * sb), c.get("min_length_m", 3.5)) if sl_ >= 4.0 else L
+        cen = lane + inward * (sb + Ln / 2) if sl_ >= 4.0 else np.array([cx, cy])
+        out[i] = (float(cen[0]), float(cen[1]), float(sy if np.cos(yaw - sy) >= 0 else sy + np.pi), float(Ln), H)
+        how[i] = "stall"
+    bt = cKDTree(np.asarray(block_xy)[:, :2]) if block_xy is not None and len(block_xy) else None
+
+    def bad(k, cur=None):                                                         # 3) 겹침 검사
+        cur = out if cur is None else cur
+        x, y, yaw, L, H = cur[k]
+        hit = [n for n, o in enumerate(cur) if n != k and _overlap((x, y, yaw, L), o[:4], W)]
+        if hit:
+            return "car %s" % hit
+        if P is not None and c.get("path_clear_m") and _rect_dist(P, x, y, yaw, L, W).min() < c["path_clear_m"]:
+            return "path"
+        if bt is not None:
+            idx = bt.query_ball_point([x, y], np.hypot(L, W) / 2)
+            if idx:
+                d = bt.data[idx] - [x, y]
+                u, v = np.array([np.cos(yaw), np.sin(yaw)]), np.array([-np.sin(yaw), np.cos(yaw)])
+                if int(((np.abs(d @ u) < L / 2) & (np.abs(d @ v) < W / 2)).sum()) >= c.get("block_min_pts", 3):
+                    return "block"
+        return ""
+    orig = [tuple(o) for o in sl]
+    bad0 = [bad(k, orig) for k in range(len(orig))]                                # 원래 자리부터 겹쳤던 차 (경계벽에 걸친 북쪽 줄 등) 는 되돌려도 소용없음
+    reverted = fixed = 0
+    arrange.log = []
+    Lmin = c.get("min_length_m", 3.5)
+    for _ in range(3):
+        for k in sorted(range(len(out)), key=lambda q: {"line": 0, "group": 1}.get(how[q], 2)):   # 덜 확실한 자리(선 · 묶음)부터 고침, 주차칸에 든 차는 마지막
+            why = bad(k) if how[k] and not bad0[k] else ""
+            if not why or why == "block":      # 연석 · 경계벽에 조금 걸치는 것은 둠 (원래 자리도 최소 길이로 줄인 뒤엔 그대로 둠)
+                continue
+            x, y, yaw, L, H = out[k]
+            u = np.array([np.cos(yaw), np.sin(yaw)])
+            ok = False
+            if L > Lmin + 1e-6:                # (가) 통로 쪽 면은 두고 뒤에서 줄임
+                sg = 1.0
+                if tree is not None:
+                    sg = 1.0 if (P[tree.query([x, y])[1]] - [x, y]) @ u >= 0 else -1.0
+                f = np.array([x, y]) + sg * u * L / 2
+                for Ln in np.arange(L - 0.1, Lmin - 1e-6, -0.1):
+                    cx, cy = f - sg * u * Ln / 2
+                    out[k] = (float(cx), float(cy), yaw, float(Ln), H)
+                    if bad(k) in ("", "block"):
+                        ok = True
+                        break
+            if not ok:                         # (나) 자리는 원래대로, 방향만 새 것
+                out[k] = (orig[k][0], orig[k][1], yaw, orig[k][3], H)
+                ok = bad(k) in ("", "block")
+            if ok:
+                fixed += 1
+                continue
+            arrange.log.append((k, how[k], why))
+            out[k], how[k] = orig[k], ""       # (다) 원래대로
+            reverted += 1
+    st = dict(in_stall=how.count("stall"), in_group=how.count("group"), on_line=how.count("line"), unchanged=how.count(""), adjusted=fixed, reverted=reverted,
+              moved_max_m=round(float(max(np.hypot(o[0] - s_[0], o[1] - s_[1]) for o, s_ in zip(out, sl))), 2) if out else 0.0,
+              overlapping_before=int(sum(bool(b) for b in bad0)), overlapping_after=int(sum(bool(bad(k)) for k in range(len(out)))))
+    arrange.how = how
+    return out, st
+
+
 def models(rows, extra, ground, c, path_xy=None, scan_xy=None, block_xy=None):
     """단순 차 모델 (몸체 + 캐빈 + 바퀴 상자, 정점 색) → (보이는 메쉬, 충돌 메쉬 = 바닥부터 지붕까지 상자 하나씩, 대수).
     11.10: 차를 지운 v0.8 에서 라이다가 볼 물체가 줄어 AMCL 실패 → 같은 자리에 단순 모델 (D 요청: Visual · Collision 양쪽)."""
@@ -237,6 +433,8 @@ def models(rows, extra, ground, c, path_xy=None, scan_xy=None, block_xy=None):
     vis, col = o3d.geometry.TriangleMesh(), o3d.geometry.TriangleMesh()
     slots.last = {}
     sl = slots(rows, extra, c, path_xy, scan_xy, block_xy)
+    if c.get("arrange"):
+        sl, slots.last["arrange"] = arrange(sl, c.get("_stalls"), c, path_xy, block_xy)
     models.slots = [[round(x, 3), round(y, 3), round(float(np.degrees(yaw)), 2), round(L, 3), round(H, 3)] for x, y, yaw, L, H in sl]
     for x, y, yaw, L, H in sl:
         z = float(ground.height(np.array([[x, y]]))[0]) if ground is not None else 0.0
