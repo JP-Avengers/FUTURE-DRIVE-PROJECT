@@ -100,6 +100,8 @@ $CK = "$HOME\Downloads\xm_pretrained_from_seed_try2\pretrained\x_mobility-nav2-s
 
 ## 6. E4 다음 run (11.11 추가 — 노트북이 E1 · E4 판정 뒤 "6-A" 또는 "6-B" 로 알려 줌)
 
+**자동으로(권장, 11.11)**: `.\e2e\home_chain.ps1 -Next 6A`(또는 `6B`) — 지금 학습(E4)이 끝나기를 기다렸다가 올리고, 다음 run 의 시험 → 확인 → 본 학습 → 올림까지 혼자 갑니다. 시험 확인 3가지를 스크립트가 대신 보고, 하나라도 걸리면 본 학습을 띄우지 않고 멈춥니다. 로그는 `logs\home_chain_<시각>.log`. 아래는 손으로 할 때의 명령입니다.
+
 11.14 부터는 Kaggle 과 같은 설정을 겹쳐 돌리지 않습니다(Kaggle 쪽은 `e2e/gen_kaggle_11_14.py`, `PLAN.md` 11.11 절).
 시험(40배치) 확인 항목은 2번과 같습니다(`exec_stats` 실행 ≠ 교사 > 0 · 배치 로그 '실행 ≠ 교사 N/8 칸' · `missing 0`), 끝나면 3번처럼 `home_after_train.ps1` 로 올리고 "E5 올림" · "E6 올림".
 

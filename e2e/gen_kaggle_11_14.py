@@ -46,6 +46,13 @@ def runs(v15_ds):
         "v14_exec": dict(run="xm_ft_v1.4_aw30_exec", extra=f"{AW30} {EXEC}", data=[V14, PRE], ver="v1.4",
                          max_epochs=10, budget=10.0, kernel="fd-xm-finetune",
                          note="E4 와 같은 설정 Kaggle 판 — 집 PC E4 가 죽었을 때만"),
+        # E4 가 판정에서 떨어졌을 때(실행 명령 입력이 효과 없음) — 입력은 교사 명령 그대로
+        "v14_pad05": dict(run="xm_ft_v1.4_aw30_pad05", extra=f"{AW30} {PAD05}", data=[V14, PRE], ver="v1.4",
+                          max_epochs=10, budget=10.0, kernel="fd-xm-finetune",
+                          note="E4 불통과 · E1 채택일 때: v1.4(잡음 · DAgger 포함) + 드롭아웃만"),
+        "v15_aw30": dict(run="xm_ft_v1.5_aw30", extra=AW30, data=[v15_ds, PRE], ver="v1.5",
+                         max_epochs=7, budget=10.5, kernel="fd-xm-finetune-aw30",
+                         note="E4 · E1 둘 다 불통과일 때: 새 맵 데이터만 더한 aw30"),
         # v1.5 — D 의 xm_v08r3_v1 이 와서 데이터셋을 만든 뒤. 10 에폭은 12 h 에 안 들어가 7 에폭(= v1.4 10 에폭과 최적화 스텝 거의 같음)
         "v15_exec": dict(run="xm_ft_v1.5_aw30_exec", extra=f"{AW30} {EXEC}", data=[v15_ds, PRE], ver="v1.5",
                          max_epochs=7, budget=10.5, kernel="fd-xm-finetune",

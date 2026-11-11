@@ -62,6 +62,24 @@
 - **v1.5** = v1.4 + `xm_v08r3_v1`(D 나눔 그대로): `python e2e/resplit_xm.py <xm_v1_4> <xm_v1_5> --add <xm_v08r3_v1> --allow-new-scenario --check` → train 96,989행, 새 시나리오 `v08r3_auto` → Kaggle `dataset-08-xm-v1-5`(`-r tar`). 학습 전에 `fd-xm-eval` 로 aw30 · 제로샷을 v1.5 val · test 에(≈ 0.2 h) — `by_scenario.v08r3_auto` 기준선이 없어서. v1.5 test 의 `r3_*` 칸은 v1.4 test 와 같은 프레임이라 기존 숫자와 그대로 견줌. **한 줄**: `bash e2e/build_v15.sh <D zip>`(풀기 → 45파일 확인 → v1.5 · 행 수 · exec_command 점검 → 데이터셋 → 기준선 평가 push · 받기 · 요약, 다시 돌리면 끝난 단계 건너뜀, `NO_EVAL=1` 이면 데이터셋까지). 집 PC 다음 run = `HANDOFF_HOME_11_10.md` 6-A(E5) · 6-B(E6 = v1.5 × E4 설정, 7 에폭). 동결 · 후보 전달 체크리스트 = `FREEZE_11_16.md`.
 - **Kaggle 11.14 09:00 뒤**: `e2e/gen_kaggle_11_14.py` → `~/Downloads/kaggle_runs_11_14/<설정>/` 에서 `python -m kaggle kernels push`. v1.4 = 10 에폭 ≈ 9.0 h. **v1.5 = 7 에폭**(에폭당 ≈ 76분, 10 에폭은 12 h 세션에 안 들어감 — 최적화 21,133 스텝 ≈ v1.4 10 에폭 21,300). 설정: `v14_exec_pad05`(E5 — E1 드롭아웃 채택 시 1순위) · `v14_exec_seed1`(E4 시드 반복, 규칙 3) · `v14_exec`(집 E4 가 죽었을 때만) · `v15_exec` · `v15_exec_pad05`(데이터 온 뒤). B 재실행은 위 '11.9 계획' 대로 안 함.
 - **집 run 판정**: `bash e2e/judge_home.sh <run>` — Kaggle `fd-xm-home-<run>` 에서 결과 파일만 받음(ckpt 제외). E1(v0.1 · pad) = `prev_action_dropout` 0.5 확인 → `judge_d1.py`(결정 1). E4 · E5(v1.4 · exec) = `exec_stats` 실행 ≠ 교사 > 0 확인 → `obstacle_diag`(v1.4 test, 기준 aw30 '회피 중 · 중앙' 0.18) + v1.4 test 지표 표(aw30 w_mae 0.082 · Nav2 장애물 ω 부호 0.75 · 자동 w_mae 0.026). `SKIP_DL=1` 이면 받은 폴더로 다시 판정만. 11.11 aw30 를 가짜 후보로 넣어 두 갈래 모두 기존 숫자 재현 확인.
+- **E4 판정 기준(결과 보기 전 고정, 11.11)** — v1.4 test 기본 평가, aw30 과 견줌(`judge_home.sh`). 장애물 진단 크기 비의 시드 차는 아직 안 잼 → 여유를 크게.
+  - **통과** = '회피 중 · 중앙' 크기 비 test **≥ 0.30**(aw30 0.18 + 0.12, 교사 입력 천장 0.85 까지 거리의 ⅙) **그리고** 자동 교사 w_mae ≤ 0.029(aw30 0.026 + 0.003) **그리고** Nav2 장애물 ω 부호 ≥ 0.73(aw30 0.75 − 0.02).
+  - 크기 비가 0.24–0.30 이면 '애매' — 시드 반복(`v14_exec_seed1`)으로 판단. 0.24 미만이면 불통과(실행 명령 입력은 효과 없음).
+- **11.14 09:00 선택표(Kaggle 두 세션 동시 · 집 PC `home_chain.ps1`)** — 그 시각의 E1 · E4 판정과 v1.5 유무로 바로 고름. D 의 이른 폐루프(11.11 부탁 2)가 먼저 오면 그 결과가 우선(규칙 1).
+
+  | E4 | E1(결정 1) | v1.5 있음 | Kaggle 1 | Kaggle 2 | 집 PC |
+  |---|---|---|---|---|---|
+  | 통과 | 채택 | 예 | `v15_exec_pad05` | `v14_exec_seed1` | 6A(E5) |
+  | 통과 | 채택 | 아니오 | `v14_exec_pad05` | `v14_exec_seed1` | 6A 대신 v1.5 기다림(오면 6B) |
+  | 통과 | 불채택 · 미정 | 예 | `v15_exec` | `v14_exec_seed1` | 6A(E5 — 드롭아웃 추가 효과 확인) |
+  | 통과 | 불채택 · 미정 | 아니오 | `v14_exec_seed1` | `v14_exec_pad05` | v1.5 오면 6B |
+  | 애매 | — | — | `v14_exec_seed1` | 예 `v15_exec` · 아니오 `v14_exec_pad05` | 6A |
+  | 불통과 | 채택 | — | `v14_pad05` | 예 `v15_aw30` · 아니오 — | 실행 명령 입력판은 멈춤(6A · 6B 안 함) |
+  | 불통과 | 불채택 | — | 예 `v15_aw30` · 아니오 `v14_exec_seed1`(불통과 확인) | — | aw30 · A 동결 준비 |
+  | E4 아직 | — | — | `v14_exec`(Kaggle 판 E4) | 예 `v15_exec` · 아니오 `v14_exec_pad05` | E4 그대로 |
+
+  - Kaggle 한 주 30 h ≈ 학습 3회(9 h) — 첫 두 개를 09:00 에 같이 띄우고, 세 번째는 첫 결과(≈ 18:00) 보고. 11.21 09:00 에 다시 30 h.
+  - 집 PC: `.\e2e\home_chain.ps1 -Next 6A|6B` — 지금 학습이 끝나면 올리고 다음 run 을 시험 → 확인(missing 0 · 실행 ≠ 교사 > 0 · 에폭 수) → 본 학습 → 올림까지 혼자 감(`setup_windows.ps1 -OutDir · -Launch`, 11.11).
 - **노드 설정(동결 메모)**: 실행 명령 입력판(`--prev-action-source exec`) ckpt 는 노드 `feed_clamped_action:=true` — 학습 입력 `exec_command` 는 실제로 보낸(상한 안) 명령이라 노드가 자른 뒤 값을 넣어야 같은 뜻. 오프라인에서는 aw30 예측이 상한(ω 0.7)을 넘는 프레임이 test 0.3 % · val 0.07 % 라 `eval_offline` 은 그대로 둠.
 
 ## 제일 큰 알고리즘 지렛대: DAgger (모델이 몰고 교사가 라벨)

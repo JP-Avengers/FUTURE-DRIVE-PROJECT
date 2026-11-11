@@ -42,7 +42,11 @@ param(
     # 시험을 건너뜀(이전 시험 결과가 있으면 그것으로 계산)
     [switch]$SkipSmoke,
     # 데이터 점검을 건너뜀
-    [switch]$SkipDataCheck
+    [switch]$SkipDataCheck,
+    # 본 학습 출력 폴더(기본 data\checkpoints\xm_ft_local_e<N>). 상대 경로면 레포 기준
+    [string]$OutDir = '',
+    # 시험 확인(missing 0 · exec 면 실행 ≠ 교사 > 0 · 에폭 = MaxEpochs) 뒤 본 학습을 바로 돌림(11.11, e2e/home_chain.ps1 용)
+    [switch]$Launch
 )
 
 $ErrorActionPreference = 'Stop'
@@ -595,6 +599,7 @@ try {
     $ts = [TimeSpan]::FromHours($HoursBudget)
     $maxTime = '{0:00}:{1:00}:{2:00}:00' -f $ts.Days, $ts.Hours, $ts.Minutes
     $fullOut = Join-Path $RepoRoot ('data\checkpoints\xm_ft_local_e{0}' -f $epochs)
+    if ($OutDir) { $fullOut = if ([System.IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $RepoRoot $OutDir } }
     $fullArgs = $baseArgs + @('-o', $fullOut, '--gin', ('NUM_EPOCHS={0}' -f $epochs), '--max-time', $maxTime) + $ginArgs
     Write-Host ''
     Write-Host '==> 본 학습 명령 (경로가 모두 절대 경로 — PowerShell 에 그대로 붙여 넣기)' -ForegroundColor Cyan
@@ -603,6 +608,25 @@ try {
     Write-Host ''
     Write-Note '돌리기 전: 절전 끄기(powercfg /change standby-timeout-ac 0), Windows 업데이트 재시작 미루기. 콘솔 창은 열어 둠.'
     Write-Note ('결과: {0}\run_meta.json · checkpoints\ (같은 폴더에 ckpt 가 있으면 finetune.py 가 멈춤 → 이름을 바꿀 것)' -f $fullOut)
+
+    if ($Launch) {
+        # 사람이 보던 시험 확인 3가지를 대신 함 — 하나라도 걸리면 본 학습을 띄우지 않음
+        if (-not (Test-Path -LiteralPath $smokeMeta)) { Stop-Setup '-Launch: 시험 결과(run_meta.json) 없음' }
+        $sj = Get-Content -LiteralPath $smokeMeta -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ("$($sj.missing)" -ne '0') { Stop-Setup ('-Launch: missing 키 {0} — gin 설정 확인' -f $sj.missing) }
+        $iSrc = [array]::IndexOf([string[]]$ExtraArgs, '--prev-action-source')
+        if ($iSrc -ge 0 -and $ExtraArgs[$iSrc + 1] -eq 'exec') {
+            $es = $sj.exec_stats
+            if ($null -eq $es -or [double]$es.exec_ne_teacher_rows -le 0) { Stop-Setup ('-Launch: exec_stats 실행 ≠ 교사 0 — 옵션이 효과 없음: {0}' -f ($es | ConvertTo-Json -Compress)) }
+            Write-Ok ('exec_stats: train {0} 행 · 실행 ≠ 교사 {1} · NaN {2}' -f $es.train_rows, $es.exec_ne_teacher_rows, $es.nan_rows)
+        }
+        if ($epochs -lt $MaxEpochs) { Stop-Setup ('-Launch: 예산 {0} 시간에 {1} 에폭만 들어감(< MaxEpochs {2}) — -HoursBudget 을 올릴 것' -f $HoursBudget, $epochs, $MaxEpochs) }
+        if (Test-Path -LiteralPath (Join-Path $fullOut 'checkpoints')) { Stop-Setup ('-Launch: 출력 폴더에 이미 checkpoints 있음: {0}' -f $fullOut) }
+        Write-Step ('본 학습 시작 — {0} 에폭 → {1}' -f $epochs, $fullOut)
+        & $VenvPy @fullArgs
+        if ($LASTEXITCODE -ne 0) { Stop-Setup ('본 학습 실패 (종료 코드 {0})' -f $LASTEXITCODE) }
+        Write-Ok ('본 학습 끝: {0}' -f $fullOut)
+    }
 }
 catch {
     Write-Host ''
