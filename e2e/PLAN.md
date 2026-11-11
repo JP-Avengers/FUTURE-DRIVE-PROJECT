@@ -55,6 +55,15 @@
 - **v1.4** = `python e2e/resplit_xm.py <xm_v3_exec> <xm_v1.4> --preset v1.1 --add <xm_noise_v1>:train --add <xm_dagger_v1>:train --allow-new-scenario --check` (v1.1 맞바꿈으로 지금까지 test 와 같게). obstacle_diag 는 xm_v3_exec 의 val · test 로(11.13 까지 D 에).
 - **씬**: D 가 C 맵 v0.9 시험 뒤 11.12 까지 결정, 새 맵이면 그 맵 교사 녹화 11.15 까지(→ v1.5). 그 전엔 r3.
 
+### 11.11 — D v0.8 r3 녹화 도착(MANIFEST) · v1.5 · 11.14 Kaggle 준비
+
+- **D(d0dbf05 · c79d111)**: C 맵 v0.8 r3 반입, v0.1 이 시계 · 반시계 · 남쪽 장애물 3종 통과(평균 이탈 0.24–0.30 m, r3 바퀴 0.09–0.13 m). 자동 교사 45바퀴 → `xm_v08r3_v1`(sha12 `418ae8d2dc1b`, train 28,548 · val 4,001 · test 4,157행, `exec_command` 빠짐 0, 나눔 = 마지막 반시계 val · 마지막 시계 test). 장애물 장면 없음. Nav2 는 v0.8 r3 시계 방향에서 아직 실패(2D 스캔에 바닥이 벽으로 잡힘, `FD_NAV2_ARGS` 로 조사 중) · 녹화용 `FD_NAV2_LOC=gt` 추가.
+- **D 에 물음(11.11 메시지)**: 60회 씬 v0.8 r3 확정 여부 · `xm_v08r3_v1` Drive 업로드(11.13 까지) · v0.8 r3 장애물 교사 녹화 계획 · `max_cte` = 하네스 `max_dev` 여부.
+- **v1.5** = v1.4 + `xm_v08r3_v1`(D 나눔 그대로): `python e2e/resplit_xm.py <xm_v1_4> <xm_v1_5> --add <xm_v08r3_v1> --allow-new-scenario --check` → train 96,989행, 새 시나리오 `v08r3_auto` → Kaggle `dataset-08-xm-v1-5`(`-r tar`). 학습 전에 `fd-xm-eval` 로 aw30 · 제로샷을 v1.5 val · test 에(≈ 0.2 h) — `by_scenario.v08r3_auto` 기준선이 없어서. v1.5 test 의 `r3_*` 칸은 v1.4 test 와 같은 프레임이라 기존 숫자와 그대로 견줌.
+- **Kaggle 11.14 09:00 뒤**: `e2e/gen_kaggle_11_14.py` → `~/Downloads/kaggle_runs_11_14/<설정>/` 에서 `python -m kaggle kernels push`. v1.4 = 10 에폭 ≈ 9.0 h. **v1.5 = 7 에폭**(에폭당 ≈ 76분, 10 에폭은 12 h 세션에 안 들어감 — 최적화 21,133 스텝 ≈ v1.4 10 에폭 21,300). 설정: `v14_exec_pad05`(E5 — E1 드롭아웃 채택 시 1순위) · `v14_exec_seed1`(E4 시드 반복, 규칙 3) · `v14_exec`(집 E4 가 죽었을 때만) · `v15_exec` · `v15_exec_pad05`(데이터 온 뒤). B 재실행은 위 '11.9 계획' 대로 안 함.
+- **집 run 판정**: `bash e2e/judge_home.sh <run>` — Kaggle `fd-xm-home-<run>` 에서 결과 파일만 받음(ckpt 제외). E1(v0.1 · pad) = `prev_action_dropout` 0.5 확인 → `judge_d1.py`(결정 1). E4 · E5(v1.4 · exec) = `exec_stats` 실행 ≠ 교사 > 0 확인 → `obstacle_diag`(v1.4 test, 기준 aw30 '회피 중 · 중앙' 0.18) + v1.4 test 지표 표(aw30 w_mae 0.082 · Nav2 장애물 ω 부호 0.75 · 자동 w_mae 0.026). `SKIP_DL=1` 이면 받은 폴더로 다시 판정만. 11.11 aw30 를 가짜 후보로 넣어 두 갈래 모두 기존 숫자 재현 확인.
+- **노드 설정(동결 메모)**: 실행 명령 입력판(`--prev-action-source exec`) ckpt 는 노드 `feed_clamped_action:=true` — 학습 입력 `exec_command` 는 실제로 보낸(상한 안) 명령이라 노드가 자른 뒤 값을 넣어야 같은 뜻. 오프라인에서는 aw30 예측이 상한(ω 0.7)을 넘는 프레임이 test 0.3 % · val 0.07 % 라 `eval_offline` 은 그대로 둠.
+
 ## 제일 큰 알고리즘 지렛대: DAgger (모델이 몰고 교사가 라벨)
 
 행동 복제의 폐루프 실패는 "모델이 조금 벗어난 자리"를 학습 데이터에서 본 적이 없어서 생긴다. 잡음 녹화(아래 "확인한 것")가 일부를 덮지만, **모델이 실제로 가는 자리**의 라벨이 제일 정확하다. 도구는 이미 있다 — 묶는 것만 필요.
