@@ -205,6 +205,28 @@ def _nearest_colors(src, pts):
     return np.asarray(src.vertex_colors)[j]
 
 
+def conf_holes(path, measured=(1, 2, 3), min_area_m2=4.0):
+    """받은 바닥 높이 지도의 conf 로 '주 촬영(차량)이 바닥을 못 본 안쪽 구멍'을 찾는다 → (구멍 grid[ix, iy], lo, cell).
+    보조 촬영으로 바닥이 채워져 바닥 범위에 구멍이 안 남아도 가운데 섬을 잡으려는 것 (B v0.5e~: conf 4 = 손 촬영, 0 = 보간 · 외삽).
+    measured = 주 촬영이 잰 conf 값들. 맵 → 씬 변환이 z 이동뿐일 때만 (Ground.from_map 과 같은 조건)."""
+    z = np.load(path)
+    m = ndimage.binary_closing(np.isin(z["conf"], list(measured)), iterations=2)
+    hole = ndimage.binary_fill_holes(m) & ~m
+    lab, n = ndimage.label(hole)
+    cell = float(z["cell"])
+    if n:
+        hole = np.isin(lab, 1 + np.nonzero(ndimage.sum(hole, lab, range(1, n + 1)) * cell * cell >= min_area_m2)[0])
+    return hole, np.asarray(z["lo"], float), cell
+
+
+def resample_mask(mask, lo, cell, xs, ys):
+    """grid[ix, iy] 마스크를 x 좌표 xs · y 좌표 ys 격자에서 읽음 → [len(xs), len(ys)] (범위 밖은 False)."""
+    i = np.floor((np.asarray(xs) - lo[0]) / cell).astype(int)
+    j = np.floor((np.asarray(ys) - lo[1]) / cell).astype(int)
+    ok = ((i >= 0) & (i < mask.shape[0]))[:, None] & ((j >= 0) & (j < mask.shape[1]))[None, :]
+    return mask[np.clip(i, 0, mask.shape[0] - 1)[:, None], np.clip(j, 0, mask.shape[1] - 1)[None, :]] & ok
+
+
 def fill_small_holes(mesh, hole_size):
     """테두리를 평평한 면으로 이어 작은 구멍을 메운다 (VTK fill holes, hole_size = 구멍을 감싸는 구의 반지름 m).
     Open3D 0.19 는 색·법선이 붙은 메쉬를 넣으면 조용히 종료되므로 모양만 넘기고 색은 다시 붙인다."""

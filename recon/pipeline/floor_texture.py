@@ -170,6 +170,10 @@ def bake(sets, floor, ground, occ, c, out_dir):
     sel = {s[0]: _frames_near(tex, s[2], c["max_dist_m"]) for s in sets}
     st = dict(region=region, cell_m=c["cell_m"], texels=[tex.nx, tex.ny], photometric={})
 
+    smd = c.get("set_max_dist_m") or {}                         # 묶음마다 거리 제한 (자세 오차가 큰 보조 촬영은 가까이서 본 것만 — v0.9 손 촬영)
+
+    def c_set(n):
+        return dict(c, max_dist_m=min(c["max_dist_m"], smd[n])) if n in smd else c
     corr = {s[0]: (np.ones((len(s[2]), 3)), np.zeros((3, 3)), np.zeros(3)) for s in sets}
     step = max(1, int(round(0.1 / c["cell_m"])))
     by_name = {s[0]: s for s in sets}
@@ -182,7 +186,7 @@ def bake(sets, floor, ground, occ, c, out_dir):
             _, fr, poses, lift, excl = by_name[n]
             off[n] = n_tot
             for f in sel[n]:
-                r = _project(tex, fr, f, poses[f], _zbuffer(occ, fr, poses[f]), lift, c, step=step)
+                r = _project(tex, fr, f, poses[f], _zbuffer(occ, fr, poses[f]), lift, c_set(n), step=step)
                 if r is None:
                     continue
                 iy, ix, col, gsd, feat, _ = r
@@ -207,7 +211,7 @@ def bake(sets, floor, ground, occ, c, out_dir):
         gains, beta, Fm = corr[n]
         filled_before = np.isfinite(best_g[..., 0])
         for f in sel[n]:
-            r = _project(tex, fr, f, poses[f], _zbuffer(occ, fr, poses[f]), lift, c)
+            r = _project(tex, fr, f, poses[f], _zbuffer(occ, fr, poses[f]), lift, c_set(n))
             if r is None:
                 continue
             iy, ix, col, gsd, feat, feather = r
@@ -436,10 +440,21 @@ def finish(out_dir, floor, c, root):
             hole = ndimage.binary_fill_holes(ndimage.binary_closing(fp5, iterations=2)) & ~ndimage.binary_closing(fp5, iterations=2)
             lab, nlab = ndimage.label(hole)
             big = np.isin(lab, 1 + np.nonzero(ndimage.sum(hole, lab, range(1, nlab + 1)) * g5 * g5 >= fh.get("min_area_m2", 4.0))[0])
-            ring = ndimage.binary_dilation(big, iterations=int(fh.get("margin_m", 3.0) / g5))
+            seen_hole = np.zeros_like(big)
+            if fh.get("conf_map"):   # 보조 촬영이 바닥을 채운 섬 (v0.9): 구멍으로는 안 잡힘 → B conf 로. 찍힌 바닥(주차선)은 남기고 못 쓸 곳만 채움
+                from mesh_utils import conf_holes, resample_mask
+                ch, clo, ccell = conf_holes(os.path.join(root, fh["conf_map"]), fh.get("measured_conf", (1, 2, 3)), fh.get("min_area_m2", 4.0))
+                seen_hole = resample_mask(ch, clo, ccell, x0 + (np.arange(fp5.shape[1]) + 0.5) * g5, y0 + (np.arange(fp5.shape[0]) + 0.5) * g5).T & ~big
+            ring = ndimage.binary_dilation(big | seen_hole, iterations=int(fh.get("margin_m", 3.0) / g5))
             ring_t = ring[((ys - y0) / g5).astype(int)[:, None], ((xs - x0) / g5).astype(int)[None, :]]
             hole_t = big[((ys - y0) / g5).astype(int)[:, None], ((xs - x0) / g5).astype(int)[None, :]]
             bad = hole_t | (ring_t & ((src < 0) | dark))               # 구멍 + 둘레의 안 찍히거나 어둡게 찍힌 바닥 (지붕 카메라 · 그림자)
+            if seen_hole.any():                                        # 섬 안: 색이 낀 밝은 얼룩(하늘 비침 · 노출 과다)도 채움 — 흰 주차선(무채색)은 아래에서 남김
+                sh_t = seen_hole[((ys - y0) / g5).astype(int)[:, None], ((xs - x0) / g5).astype(int)[None, :]]
+                blown = sh_t & (lum > fh.get("blown_lum", 1.3) * local) & (sat >= fh.get("blown_sat", 0.15))
+                bad |= ndimage.binary_dilation(blown, iterations=int(0.05 / cell))
+                st["holes_seen_m2"] = round(float(sh_t.sum()) * cell * cell, 1)
+                st["holes_blown_m2"] = round(float(blown.sum()) * cell * cell, 1)
             fill |= bad & ~rect & ~ndimage.binary_dilation(paint, iterations=3)
             st["holes_filled_m2"] = round(float(bad.sum()) * cell * cell, 1)
         img, n_patch = _fill_asphalt(img, fill, src, gsd, asphalt, local, lum, asph_c, coarse, up, smooth_valid, k, cell, fs)
@@ -557,7 +572,7 @@ def run(cfg, out, floor, occ_mesh, ground, sets):
                max_rms=c.get("photometric_max_rms"), gain_range=c.get("gain_range"),
                sets=[(s[0], len(s[2]), round(float(s[3]), 4), s[4]) for s in sets],
                floor=hashlib.sha1(np.asarray(floor.vertices, np.float32).tobytes()).hexdigest()[:12])
-    for kk in ("consensus", "require_depth", "depth_tol_m", "depth_tol_per_m"):
+    for kk in ("consensus", "require_depth", "depth_tol_m", "depth_tol_per_m", "set_max_dist_m"):
         if c.get(kk):
             key[kk] = c[kk]
     if c.get("specular"):                                       # 켰을 때만 키에 (끈 판의 기존 굽기 결과는 그대로 다시 씀)

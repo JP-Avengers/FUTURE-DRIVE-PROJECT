@@ -30,3 +30,14 @@ floor_texture:
     - [main, bonnet_ccw]
     - [roof_cw, roof_ccw]
     - [hand_fecen]                     # 다른 날 · 손에 든 카메라 → 밝기 모형 따로
+  set_max_dist_m: {hand_fecen: 4.0}    # 손 촬영은 4 m 안에서 본 바닥만 (자세 오차 0.1~0.3 m — 멀수록 주차선이 번지고 겹쳐 보임, 11.11 첫 빌드)
+  fill_stalls:
+    holes:                             # 섬 바닥이 손 촬영으로 채워져 구멍으로 안 잡힘 → B 바닥 지도 conf 로 섬을 잡음 (차량이 못 본 안쪽 = conf 0 · 4)
+      conf_map: floor_height.npz       # 찍힌 바닥(주차선)은 남기고, 안 찍힌 곳 · 어두운 얼룩 · 색 낀 밝은 얼룩만 아스팔트로
+      measured_conf: [1, 2, 3]
+
+edge:
+  island:
+    conf_map: floor_height.npz         # 위와 같은 섬 범위에서 스캔 조각을 지움 (r3 와 같게 — 섬 메우기가 꺼져 조각이 남았음, 11.11 첫 빌드)
+    measured_conf: [1, 2, 3]
+    margin_m: 1.0                      # conf 구멍은 이미 차량이 못 본 범위 전체라 3 m 까지 넓히지 않음

@@ -178,6 +178,10 @@ def run(cfg, root, visuals, colliders, ground):
     island = np.zeros(mask.shape, bool)
     if isl:
         hole = ndimage.binary_fill_holes(fp) & ~fp & mask
+        if isl.get("conf_map"):   # 보조 촬영이 섬 바닥을 채워 구멍이 안 남는 맵 (v0.9, B v0.5g): 주 촬영이 바닥을 못 본 안쪽 구멍 = 섬
+            from mesh_utils import conf_holes, resample_mask
+            ch, clo, ccell = conf_holes(os.path.join(root, isl["conf_map"]), isl.get("measured_conf", (1, 2, 3)), isl.get("min_area_m2", 4.0))
+            hole |= resample_mask(ch, clo, ccell, lo[0] + (np.arange(mask.shape[0]) + 0.5) * cell, lo[1] + (np.arange(mask.shape[1]) + 0.5) * cell) & mask
         lab, nlab = ndimage.label(hole)
         big = np.isin(lab, 1 + np.nonzero(ndimage.sum(hole, lab, range(1, nlab + 1)) * cell * cell >= isl.get("min_area_m2", 4.0))[0])
         grow = ndimage.binary_dilation(big, iterations=int(isl.get("margin_m", 1.0) / cell))
