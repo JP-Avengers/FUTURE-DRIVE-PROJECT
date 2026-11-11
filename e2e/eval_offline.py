@@ -10,8 +10,11 @@
   상태      run 파일(= 끊김 없는 한 구간) 시작마다 history · sample 0, 이전 action 0
             (ros2_deployment/.../x_mobility_navigator.py:101-104 · 135-136, model/eval/prediction_evaluator.py:84-88).
             프레임마다 inference 가 돌려준 history · sample 을 다음 프레임에 넣음(navigator.py:267-268).
-  이전 명령 기본 = 직전 프레임의 예측 action 6칸 그대로(navigator.py:242 · 265).
-            --teacher-forcing = 직전 프레임의 교사 driving_command(prediction_evaluator.py:120, 학습 rssm.py:152-154 와 같은 뜻).
+  이전 명령 --prev-action-mode: own(기본) = 직전 프레임의 예측 action 6칸 그대로(navigator.py:242 · 265).
+            zero = 늘 0 6칸(run 첫 프레임과 같음 — 드롭아웃 학습판을 '직전 명령 0' 으로 볼 때).
+            clamped = own 에서 v 를 [0, 0.8] · ω 를 [-0.7, 0.7] 로만 자른 값(노드 feed_clamped_action:=true, 나머지 4칸 그대로).
+            teacher(= --teacher-forcing) = 직전 프레임의 교사 driving_command(prediction_evaluator.py:120, 학습
+            rssm.py:152-154 와 같은 뜻).
   입력      image (1,1,3,320,512) RGB float32 /255(navigator.py:288-293), 크기가 다를 때만 bilinear(align_corners=False)
             로 INPUT_IMAGE_SIZE 에 맞춤(onnx_conversion.py:53-58) — xm_v1 은 이미 512×320 이라 그대로.
             route (1,1,19,4) — 키 이름은 'route'('route_vectors' 아님: x_mobility.py:150, action_policy.py:210-211).
@@ -44,7 +47,7 @@ frames.csv 끝의 위치 열(route_s · map_x · map_y · map_yaw(map_pose 3칸)
       -c e2e/configs/finetune_parking_r3.gin -d data/teacher/xm_v1 \\
       -p data/checkpoints/xm_ft_<버전>/checkpoints/last.ckpt -o logs/xm_eval_<버전>
   제로샷 비교: 같은 명령에 -p <x_mobility-nav2-semantic_action_path.ckpt> (semantic_decoder 가 unexpected 로 나오는 것은 정상).
-  시험: --max-files 2 --device cpu. 교사 명령을 이전 명령으로: --teacher-forcing.
+  시험: --max-files 2 --device cpu. 이전 명령 방식: --prev-action-mode zero · clamped · teacher(= --teacher-forcing).
 지표 함수 · 파일 순회는 numpy · pandas 만 씀(X-Mobility · torch import 는 main() 안) — 모델 없이 시험 가능.
 """
 import argparse
@@ -76,6 +79,14 @@ NUM_ROUTE_POINTS = 20             # navigator.py:41
 ROUTE_POSE_SIZE = 2               # isaac_sim_dataset.py:45
 EXPECTED_ROUTE_LEN = NUM_ROUTE_POINTS * ROUTE_POSE_SIZE
 W_SIGN_THR = 0.1                  # rad/s — 이보다 작은 교사 ω 는 부호 일치에서 뺌
+# 이전 명령 방식(--prev-action-mode) → 표시 이름. own · teacher 는 예전 표시 그대로
+PREV_ACTION_MODES = {"own": "직전 예측", "zero": "늘 0", "clamped": "직전 예측(v · ω 상한으로 자름)",
+                     "teacher": "교사(teacher forcing)"}
+# clamped = 노드 prev_action_mode:=clamped(= feed_clamped_action:=true)가 되먹이는 값 — ros2_ws/src/fd_xm_infer/fd_xm_infer/
+# core.py prev_action_feed: 예측 6칸 복사 후 V_IDX · W_IDX 칸만 core.clamp_cmd 와 같은 min(max()) 로 자른 값, 나머지 4칸 그대로.
+# 상한은 노드 파라미터 v_min · v_max · w_max 의 기본값(core.py V_MIN · V_MAX · W_MAX, docs/interfaces/topics.md) — 이 파일은
+# ros2_ws 를 import 하지 않으므로 값을 옮겨 적음.
+CLAMP_V_MIN, CLAMP_V_MAX, CLAMP_W_MAX = 0.0, 0.8, 0.7
 NEAR_OBS_M = 1.5
 ROUTE_CMD = {0: "straight", 1: "left", 2: "right"}
 ROUTE_CMD_KO = {0: "직진", 1: "좌", 2: "우"}
@@ -239,10 +250,32 @@ def load_run(path):
     return run
 
 
-def run_eval(files, predictor, split, teacher_forcing=False, log=print):
+def next_prev_action(mode, pred, teacher):
+    """이번 프레임의 예측 · 교사 명령(6칸) → 다음 프레임에 넣을 이전 명령(float32 6칸). mode 는 PREV_ACTION_MODES.
+    v · ω 가 유한값이 아니면 노드는 상태 리셋(node.py _tick)이지만 여기서는 리셋 없이 넘김(clamped 는 min(max()) 결과
+    — NaN 그대로, ±inf 는 상한)."""
+    if mode == "teacher":
+        return teacher.astype(np.float32)
+    if mode == "zero":
+        return np.zeros(ACTION_SIZE, np.float32)
+    if mode == "clamped":
+        pred = pred.copy()                       # pred_a 의 한 행(view) — 프레임 표의 v_pred · w_pred 는 자르지 않은 값
+        pred[V_IDX] = min(max(pred[V_IDX], CLAMP_V_MIN), CLAMP_V_MAX)       # core.clamp_cmd 와 같은 식(-0.0 도 같게)
+        pred[W_IDX] = min(max(pred[W_IDX], -CLAMP_W_MAX), CLAMP_W_MAX)
+    elif mode != "own":
+        raise ValueError(f"prev_action_mode {mode!r} — {list(PREV_ACTION_MODES)} 중 하나")
+    return pred.astype(np.float32)
+
+
+def run_eval(files, predictor, split, teacher_forcing=False, log=print, prev_action_mode=None):
     """files 를 차례로 predictor 에 넣음. predictor: reset() · step(image, speed, route_vec, prev_action) → (action6, path10).
-    run 파일마다 reset · 이전 명령 0. 이전 명령 = 직전 예측(기본) 또는 직전 교사 명령(teacher_forcing).
+    run 파일마다 reset · 이전 명령 0. 그 뒤 이전 명령 = prev_action_mode(next_prev_action) — 안 주면 teacher_forcing 이면
+    teacher(직전 교사 명령), 아니면 own(직전 예측).
     → (프레임 표 DataFrame[COLUMNS], 통계 dict)"""
+    mode = prev_action_mode if prev_action_mode is not None else ("teacher" if teacher_forcing else "own")
+    if mode not in PREV_ACTION_MODES or (teacher_forcing and mode != "teacher"):
+        raise ValueError(f"prev_action_mode {prev_action_mode!r} · teacher_forcing {teacher_forcing} — "
+                         f"모드는 {list(PREV_ACTION_MODES)} 중 하나, teacher_forcing 이면 teacher 만")
     parts = []
     stats = dict(files=0, frames=0, route_len_mismatch=0)
     for k, (scenario, path) in enumerate(files):
@@ -259,7 +292,7 @@ def run_eval(files, predictor, split, teacher_forcing=False, log=print):
             a, p = predictor.step(decode_image(run["images"][i]), float(run["speed"][i]), route_vectors(rp), prev)
             pred_a[i] = np.asarray(a, np.float64).reshape(-1)
             pred_p[i] = np.asarray(p, np.float64).reshape(-1)
-            prev = (run["action"][i] if teacher_forcing else pred_a[i]).astype(np.float32)
+            prev = next_prev_action(mode, pred_a[i], run["action"][i])
         ade, fde = path_ade_fde(pred_p, run["path"])
         ade, fde = ade / PATH_SCALE, fde / PATH_SCALE          # 축척 데이터면 m 로 되돌림
         rc, lap = run["route_command"], run["lap"]
@@ -406,7 +439,11 @@ def parse_args(argv=None):
     ap.add_argument("-o", "--output-dir", required=True)
     ap.add_argument("--device", default=None, help="cuda · cuda:1 · cpu (기본: cuda 가 되면 cuda)")
     ap.add_argument("--max-files", type=int, default=None, help="시나리오 · 파일 이름 순으로 앞 N 개 run 파일만")
-    ap.add_argument("--teacher-forcing", action="store_true", help="이전 명령 입력으로 직전 교사 명령을 넣음(기본: 직전 예측)")
+    ap.add_argument("--prev-action-mode", choices=list(PREV_ACTION_MODES), default=None,
+                    help="이전 명령 입력: own = 직전 예측(기본) · zero = 늘 0(run 첫 프레임과 같음) · clamped = 직전 예측의 "
+                         "v 를 [0, 0.8] · ω 를 [-0.7, 0.7] 로 자른 값(노드 feed_clamped_action:=true) · teacher = 직전 교사 명령")
+    ap.add_argument("--teacher-forcing", action="store_true",
+                    help="= --prev-action-mode teacher (예전 이름, 이전 명령 입력으로 직전 교사 명령을 넣음)")
     ap.add_argument("--gin", action="append", default=[], help="gin 바인딩 덧붙이기(여러 번)")
     ap.add_argument("--allow-missing", action="store_true", help="ckpt 에 없는 가중치가 있어도 진행")
     ap.add_argument("--seed", type=int, default=0, help="확산 정책일 때 고정 policy_noise 시드(MLP 정책이면 무관)")
@@ -414,7 +451,13 @@ def parse_args(argv=None):
                     help="데이터의 path 에 곱해진 배수(scale_path_xm.py 의 PATH_SCALE.json). ADE · FDE 를 이 값으로 나눠 m 로. "
                          "기본: 데이터 폴더에 PATH_SCALE.json 이 있으면 그 scale, 없으면 1")
     ap.add_argument("--overwrite", action="store_true", help="출력 폴더에 summary.json 이 있어도 덮어씀")
-    return ap.parse_args(argv)
+    a = ap.parse_args(argv)
+    if a.teacher_forcing and a.prev_action_mode not in (None, "teacher"):
+        ap.error(f"--teacher-forcing(= --prev-action-mode teacher)와 --prev-action-mode {a.prev_action_mode} 충돌 "
+                 "— 하나만 주세요")
+    a.prev_action_mode = a.prev_action_mode or ("teacher" if a.teacher_forcing else "own")
+    a.teacher_forcing = a.prev_action_mode == "teacher"     # 기존 기록 키(summary.json setup · run_meta.json) 그대로
+    return a
 
 
 def main():
@@ -467,20 +510,21 @@ def main():
                             dtype=torch.float32).to(device)
     stepper = XMobilityStepper(model, device, INPUT_IMAGE_SIZE, noise)
     print(f"[평가] {a.split} run {len(files)}개 · device {device} · 이전 명령 "
-          f"{'교사(teacher forcing)' if a.teacher_forcing else '직전 예측'} · 정책 {'확산' if diffusion else 'MLP'}")
+          f"{PREV_ACTION_MODES[a.prev_action_mode]} · 정책 {'확산' if diffusion else 'MLP'}")
 
     meta = dict(started=datetime.datetime.now().isoformat(timespec="seconds"), argv=sys.argv,
                 repo_rev=git_rev(REPO), xm_repo=xm, xm_rev=git_rev(xm), configs=cfgs, gin_extra=a.gin,
                 gin_skip=list(GIN_SKIP), dataset=data, split=a.split, max_files=a.max_files,
                 checkpoint=ckpt, checkpoint_sha12=sha12(ckpt), keys=keys, device=device,
                 cuda_device=torch.cuda.get_device_name(device) if str(device).startswith("cuda") else None,
-                teacher_forcing=a.teacher_forcing, policy_diffusion=diffusion, seed=a.seed,
-                input_image_size=list(INPUT_IMAGE_SIZE), torch=torch.__version__)
+                teacher_forcing=a.teacher_forcing, prev_action_mode=a.prev_action_mode, policy_diffusion=diffusion,
+                seed=a.seed, input_image_size=list(INPUT_IMAGE_SIZE), torch=torch.__version__)
     t0 = time.perf_counter()
-    frames, stats = run_eval(files, stepper, a.split, a.teacher_forcing)
+    frames, stats = run_eval(files, stepper, a.split, prev_action_mode=a.prev_action_mode)
     elapsed = time.perf_counter() - t0
     summary = summarize(frames)
     summary["setup"] = dict(split=a.split, files=stats["files"], frames=stats["frames"], teacher_forcing=a.teacher_forcing,
+                            prev_action_mode=a.prev_action_mode,
                             checkpoint_sha12=meta["checkpoint_sha12"], w_sign_threshold=W_SIGN_THR,
                             path="ADE = 5점(k=0..4, t+k·0.84 s) 거리 평균, FDE = k=4 거리, m")
     meta.update(finished=datetime.datetime.now().isoformat(timespec="seconds"), elapsed_s=round(elapsed, 2),

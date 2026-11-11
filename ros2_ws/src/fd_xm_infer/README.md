@@ -95,7 +95,8 @@ PYTHONPATH=$CD1/ros2_ws/src/fd_xm_infer:$PYTHONPATH CUDA_VISIBLE_DEVICES=1 \
 | `stale_timeout_s` · `route_timeout_s` | 0.5 · 1.0 | 영상 · odom / 경로(csv 모드는 위치) 이 시간보다 오래되면 정지 명령 |
 | `reset_on_stale` | true | 끊겼다(또는 tf 실패) 재개하면 상태 리셋 |
 | `route_jump_m` · `pose_jump_m` | 1.5 · 0.5 | 경로 · 위치가 이만큼 뛰면 상태 리셋 |
-| `feed_clamped_action` | false | 이전 명령 입력에 자른 값을 넣음(기본은 navigator 처럼 모델 원래 출력) |
+| `prev_action_mode` | `own` | 이전 명령 입력 — `own`(모델 원래 출력 6칸, navigator 와 같음) · `zero`(늘 0, 리셋 직후와 같은 입력 — 드롭아웃 학습판을 '직전 명령 0' 으로 볼 때) · `clamped`(v · ω 칸만 `v_min`–`v_max` · ±`w_max` 로 자른 값 = 보낸 명령, 나머지 4칸 그대로). 그 밖의 값(`teacher` 포함)은 시작 때 멈춤. 오프라인 평가 `e2e/eval_offline.py --prev-action-mode` 와 같은 이름 |
+| `feed_clamped_action` | false | true = `prev_action_mode:=clamped`(예전 이름, 그대로 받음). `prev_action_mode:=zero` 와 같이 주면 충돌로 시작 때 멈춤 |
 | `publish_path` · `log_csv` · `report_every` · `warmup_iters` | true · `''` · 25 · 3 | 디버그 · 기록 |
 | `path_scale` | 1.0 | p3 계열 ckpt(경로 라벨 ×1/3, 데이터 `PATH_SCALE.json` 의 scale)면 0.3333 — `~/path` 를 이 값으로 나눠 m 로 냄. 명령 v · ω 는 무관(모델 출력 path 는 디버그 발행에만 씀). `.meta.json` params 에 남음 |
 | `allow_other_cmd_publishers` · `pub_check_wait_s` | false · 2.0 | 발행자 1개 규칙 무시(시험용) · 확인 전 발견 대기 |
@@ -123,7 +124,7 @@ X-Mobility 줄 번호는 `5837aea` 기준, `navigator.py` = `ros2_deployment/x_m
 | odom + 시작 자세 → 지도 자세, 시작 자세 기본 = 기준선 YAML `start` | `core.odom_to_map` · `_setup_csv_route` | `sim/export_xmobility.py`:211-213 · `topics.md`:22-23 · `eval/routes/parking_r3_cw.yaml`:10 |
 | ego_speed = odom `twist.twist.linear.x`(최신 값, 동기화 없음) | `_on_odom` | `navigator.py`:128-130 · 217 · `e2d_model.md`:13 |
 | 0.2 s 타이머 | `startup` | `navigator.py`:94, 학습 5 Hz `sim/export_xmobility.py`:48 |
-| history · sample 이어 받기, 이전 명령 = 직전 예측 6칸 | `XmModel.step` · `_tick` | `navigator.py`:242 · 265-268 · `e2e/eval_offline.py`:247 |
+| history · sample 이어 받기, 이전 명령 = 직전 예측 6칸(`prev_action_mode` 기본 `own`) | `XmModel.step` · `_tick` · `core.prev_action_feed` | `navigator.py`:242 · 265-268 · `e2e/eval_offline.py`:247 |
 | 리셋 = history · sample · 이전 명령 0 | `_reset` · `XmModel.reset` | `e2e/eval_offline.py`:236-237 · 297-300 · `navigator.py`:101-104 · 135-136 |
 | v = action[0], ω = action[5] | `_tick` | `navigator.py`:272-273 |
 | 상한 0 ≤ v ≤ 0.8, \|ω\| ≤ 0.7, 유한값 아니면 정지 + 리셋 | `core.clamp_cmd` | `topics.md`:61 |
@@ -154,8 +155,10 @@ X-Mobility 줄 번호는 `5837aea` 기준, `navigator.py` = `ros2_deployment/x_m
   - 경로: `eval_offline.route_vectors` · navigator 식(옮겨 적음)과 같음(1~40점). csv 모드 경로가 `export_xmobility.py` 의 `Poly` · `to_robot`(ast 로 떼어 실행) + 238-246 식과 cw · ccw · cw 거꾸로 × 목표 없음/있음 250자세에서 같음. `parking_r3_ccw.csv` = cw 거꾸로(같은 s 점 거리 0.0 mm).
   - 좌표: `transform_points`(쿼터니언) = `to_robot`(자세의 역 tf), 일반 쿼터니언 = 해밀턴 곱. `quat_yaw` · `odom_to_map` = export 식.
   - 상한 · NaN · 지연 백분위(numpy 기본 linear).
+  - 이전 명령 입력(`core.prev_action_feed`, 11.11 · Windows python 3.12 · numpy 1.26): own · zero · clamped · 다른 값 거부, own · clamped 가 예전 `_tick` 식(`feed_clamped_action` false · true)과 비트 단위 같음(무작위 2000개, 범위 밖 값 포함).
 - 참고 숫자(합성 640×480 영상): JPEG 왕복 있음/없음 평균 2.2/255 · 최대 81/255 차이. torch bilinear(antialias 없음 — onnx_conversion 길) vs 학습 영상 평균 2.5/255 · 최대 95/255. 전처리 약 5 ms(이 컨테이너 CPU).
 - `node.py`: py_compile · flake8(줄 120). rclpy · 메시지 · tf2_ros 를 가짜 모듈로, 모델을 가짜로 바꿔 tick 을 손으로 돌린 연기 시험 12개 — 상한 자르기, 이전 명령 이어 받기, 서비스 리셋, 끊김 → 정지 → 재개 리셋, 시계 역행, tf 없음 → 정지, odom frame 경로의 tf 변환, 경로 점프(회전 보정), NaN, 발행자 거부 · 허용 · 실행 중 감지, csv 모드(odom · 정답 위치, 바퀴 링크 변환 거름, 위치 점프), CSV · meta.json · 끝 정지 5번, 실제 시간 워치독.
+- `prev_action_mode`(11.11): 같은 식의 가짜 모듈로 파라미터 조합 16개 × tick 40번(범위 밖 v · ω, NaN 리셋 포함) — 기본 · `own` 과 `feed_clamped_action:=true` · `clamped` 가 바꾸기 전 노드와 이전 명령 입력 · 보낸 명령 · 리셋이 비트 단위 같음, `zero` 는 입력이 늘 0. `zero` + `feed_clamped_action:=true` · `teacher` · `Own` · 빈칸은 시작 때 멈춤(종료 코드 3).
 
 안 한 것:
 
