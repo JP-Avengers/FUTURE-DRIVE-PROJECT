@@ -35,8 +35,14 @@ Start-Transcript -Path (Join-Path $RepoRoot ('logs\home_chain_{0:MMdd_HHmm}.log'
 
 function Say([string]$m, [string]$c = 'Cyan') { Write-Host ('[{0:MM-dd HH:mm}] {1}' -f (Get-Date), $m) -ForegroundColor $c }
 function Test-Training([string]$name) {
-    @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
-      Where-Object { $_.CommandLine -like '*finetune.py*' -and $_.CommandLine -like "*$name*" }).Count -gt 0
+    # finetune.py 직접 실행만이 아니라 이어 학습 래퍼 등도 잡도록: run 이름이 명령줄에 있거나, GPU 에 계산 프로세스가 있으면 학습 중
+    $byName = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.CommandLine -like '*finetune.py*' -or ($name -and $_.CommandLine -like "*$name*") }).Count -gt 0
+    return ($byName -or (Test-GpuBusy))
+}
+function Test-GpuBusy {   # nvidia-smi 에 계산 프로세스가 하나라도 있으면 바쁨(다음 run 을 겹쳐 띄우지 않게)
+    $apps = & nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>$null
+    return (@($apps | Where-Object { "$_".Trim() }).Count -gt 0)
 }
 function Test-Done([string]$run) {   # best ckpt 또는 last.ckpt 가 있으면 끝난 것
     $meta = Join-Path $run 'run_meta.json'
@@ -69,7 +75,8 @@ try {
         }
     }
 
-    # 2. 다음 run
+    # 2. 다음 run — GPU 가 빌 때까지(다른 학습 · 이어 학습 래퍼의 업로드 평가 포함) 기다림. -Wait '' 로 띄워도 겹치지 않음
+    while (Test-GpuBusy) { Say "GPU 사용 중 — $PollMin 분 뒤 다시 봄" 'DarkGray'; Start-Sleep -Seconds ($PollMin * 60) }
     # 해시 테이블 스플랫(이름 있는 인자). -ForceSmoke: 시험 재사용 검사가 ExtraArgs(드롭아웃 등)를 안 봄
     $a2 = @{ Ckpt = $Ckpt; ExtraGin = @('XMobilityLoss.action_weight=30'); ForceSmoke = $true; Launch = $true }
     if ($Next -eq '6A') {
