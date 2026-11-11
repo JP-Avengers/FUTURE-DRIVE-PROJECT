@@ -20,13 +20,14 @@ SEED=0
 # 씬 · 지도(11.10) — 기본 r3. 다른 판: FD_SCENE=sim/scenes/parking/parking_v0.8_r2.usda FD_NAV2_MAP=$PWD/data/nav2/parking_v0.8_r2/map.yaml
 # FD_NAV2_LOC=gt — 정답 위치(AMCL 없음, nav2_route.py 의 AMCL 출발 확인도 건너뜀). 교사 녹화용(평가는 amcl)
 export FD_NAV2_LOC=${FD_NAV2_LOC:-amcl}
+# FD_NAV2_ARGS — nav2.launch.py 에 더 넘길 인자(예 "scan_min_h:=-0.20 scan_range_max:=15.0", 11.11)
 SCENE=${FD_SCENE:-sim/scenes/parking/parking_v0.4b_r3.usda}; NAVMAP=${FD_NAV2_MAP:-$PWD/data/nav2/parking_v0.4b_r3/map.yaml}
 ITEMS=("$@"); [ ${#ITEMS[@]} -eq 0 ] && ITEMS=(eval/scenarios/parking_r3_straight_*.yaml eval/scenarios/parking_r3_curve_*.yaml)
 start_scene() {   # $1 레이어 · $2 로그 이름 · $3 launch 시작 자세 인자
   tmux new-session -d -s fdsim "cd ~/Capstone_Design_1 && FD_LAYERS=$1 FD_LIDAR=1 FD_DOMAIN=43 FD_SCENE=$SCENE sim/run_proxy.sh headless"
   sleep 5
   for i in $(seq 1 40); do sleep 3; L=$(ls -t logs/run_proxy/headless_*.log | head -1); grep -q "PROXY_TIMELINE playing" "$L" 2>/dev/null && break; done
-  setsid ros2 launch sim/nav2/nav2.launch.py map:=$NAVMAP localization:=${FD_NAV2_LOC:-amcl} $3 "${NAVARG[@]}" > $D/launch_$2.log 2>&1 &
+  setsid ros2 launch sim/nav2/nav2.launch.py map:=$NAVMAP localization:=${FD_NAV2_LOC:-amcl} $3 ${FD_NAV2_ARGS:-} "${NAVARG[@]}" > $D/launch_$2.log 2>&1 &
   LP=$!
   for i in $(seq 1 60); do n=$(grep -c "Managed nodes are active" $D/launch_$2.log 2>/dev/null); [ "${n:-0}" -ge 3 ] && break; sleep 1; done
   sleep 3
