@@ -10,6 +10,9 @@ DL=~/Downloads
 AW30_V10=$DL/xm_ft_aw30_kaggle/xm_ft_v0.1_aw30_e10/eval_test/frames.csv      # aw30 v1.0 test(결정 1 기준)
 AW30_V14=$DL/xm_eval_kaggle_v7_xm_v3/eval_aw30_test                          # aw30 v1.4 test(장애물 0.18 · w_mae 0.082)
 V14=$DL/fd_d2/up/xm_v1_4                                                     # obstacle_diag --dataset(index/ 있는 곳)
+AW30_V15=$DL/xm_eval_kaggle_v15_base/eval_aw30_test                          # aw30 v1.5 test(build_v15.sh 평가 단계 출력)
+V15=$DL/fd_d3/up/xm_v1_5
+#   v1.5 run(E6): bash judge_home.sh xm_ft_v1.5_aw30_exec_e7 — 같은 판정을 v1.5 test 로
 export PYTHONIOENCODING=utf-8
 
 # home_after_train.ps1 와 같은 slug 규칙
@@ -50,12 +53,14 @@ assert m.get("prev_action_source") == "exec", f"prev_action_source = {m.get('pre
 es = m.get("exec_stats") or {}
 assert es.get("exec_ne_teacher_rows", 0) > 0, f"실행 ≠ 교사 행 0 — 옵션이 효과 없음: {es}"
 EOF
-    case "$RUN" in *v1.5*) echo "[주의] v1.5 run — home_after_train 가 v1.5 test 로 평가했으면 aw30(v1.4 test)과 표가 다름. v1.4 test 로 다시 평가한 frames 로 볼 것";; esac
-    python "$REPO/e2e/obstacle_diag.py" --dataset "$V14" aw30="$AW30_V14/frames.csv" "${RUN}=$FR" -o "$OUT/obstacle_diag.md"
-    python - "$AW30_V14/summary.json" "$OUT/eval_test_summary.json" "$RUN" "$OUT/judge.md" <<'EOF'
+    BASE=$AW30_V14; DSET=$V14; TV="v1.4"
+    case "$RUN" in *v1.5*) BASE=$AW30_V15; DSET=$V15; TV="v1.5"
+      [ -f "$BASE/summary.json" ] || { echo "aw30 v1.5 기준선 없음($BASE) — 먼저 build_v15.sh 의 평가 단계"; exit 1; };; esac
+    python "$REPO/e2e/obstacle_diag.py" --dataset "$DSET" aw30="$BASE/frames.csv" "${RUN}=$FR" -o "$OUT/obstacle_diag.md"
+    python - "$BASE/summary.json" "$OUT/eval_test_summary.json" "$RUN" "$OUT/judge.md" "$TV" <<'EOF'
 import json, sys
 a, b = (json.load(open(p, encoding="utf-8")) for p in sys.argv[1:3])
-run, out = sys.argv[3], sys.argv[4]
+run, out, tv = sys.argv[3], sys.argv[4], sys.argv[5]
 def g(s, *path):
     for k in path:
         s = (s or {}).get(k)
@@ -63,8 +68,10 @@ def g(s, *path):
 rows = [("전체 w_mae", ("overall", "w_mae"), "↓"), ("전체 ω 부호", ("overall", "w_sign_agree"), "↑"),
         ("자동 교사 w_mae", ("by_scenario", "r3_auto", "w_mae"), "↓ 유지"), ("Nav2 장애물 w_mae", ("by_scenario", "r3_nav2_obs", "w_mae"), "↓"),
         ("Nav2 장애물 ω 부호", ("by_scenario", "r3_nav2_obs", "w_sign_agree"), "↑"), ("장애물 1.5 m 안 w_mae", ("near_obstacle", "w_mae"), "↓"),
-        ("경로 ADE m", ("overall", "ade_m"), "↓")]
-L = [f"# {run} vs aw30 — v1.4 test 기본 평가(직전 예측 입력)\n", f"| 지표 | aw30 | {run} | 차 | 좋은 쪽 |", "|---|---|---|---|---|"]
+        ("경로 ADE m", ("overall", "ade_m"), "↓"),
+        ("v0.8 r3 자동 w_mae", ("by_scenario", "v08r3_auto", "w_mae"), "↓ (v1.5 만)"),
+        ("v0.8 r3 자동 ω 부호", ("by_scenario", "v08r3_auto", "w_sign_agree"), "↑ (v1.5 만)")]
+L = [f"# {run} vs aw30 — {tv} test 기본 평가(직전 예측 입력)\n", f"| 지표 | aw30 | {run} | 차 | 좋은 쪽 |", "|---|---|---|---|---|"]
 for name, path, good in rows:
     x, y = g(a, *path), g(b, *path)
     L.append(f"| {name} | {x:.4f} | {y:.4f} | {y - x:+.4f} | {good} |" if None not in (x, y) else f"| {name} | {x} | {y} | - | {good} |")
@@ -74,6 +81,6 @@ open(out, "w", encoding="utf-8").write("\n".join(L) + "\n")
 print("\n".join(L))
 EOF
     ;;
-  *) echo "모르는 run 이름 패턴 — E1(v0.1…pad) 또는 E4/E5(v1.4…exec) 만"; exit 2;;
+  *) echo "모르는 run 이름 패턴 — E1(v0.1…pad) 또는 E4 · E5 · E6(v1.4 · v1.5 …exec) 만"; exit 2;;
 esac
 echo "결과: $OUT"

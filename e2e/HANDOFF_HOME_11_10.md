@@ -97,3 +97,32 @@ $CK = "$HOME\Downloads\xm_pretrained_from_seed_try2\pretrained\x_mobility-nav2-s
 - 11.16: 기능 동결.
 - 11.20: 후보 ckpt 2–3개를 D에 전달(짧은 폐루프).
 - 11.23: 모델 동결.
+
+## 6. E4 다음 run (11.11 추가 — 노트북이 E1 · E4 판정 뒤 "6-A" 또는 "6-B" 로 알려 줌)
+
+11.14 부터는 Kaggle 과 같은 설정을 겹쳐 돌리지 않습니다(Kaggle 쪽은 `e2e/gen_kaggle_11_14.py`, `PLAN.md` 11.11 절).
+시험(40배치) 확인 항목은 2번과 같습니다(`exec_stats` 실행 ≠ 교사 > 0 · 배치 로그 '실행 ≠ 교사 N/8 칸' · `missing 0`), 끝나면 3번처럼 `home_after_train.ps1` 로 올리고 "E5 올림" · "E6 올림".
+
+```powershell
+cd C:\fd\FUTURE-DRIVE-PROJECT
+git pull
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+powercfg /change standby-timeout-ac 0
+$CK = "$HOME\Downloads\xm_pretrained_from_seed_try2\pretrained\x_mobility-nav2-semantic_action_path.ckpt"
+```
+
+**6-A. E5 = E4 + 직전 명령 드롭아웃 0.5 (v1.4)** — E1 에서 드롭아웃이 채택되면.
+```powershell
+.\e2e\setup_windows.ps1 -Data C:\fd\data\xm_v1_4 -Ckpt $CK -ExtraGin 'XMobilityLoss.action_weight=30' -ExtraArgs '--prev-action-source','exec','--prev-action-dropout','0.5','--save-top-k','3' -MaxEpochs 10 -HoursBudget 14
+```
+출력된 본 학습 명령에서 `-o` 만 `'C:\fd\FUTURE-DRIVE-PROJECT\data\checkpoints\xm_ft_v1.4_aw30_exec_pad05_e10'` 로 바꿔 실행. 올리기: `-Data C:\fd\data\xm_v1_4`.
+
+**6-B. E6 = v1.5 × E4 설정** — D 의 v0.8 r3 데이터로 노트북이 `dataset-08-xm-v1-5` 를 만든 뒤(노트북이 알려 줌).
+```powershell
+.\.venv-xm\Scripts\python.exe -m kaggle datasets download henryseo711/dataset-08-xm-v1-5 -p C:\fd\data --unzip
+dir C:\fd\data\xm_v1_5                                     # train · val · test · index 가 바로 보여야 함(한 단계 안쪽이면 -Data 를 그쪽으로)
+.\e2e\setup_windows.ps1 -Data C:\fd\data\xm_v1_5 -Ckpt $CK -ExtraGin 'XMobilityLoss.action_weight=30' -ExtraArgs '--prev-action-source','exec','--save-top-k','3' -MaxEpochs 7 -HoursBudget 16
+```
+- v1.5 train 은 96,989행(v1.4 의 1.4배). 에폭 수는 Kaggle 판과 같게 **7** — 출력된 본 학습 명령이 `--gin NUM_EPOCHS=7` 인지 확인(작게 나오면 `-HoursBudget` 을 올림, 시험 로그 `step_time_s` × `steps_per_epoch` × 7 로 시간 계산).
+- `-o 'C:\fd\FUTURE-DRIVE-PROJECT\data\checkpoints\xm_ft_v1.5_aw30_exec_e7'`. 올리기: `-Data C:\fd\data\xm_v1_5`.
+- 시험에서 v0.8 r3 파일(`v08r3_auto`)도 `exec_command` 를 읽는지 = `exec_stats` 의 train 행이 96,989 근처인지.
