@@ -40,9 +40,11 @@ function Test-Training([string]$name) {
       Where-Object { $_.CommandLine -like '*finetune.py*' -or ($name -and $_.CommandLine -like "*$name*") }).Count -gt 0
     return ($byName -or (Test-GpuBusy))
 }
-function Test-GpuBusy {   # nvidia-smi 에 계산 프로세스가 하나라도 있으면 바쁨(다음 run 을 겹쳐 띄우지 않게)
-    $apps = & nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>$null
-    return (@($apps | Where-Object { "$_".Trim() }).Count -gt 0)
+function Test-GpuBusy {   # GPU 계산 프로세스 중 python 이 하나라도 있으면 바쁨(다음 run 을 겹쳐 띄우지 않게)
+    # Windows(WDDM)는 --query-compute-apps 에 탐색기 · Edge 같은 C+G 데스크톱 앱이 늘 나옴 → 아무거나 세면 영원히 '바쁨'
+    # (11.11 집 PC: E4 가 끝난 뒤 1 시간 넘게 E5 가 안 뜸). 학습 · 평가는 python 이므로 이름으로 거름
+    $apps = & nvidia-smi --query-compute-apps=pid,process_name --format=csv,noheader 2>$null
+    return (@($apps | Where-Object { "$_" -match 'pythonw?(\.exe)?\s*$' }).Count -gt 0)
 }
 function Test-Done([string]$run) {   # best ckpt 또는 last.ckpt 가 있으면 끝난 것
     $meta = Join-Path $run 'run_meta.json'
