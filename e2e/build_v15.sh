@@ -9,8 +9,8 @@
 set -uo pipefail
 [ $# -ge 1 ] || { echo "D 의 v0.8 r3 zip 경로(1–2개)"; exit 2; }
 REPO=$(cd "$(dirname "$0")/.." && pwd)
-DL=$HOME/Downloads; W=$DL/fd_d3; UP=$W/up; mkdir -p "$W" "$UP"
-V14=$(cygpath -m "$DL/fd_d2/up/xm_v1_4")
+DL=${DL:-$HOME/Downloads}; W=${W:-$DL/fd_d3}; UP=$W/up; mkdir -p "$W" "$UP"   # 집 PC: W=/c/fd/data/fd_d3 V14=/c/fd/data/xm_v1_4
+V14=$(cygpath -m "${V14:-$DL/fd_d2/up/xm_v1_4}")
 DS=henryseo711/dataset-08-xm-v1-5
 KDIR=$DL/kaggle_runs_11_14/eval_v15_base
 OUT=$DL/xm_eval_kaggle_v15_base
