@@ -613,7 +613,9 @@ try {
         # 사람이 보던 시험 확인 3가지를 대신 함 — 하나라도 걸리면 본 학습을 띄우지 않음
         if (-not (Test-Path -LiteralPath $smokeMeta)) { Stop-Setup '-Launch: 시험 결과(run_meta.json) 없음' }
         $sj = Get-Content -LiteralPath $smokeMeta -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ("$($sj.missing)" -ne '0') { Stop-Setup ('-Launch: missing 키 {0} — gin 설정 확인' -f $sj.missing) }
+        # finetune.py run_meta.json 은 keys.missing(목록)에 적음 — 맨 위 missing 은 없어서 예전 식은 늘 '' ≠ '0' 으로 멈췄음(11.11 집 PC)
+        $missing = if ($null -eq $sj.keys) { @() } else { @($sj.keys.missing | Where-Object { $_ }) }
+        if ($missing.Count -ne 0) { Stop-Setup ('-Launch: missing 키 {0}개(예: {1}) — gin 설정 확인' -f $missing.Count, $missing[0]) }
         $iSrc = [array]::IndexOf([string[]]$ExtraArgs, '--prev-action-source')
         if ($iSrc -ge 0 -and $ExtraArgs[$iSrc + 1] -eq 'exec') {
             $es = $sj.exec_stats
