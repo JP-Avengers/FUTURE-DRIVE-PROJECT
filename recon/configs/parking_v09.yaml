@@ -45,7 +45,20 @@ edge:
     conf_map: floor_height.npz         # 위와 같은 섬 범위에서 스캔 조각을 지움 (r3 와 같게 — 섬 메우기가 꺼져 조각이 남았음, 11.11 첫 빌드)
     measured_conf: [1, 2, 3]
     margin_m: 1.0                      # conf 구멍은 이미 차량이 못 본 범위 전체라 3 m 까지 넓히지 않음
+  show_curb: false                     # 만든 연석 · 인도 띠는 보이지 않게 (사용자 결정 11.11 — 도로가 끝나는 테두리가 인위적). 충돌 메쉬에는 그대로 (경계 · Nav2 지도는 r3 와 같음)
+  show_sidewalk: false
+  perimeter:                           # 둘레 스캔 (B v0.5g 손 촬영 실험층, 지역마다 0.2~3 m 어긋남) — 연석 밖의 바닥 수준 면만 보이는 메쉬로 (Perimeter prim, 충돌 없음)
+    mesh: hand_perimeter_nr3_EXPERIMENTAL.ply
+    max_h_m: 0.22                      # 바닥 지도 높이 + 이 아래만 (도로 · 주차장 · 보도 바닥). 라이다 높이 띠(약 0.23 m~) 아래 — 지도에 없는 형상이 라이다에 안 잡히게
+    below_m: 0.3
+    min_nz: 0.75                       # 위를 향한 면만 (턱 옆면 · 벽 · 깨진 조각 뺌)
+    open_m: 0.3                        # 가장자리 들쭉날쭉한 띠를 이만큼 깎음
+    min_area_m2: 2.0                   # 이보다 작은 떨어진 조각은 버림
 
 cars:
   models:
+    drop_xy:                           # 한 줄로 빽빽한 두 줄은 차를 놓지 않음 (사용자 결정 11.11 — 상자 차가 벽처럼 보임). 스캔 차는 그대로 지워져 빈 주차칸이 됨
+      - [-33.0, -6.0, 12.0, 21.0]      # 북쪽 줄 10대
+      - [0.5, 12.0, -14.5, 13.0]       # 동쪽 줄 10대
+    manual_file: parking_v09_cars.json # 손으로 놓은 차 (recon/tools/car_editor.py 화면에서 저장한 파일, recon/configs 기준). 있으면 그대로 놓음 — 없으면 아래 자동 자리
     arrange: true                      # 차를 가지런히 (cars.arrange): 주차칸에 든 차는 칸 가운데 · 칸 방향, 나머지는 이웃끼리 같은 방향 · 간격, 긴 주차선 옆 차는 선에 직각

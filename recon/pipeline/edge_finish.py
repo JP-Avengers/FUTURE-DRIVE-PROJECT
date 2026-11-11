@@ -156,7 +156,7 @@ def _cut(mesh, keep_tri):
     return out
 
 
-def run(cfg, root, visuals, colliders, ground):
+def run(cfg, root, visuals, colliders, ground, T=None):
     """visuals · colliders 를 고쳐 씀 (Floor · Visual 자르기, Curb · Sidewalk · Grass · Trees 더하기, 충돌에 연석 · 인도 · 줄기).
     → (재질 dict {부분: 텍스처 dict}, 통계)"""
     e = cfg["edge"]
@@ -289,7 +289,51 @@ def run(cfg, root, visuals, colliders, ground):
     for m_, col in ((curb, [0.62, 0.62, 0.6]), (sidewalk, [0.55, 0.55, 0.53]), (grass, [0.25, 0.33, 0.17]), (island_mesh, [0.25, 0.33, 0.17])):
         if len(m_.triangles):
             m_.paint_uniform_color(col)                                # 텍스처를 못 읽을 때 대신 보이는 색
-    visuals.update(Curb=curb, Sidewalk=sidewalk)
+    # 3a) 둘레 스캔 (v0.9, 11.11 — B v0.5g 손 촬영 둘레 실험층): 연석 밖의 '바닥 수준' 면만 보이는 메쉬로 (Perimeter prim, 충돌 없음).
+    #     남기는 것 = 위를 향한 면(min_nz) 중 바닥 지도 높이 −below_m ~ +max_h_m. 솟은 것(화단 턱 · 벽 · 차 · 사람)과 깨진 가장자리(open_m 로 깎음) · 작은 조각은 버림.
+    #     max_h_m 은 라이다 높이 띠(바닥 위 약 0.23 m~) 아래로 — 지도(Collision)에 없는 형상을 라이다가 보면 AMCL 이 틀어짐.
+    #     위치는 지역마다 0.2~3 m 어긋나 있음 (B README) — 배경용. 둘레 스캔이 덮는 자리의 만든 인도는 보이는 메쉬에서 뺌 (충돌은 그대로)
+    sidewalk_vis = sidewalk
+    pm = e.get("perimeter")
+    if pm and os.path.exists(os.path.join(root, pm["mesh"])):
+        pmesh = o3d.io.read_triangle_mesh(os.path.join(root, pm["mesh"]))
+        pv = np.asarray(pmesh.vertices).copy()
+        if T is not None:
+            pv = pv @ np.asarray(T)[:3, :3].T + np.asarray(T)[:3, 3]
+        pmesh.vertices = o3d.utility.Vector3dVector(pv)
+        pmesh.compute_triangle_normals()
+        ptri = np.asarray(pmesh.triangles)
+        pc = pv[ptri].mean(1)
+        ph = pc[:, 2] - ground.height(pc[:, :2])
+        keep = (np.asarray(pmesh.triangle_normals)[:, 2] > pm.get("min_nz", 0.75)) & (ph > -pm.get("below_m", 0.3)) & (ph < pm.get("max_h_m", 0.22)) \
+            & (d_out(pc[:, :2]) > top_w)
+        cov = np.zeros(mask.shape, bool)
+        ij = np.clip(((pc[keep, :2] - lo) / cell).astype(int), 0, shape - 1)
+        cov[ij[:, 0], ij[:, 1]] = True
+        cov = ndimage.binary_opening(ndimage.binary_closing(cov, iterations=2), iterations=max(1, int(pm.get("open_m", 0.3) / cell)))
+        lab, nlab = ndimage.label(cov)
+        if nlab:
+            cov = np.isin(lab, 1 + np.nonzero(ndimage.sum(cov, lab, range(1, nlab + 1)) * cell * cell >= pm.get("min_area_m2", 2.0))[0])
+        keep &= look(cov, pc[:, :2])
+        perim = _cut(pmesh, keep)
+        if len(perim.triangles):
+            if perim.has_vertex_colors() and floor.has_vertex_colors() and pm.get("match_floor", True):   # 다른 날 · 다른 카메라 → 전체 밝기만 바닥에 맞춤
+                pcol = np.asarray(perim.vertex_colors)
+                fl_ = float(np.median(np.asarray(floor.vertex_colors)[::20].mean(1)))
+                gain = float(np.clip(fl_ / max(float(np.median(pcol.mean(1))), 1e-3), 0.6, 1.6))
+                perim.vertex_colors = o3d.utility.Vector3dVector(np.clip(pcol * gain, 0, 1))
+                st["perimeter_gain"] = round(gain, 2)
+            perim.compute_vertex_normals()
+            visuals["Perimeter"] = perim
+            sidewalk_vis = grid_mesh(side_sel & ~ndimage.binary_dilation(cov, iterations=2), lo, cell, lambda xy: ground.height(xy) + h - 0.003)
+            sidewalk_vis.paint_uniform_color([0.55, 0.55, 0.53])
+        st.update(perimeter_tris=len(perim.triangles), perimeter_m2=round(float(cov.sum()) * cell * cell, 1),
+                  perimeter_src_tris=len(ptri), perimeter_max_h_m=pm.get("max_h_m", 0.22))
+    run.curb = curb                    # 숨겨도 차 모델 자리 정할 때는 연석을 피함 (build_usd)
+    if e.get("show_curb", True):       # false = 연석 · 인도를 보이는 메쉬에서 뺌 (v0.9, 11.11 — 만든 테두리가 인위적). 충돌에는 그대로 둠 (Nav2 지도 · 경계는 r3 와 같게)
+        visuals["Curb"] = curb
+    if e.get("show_sidewalk", True):
+        visuals["Sidewalk"] = sidewalk_vis
     if len(grass.triangles):
         visuals["Grass"] = grass
     if len(island_mesh.triangles):

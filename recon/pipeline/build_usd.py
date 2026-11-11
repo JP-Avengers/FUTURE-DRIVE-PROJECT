@@ -129,10 +129,80 @@ def path_ground(cfg, cams, h):
     return pg
 
 
+STAGE_KEYS = ("name", "input", "geometry", "cleanup", "orient", "transients", "ground", "fill", "single_floor", "colorize")   # 앞 단계가 읽는 설정
+
+
+def _stage_key(cfg, mesh_path):
+    """앞 단계 결과를 다시 써도 되는지 가르는 열쇠: 그 단계 설정 + 입력 파일(크기 · 고친 시각) + 그 단계 코드."""
+    import hashlib
+    here = os.path.dirname(os.path.abspath(__file__))
+    h = hashlib.sha1(json.dumps({k: cfg.get(k) for k in STAGE_KEYS}, sort_keys=True, default=str).encode())
+    files = [mesh_path]
+    root = os.path.expanduser(cfg["input"].get("root", "."))
+    for inp in [cfg["input"]] + [e_["input"] for e_ in (cfg.get("colorize") or {}).get("extra_inputs", [])]:
+        r_ = os.path.expanduser(inp.get("root", root))
+        files += [os.path.join(r_, inp[k]) for k in ("poses", "keyframes") if inp.get(k)]
+    gm = (cfg.get("single_floor") or {}).get("ground_map")
+    if gm:
+        files.append(os.path.join(root, gm))
+    for f_ in files:
+        if os.path.exists(f_):
+            st_ = os.stat(f_)
+            h.update(f"{f_}|{st_.st_size}|{int(st_.st_mtime)}".encode())
+    for mod in ("mesh_utils.py", "color_utils.py", "io_rgbd.py"):
+        h.update(open(os.path.join(here, mod), "rb").read())
+    src = open(os.path.abspath(__file__), encoding="utf-8").read()               # 이 파일은 앞 단계 부분만 (뒤 단계를 고쳐도 열쇠가 안 바뀌게)
+    i0, i1 = src.find("        raw = o3d.io.read_triangle_mesh(mesh_path)"), src.find("        stage_save(cfg, out, mesh_path")
+    h.update(src[i0:i1].encode())
+    for fn in (cleanup, find_floor, orient, make_ground, path_ground, colorize, fill_path_xy, extra_sources):
+        import inspect
+        h.update(inspect.getsource(fn).encode())
+    return h.hexdigest()
+
+
+def _mesh_arrays(m):
+    return None if m is None else dict(v=np.asarray(m.vertices), t=np.asarray(m.triangles), c=np.asarray(m.vertex_colors), n=np.asarray(m.vertex_normals))
+
+
+def _mesh_from(a):
+    if a is None:
+        return None
+    m = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(a["v"]), o3d.utility.Vector3iVector(a["t"]))
+    if len(a["c"]):
+        m.vertex_colors = o3d.utility.Vector3dVector(a["c"])
+    if len(a["n"]):
+        m.vertex_normals = o3d.utility.Vector3dVector(a["n"])
+    return m
+
+
+def stage_save(cfg, out, mesh_path, st):
+    import pickle
+    d = os.path.join(out, "stage_color")
+    os.makedirs(d, exist_ok=True)
+    t0 = time.time()
+    data = dict(st, **{k: _mesh_arrays(st[k]) for k in ("scene", "objects", "floor_col")})
+    pickle.dump(data, open(os.path.join(d, "stage.pkl"), "wb"), protocol=4)
+    open(os.path.join(d, "key.txt"), "w").write(_stage_key(cfg, mesh_path))     # 열쇠는 다 쓴 뒤에 (쓰다 끊기면 다시 안 씀)
+    print(f"      앞 단계 저장: {d} ({os.path.getsize(os.path.join(d, 'stage.pkl')) / 1e6:.0f} MB · {time.time() - t0:.0f}s)")
+
+
+def stage_load(cfg, out, mesh_path):
+    import pickle
+    d = os.path.join(out, "stage_color")
+    kp, pp = os.path.join(d, "key.txt"), os.path.join(d, "stage.pkl")
+    if not (os.path.exists(kp) and os.path.exists(pp)) or open(kp).read().strip() != _stage_key(cfg, mesh_path):
+        return None
+    st = pickle.load(open(pp, "rb"))
+    for k in ("scene", "objects", "floor_col"):
+        st[k] = _mesh_from(st[k])
+    return st
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", required=True)
     ap.add_argument("--out", help="결과 폴더 (기본: config 의 out). geometry 가 없으면 tsdf.py 출력 폴더")
+    ap.add_argument("--no-stage-cache", action="store_true", help="앞 단계(불러오기 ~ 색 투영) 저장 결과를 쓰지 않고 처음부터")
     args = ap.parse_args()
 
     cfg = config.load(args.config)
@@ -152,134 +222,146 @@ def main():
     outdoor = "ground" in cfg
     fr = io_rgbd.load(cfg["input"]) if outdoor or "colorize" in cfg else None
 
-    raw = o3d.io.read_triangle_mesh(mesh_path)
-    raw.compute_vertex_normals()
-    print(f"[1/8] 불러오기: 삼각형 {len(raw.triangles):,}")
+    # ── 앞 단계 저장 (11.11): 불러오기 ~ 색 투영(1~4단계 + 색, 약 4~5분)은 입력 · 그 단계 설정이 같으면 결과가 같음 →
+    #    <out>/stage_color/ 에 저장해 두고 다시 씀. 바닥 텍스처 마무리 · 차 · 테두리 · USD 만 고쳐 볼 때 빠름. --no-stage-cache 로 끔
+    stage = None if args.no_stage_cache else stage_load(cfg, out, mesh_path)
+    if stage is not None:
+        scene, objects, floor_col, ground, T, poses, n_floor_tris = (stage[k] for k in ("scene", "objects", "floor_col", "ground", "T", "poses", "n_floor_tris"))
+        report.update(stage["report"])
+        car_scan_xy, sf = None, cfg.get("single_floor")
+        print(f"[1~4/8] 앞 단계(불러오기 ~ 색 투영): 저장된 결과 다시 씀 (stage_color/) · 삼각형 {len(scene.triangles):,}")
+    else:
+        stage_report0 = set(report)
+        raw = o3d.io.read_triangle_mesh(mesh_path)
+        raw.compute_vertex_normals()
+        print(f"[1/8] 불러오기: 삼각형 {len(raw.triangles):,}")
 
-    raw_v = np.asarray(raw.vertices).copy()   # 정리 전 정점 — 바닥 한 장을 깔 '스캔이 찍은 범위'에 씀 (아래)
-    clean, report["cleanup"] = cleanup(raw, cfg["cleanup"]["min_cluster_tris"])
-    del raw
-    print(f"[2/8] 정리: 조각 {report['cleanup']['small_clusters']:,}개 · 삼각형 {report['cleanup']['removed_tris']:,}개 삭제")
+        raw_v = np.asarray(raw.vertices).copy()   # 정리 전 정점 — 바닥 한 장을 깔 '스캔이 찍은 범위'에 씀 (아래)
+        clean, report["cleanup"] = cleanup(raw, cfg["cleanup"]["min_cluster_tris"])
+        del raw
+        print(f"[2/8] 정리: 조각 {report['cleanup']['small_clusters']:,}개 · 삼각형 {report['cleanup']['removed_tris']:,}개 삭제")
 
-    hint = cfg["orient"]["up_hint"]
-    up = np.array(report["tsdf"]["up_hint_camera"] if hint == "camera" else hint, dtype=float)
-    scene, T, report["orient"] = orient(clean, up / np.linalg.norm(up), cfg["orient"], crop=not outdoor)
-    del clean
-    json.dump(dict(source=mesh_path, T_input_to_scene=T.tolist(), orient=cfg["orient"]),
-              open(os.path.join(out, "transform.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    poses = [T @ P for P in fr.poses] if fr else None              # 카메라 경로도 같은 씬 좌표로
-    ground = scan_xy = None
-    if outdoor:       # 바닥이 평평하지 않음 → 바닥 높이 지도. 바닥 아래 잡음은 그 높이 기준으로 잘라냄
-        ground = make_ground(cfg, scene, poses)
-        # 바닥 높이 0 을 '주행 경로 아래 바닥 중앙값'으로 다시 맞춤 — RANSAC 은 실행마다 1~2 cm 달라져 씬 z 가 흔들림
-        dz = float(np.median(ground.height(np.array([P[:2, 3] for P in poses]))))
-        scene.translate((0.0, 0.0, -dz))
-        T[2, 3] -= dz
-        ground.grid = ground.grid - dz
-        poses = [T @ P for P in fr.poses]
-        json.dump(dict(source=mesh_path, T_input_to_scene=T.tolist(), orient=cfg["orient"], floor_zero="주행 경로 아래 바닥 중앙값 = 0"),
+        hint = cfg["orient"]["up_hint"]
+        up = np.array(report["tsdf"]["up_hint_camera"] if hint == "camera" else hint, dtype=float)
+        scene, T, report["orient"] = orient(clean, up / np.linalg.norm(up), cfg["orient"], crop=not outdoor)
+        del clean
+        json.dump(dict(source=mesh_path, T_input_to_scene=T.tolist(), orient=cfg["orient"]),
                   open(os.path.join(out, "transform.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-        # 스캔이 바닥을 찍은 범위 = 정리·자르기 전 정점 중 바닥 높이 + 0.5 m 아래. 북쪽 주차장은 바닥이 두 겹(0 · −40 cm)이고
-        # 원본 삼각형 절반 넘게가 500개 미만 작은 조각이라, 정리·자르기 뒤 정점만으로는 범위에서 빠져 바닥 판이 안 깔렸음 (r3)
-        rv = raw_v @ T[:3, :3].T + T[:3, 3]
-        scan_xy = rv[rv[:, 2] < ground.height(rv[:, :2]) + 0.5, :2]
-        del raw_v, rv
-        v = np.asarray(scene.vertices)
-        below = v[:, 2] < ground.height(v[:, :2]) - cfg["orient"]["crop_below_floor"]
-        scene.remove_vertices_by_mask(below)
-        scene.compute_vertex_normals()
-        ground.save(os.path.join(out, "ground.npz"))
-        report["ground"] = dict(**ground.stats, cropped_below_vertices=int(below.sum()))
-    print(f"[3/8] Z-up: 범위 {report['orient']['extent_m']} m | 바닥 기울기 {report['orient']['floor_tilt_from_hint_deg']}°"
-          + (f" | 카메라 높이 {report['ground']['camera_height_m']} m · 바닥 아래 잡음 정점 {report['ground']['cropped_below_vertices']:,} 삭제"
-             if outdoor else f" | 바닥 정점 {report['orient']['floor_vertex_pct']}%"))
+        poses = [T @ P for P in fr.poses] if fr else None              # 카메라 경로도 같은 씬 좌표로
+        ground = scan_xy = None
+        if outdoor:       # 바닥이 평평하지 않음 → 바닥 높이 지도. 바닥 아래 잡음은 그 높이 기준으로 잘라냄
+            ground = make_ground(cfg, scene, poses)
+            # 바닥 높이 0 을 '주행 경로 아래 바닥 중앙값'으로 다시 맞춤 — RANSAC 은 실행마다 1~2 cm 달라져 씬 z 가 흔들림
+            dz = float(np.median(ground.height(np.array([P[:2, 3] for P in poses]))))
+            scene.translate((0.0, 0.0, -dz))
+            T[2, 3] -= dz
+            ground.grid = ground.grid - dz
+            poses = [T @ P for P in fr.poses]
+            json.dump(dict(source=mesh_path, T_input_to_scene=T.tolist(), orient=cfg["orient"], floor_zero="주행 경로 아래 바닥 중앙값 = 0"),
+                      open(os.path.join(out, "transform.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            # 스캔이 바닥을 찍은 범위 = 정리·자르기 전 정점 중 바닥 높이 + 0.5 m 아래. 북쪽 주차장은 바닥이 두 겹(0 · −40 cm)이고
+            # 원본 삼각형 절반 넘게가 500개 미만 작은 조각이라, 정리·자르기 뒤 정점만으로는 범위에서 빠져 바닥 판이 안 깔렸음 (r3)
+            rv = raw_v @ T[:3, :3].T + T[:3, 3]
+            scan_xy = rv[rv[:, 2] < ground.height(rv[:, :2]) + 0.5, :2]
+            del raw_v, rv
+            v = np.asarray(scene.vertices)
+            below = v[:, 2] < ground.height(v[:, :2]) - cfg["orient"]["crop_below_floor"]
+            scene.remove_vertices_by_mask(below)
+            scene.compute_vertex_normals()
+            ground.save(os.path.join(out, "ground.npz"))
+            report["ground"] = dict(**ground.stats, cropped_below_vertices=int(below.sum()))
+        print(f"[3/8] Z-up: 범위 {report['orient']['extent_m']} m | 바닥 기울기 {report['orient']['floor_tilt_from_hint_deg']}°"
+              + (f" | 카메라 높이 {report['ground']['camera_height_m']} m · 바닥 아래 잡음 정점 {report['ground']['cropped_below_vertices']:,} 삭제"
+                 if outdoor else f" | 바닥 정점 {report['orient']['floor_vertex_pct']}%"))
 
-    if cfg.get("transients") and fr is not None:   # 지나간 사람·차 잔상 지우기 (메우기 전에 — 지운 자리 바닥은 아래에서 채움)
-        sets = [(fr, poses)] + [(f2, [T @ P for P in f2.poses]) for f2 in (io_rgbd.load(inp) for _, inp, _ in extra_sources(cfg))]
-        gone, report["transients"] = seen_through(scene, sets, cfg["transients"])
-        removed = o3d.geometry.TriangleMesh(scene.vertices, o3d.utility.Vector3iVector(np.asarray(scene.triangles)[gone]))
-        removed.remove_unreferenced_vertices()
-        o3d.io.write_triangle_mesh(os.path.join(out, "transients_removed.ply"), removed)   # 지운 부분 (확인용)
-        scene.remove_triangles_by_mask(gone)
-        scene.remove_unreferenced_vertices()
-        scene, _ = cleanup(scene, cfg["cleanup"]["min_cluster_tris"])
-        print(f"      잔상 지우기: 키프레임 {report['transients']['frames']}장 광선 → 삼각형 {report['transients']['triangles_removed']:,}개 삭제")
+        if cfg.get("transients") and fr is not None:   # 지나간 사람·차 잔상 지우기 (메우기 전에 — 지운 자리 바닥은 아래에서 채움)
+            sets = [(fr, poses)] + [(f2, [T @ P for P in f2.poses]) for f2 in (io_rgbd.load(inp) for _, inp, _ in extra_sources(cfg))]
+            gone, report["transients"] = seen_through(scene, sets, cfg["transients"])
+            removed = o3d.geometry.TriangleMesh(scene.vertices, o3d.utility.Vector3iVector(np.asarray(scene.triangles)[gone]))
+            removed.remove_unreferenced_vertices()
+            o3d.io.write_triangle_mesh(os.path.join(out, "transients_removed.ply"), removed)   # 지운 부분 (확인용)
+            scene.remove_triangles_by_mask(gone)
+            scene.remove_unreferenced_vertices()
+            scene, _ = cleanup(scene, cfg["cleanup"]["min_cluster_tris"])
+            print(f"      잔상 지우기: 키프레임 {report['transients']['frames']}장 광선 → 삼각형 {report['transients']['triangles_removed']:,}개 삭제")
 
-    f = cfg.get("fill", {})
-    report["fill"] = {}
-    sf = cfg.get("single_floor")
-    floor_col = objects = car_scan_xy = None
-    n_floor_tris = 0                  # 바닥 한 장 삼각형 수 — scene = 바닥 + 물체 순서라 앞쪽 n 개가 바닥 (바닥 텍스처에서 나눔)
-    if sf and ground is not None:     # 바닥 한 장: 스캔의 바닥 층(여러 날 조각이 겹침)을 빼고, 바닥 높이 지도로 매끈한 한 장을 새로 깜
-        paths = fill_path_xy(cfg, poses, T)
-        cams = np.array([P[:3, 3] for P in poses])
-        if sf.get("ground_map"):      # 받은 바닥 높이 지도 (B v0.5~: 본네트 여러 회차로 만든 것, 차로는 B 가 이미 다듬음)
-            ground = Ground.from_map(os.path.join(os.path.expanduser(cfg["input"]["root"]), sf["ground_map"]), T)
-        else:                         # 스캔 메쉬에서 뽑음 — 칸마다 바닥 정점이 3개 이상 있어야 해서 5 cm 안팎 메쉬에 맞음
-            ground = Ground.from_mesh(scene, path_ground(cfg, cams, report["ground"]["camera_height_m"]), sf["cell_m"],
-                                      cfg["ground"]["band_m"]).smoothed(sf.get("smooth", 3))
-            if sf.get("road_smooth_m"):   # 주행 통로 노면은 넓게 다듬음 (겹친 바닥 때문에 생기는 계단 없애기)
-                ground = ground.smoothed_near(paths, sf["road_smooth_m"])
-        ground.save(os.path.join(out, "ground.npz"))
-        v = np.asarray(scene.vertices)
-        on_floor = np.abs(v[:, 2] - ground.height(v[:, :2])) < sf["band_m"]
-        objects, report["single_floor"] = split_floor(scene, ground, sf["band_m"], sf["debris_h_m"], sf["debris_extent_m"],
-                                                      paths, sf["corridor_m"], sf["corridor_h_m"], sf.get("flat_h_m", 0.0))
-        if f.get("small_hole_size_m", 0) > 0:
-            objects, report["fill"]["small_hole_tris_added"] = fill_small_holes(objects, f["small_hole_size_m"])
-        # 바닥을 깔 범위: 스캔이 덮는 범위 중 (실제 바닥이 찍힌 곳 근처) 또는 (주행 경로에서 max_path_dist_m 안)
-        # 스캔 범위는 정리·자르기 전 바닥 근처 정점(scan_xy)으로 — r3 북쪽 주차장 차로 바닥 구멍의 원인 (위 [3/8] 참고)
-        fp = Footprint(scan_xy if scan_xy is not None else scene, sf["mesh_cell_m"])
-        cen = fp.lo + (np.argwhere(fp.grid) + 0.5) * fp.cell
-        seen_floor = np.zeros(fp.grid.shape, bool)
-        ij = fp.index(v[on_floor, :2])
-        ok = (ij >= 0).all(1) & (ij < fp.grid.shape).all(1)
-        seen_floor[ij[ok, 0], ij[ok, 1]] = True
-        from scipy import ndimage
-        seen_floor = ndimage.binary_dilation(seen_floor, iterations=3)
-        near = cKDTree(paths).query(cen)[0] <= f.get("max_path_dist_m", np.inf)
-        keep = seen_floor[fp.grid] | near
-        idx = np.argwhere(fp.grid)
-        fp.grid[:] = False
-        fp.grid[idx[keep, 0], idx[keep, 1]] = True
-        floor_vis = fp.plane(0.0, ground=ground)
-        # 충돌 바닥 = 스캔 범위 ∪ 보이는 바닥 범위, 1 m 넓게 (보이는 바닥이 스캔 정점보다 넓게 깔린 곳도 덮게)
-        col_xy = np.vstack([np.asarray(scene.vertices)[:, :2], np.asarray(floor_vis.vertices)[:, :2]])
-        floor_col = Footprint(col_xy, sf["collision_cell_m"], margin=sf["collision_margin_m"]).plane(0.0, ground=ground)
-        if sf.get("collision_floor_min_tris"):   # 범위 가장자리에서 떨어져 나온 바닥 섬 (연석 단차 위아래에 걸리면 '바닥 위 납작한 조각')
-            floor_col, st = cleanup(floor_col, sf["collision_floor_min_tris"])
-            report["single_floor"]["collision_floor_islands_removed"] = st["small_clusters"]
-        report["fill"]["floor_area_m2"] = round(fp.area(), 1)
-        report["single_floor"].update(floor_tris=len(floor_vis.triangles), collision_floor_tris=len(floor_col.triangles))
-        o3d.io.write_triangle_mesh(os.path.join(out, "floor.ply"), floor_vis)
-        n_floor_tris = len(floor_vis.triangles)
-        if objects.has_vertex_colors() and not floor_vis.has_vertex_colors():   # colorize 를 안 쓰면 (TSDF 색 메쉬) 새 바닥에 색이 없음
-            floor_vis.vertex_colors = o3d.utility.Vector3dVector(          # → 합칠 때 물체 색까지 사라지므로 스캔 바닥 색을 옮김
-                floor_colors([scene], np.asarray(floor_vis.vertices), sf["band_m"] + 0.02, ground))
-        scene = floor_vis + objects
-        scene.compute_vertex_normals()
-        sfr = report["single_floor"]
-        print(f"      바닥 한 장: 스캔 바닥 삼각형 {sfr['floor_tris_removed']:,} 빼고 높이 지도 바닥 {sfr['floor_tris']:,} 삼각형"
-              f" | 바닥 부스러기 {sfr['debris_pieces']}조각 · 주행 통로 덩어리 {sfr['corridor_pieces']}조각 삭제")
-    elif f.get("small_hole_size_m", 0) > 0:
-        scene, report["fill"]["small_hole_tris_added"] = fill_small_holes(scene, f["small_hole_size_m"])
-    if f.get("floor_patch", False) and not sf:
-        patch, report["fill"]["floor_cells"] = floor_patch(scene, f["floor_cell_m"], f["floor_band_m"], ground=ground,
-                                                         min_floor_verts=f.get("min_floor_verts", 3),
-                                                         path_xy=fill_path_xy(cfg, poses, T),
-                                                         max_path_dist=f.get("max_path_dist_m"))
-        report["fill"]["floor_area_m2"] = round(report["fill"]["floor_cells"] * f["floor_cell_m"] ** 2, 2)
-        scene = scene + patch
-        o3d.io.write_triangle_mesh(os.path.join(out, "floor_patch.ply"), patch)
-    print(f"[4/8] 구멍 메우기: 작은 구멍 삼각형 +{report['fill'].get('small_hole_tris_added', 0):,}"
-          f" | 바닥 채움 {report['fill'].get('floor_area_m2', 0)} m²")
+        f = cfg.get("fill", {})
+        report["fill"] = {}
+        sf = cfg.get("single_floor")
+        floor_col = objects = car_scan_xy = None
+        n_floor_tris = 0                  # 바닥 한 장 삼각형 수 — scene = 바닥 + 물체 순서라 앞쪽 n 개가 바닥 (바닥 텍스처에서 나눔)
+        if sf and ground is not None:     # 바닥 한 장: 스캔의 바닥 층(여러 날 조각이 겹침)을 빼고, 바닥 높이 지도로 매끈한 한 장을 새로 깜
+            paths = fill_path_xy(cfg, poses, T)
+            cams = np.array([P[:3, 3] for P in poses])
+            if sf.get("ground_map"):      # 받은 바닥 높이 지도 (B v0.5~: 본네트 여러 회차로 만든 것, 차로는 B 가 이미 다듬음)
+                ground = Ground.from_map(os.path.join(os.path.expanduser(cfg["input"]["root"]), sf["ground_map"]), T)
+            else:                         # 스캔 메쉬에서 뽑음 — 칸마다 바닥 정점이 3개 이상 있어야 해서 5 cm 안팎 메쉬에 맞음
+                ground = Ground.from_mesh(scene, path_ground(cfg, cams, report["ground"]["camera_height_m"]), sf["cell_m"],
+                                          cfg["ground"]["band_m"]).smoothed(sf.get("smooth", 3))
+                if sf.get("road_smooth_m"):   # 주행 통로 노면은 넓게 다듬음 (겹친 바닥 때문에 생기는 계단 없애기)
+                    ground = ground.smoothed_near(paths, sf["road_smooth_m"])
+            ground.save(os.path.join(out, "ground.npz"))
+            v = np.asarray(scene.vertices)
+            on_floor = np.abs(v[:, 2] - ground.height(v[:, :2])) < sf["band_m"]
+            objects, report["single_floor"] = split_floor(scene, ground, sf["band_m"], sf["debris_h_m"], sf["debris_extent_m"],
+                                                          paths, sf["corridor_m"], sf["corridor_h_m"], sf.get("flat_h_m", 0.0))
+            if f.get("small_hole_size_m", 0) > 0:
+                objects, report["fill"]["small_hole_tris_added"] = fill_small_holes(objects, f["small_hole_size_m"])
+            # 바닥을 깔 범위: 스캔이 덮는 범위 중 (실제 바닥이 찍힌 곳 근처) 또는 (주행 경로에서 max_path_dist_m 안)
+            # 스캔 범위는 정리·자르기 전 바닥 근처 정점(scan_xy)으로 — r3 북쪽 주차장 차로 바닥 구멍의 원인 (위 [3/8] 참고)
+            fp = Footprint(scan_xy if scan_xy is not None else scene, sf["mesh_cell_m"])
+            cen = fp.lo + (np.argwhere(fp.grid) + 0.5) * fp.cell
+            seen_floor = np.zeros(fp.grid.shape, bool)
+            ij = fp.index(v[on_floor, :2])
+            ok = (ij >= 0).all(1) & (ij < fp.grid.shape).all(1)
+            seen_floor[ij[ok, 0], ij[ok, 1]] = True
+            from scipy import ndimage
+            seen_floor = ndimage.binary_dilation(seen_floor, iterations=3)
+            near = cKDTree(paths).query(cen)[0] <= f.get("max_path_dist_m", np.inf)
+            keep = seen_floor[fp.grid] | near
+            idx = np.argwhere(fp.grid)
+            fp.grid[:] = False
+            fp.grid[idx[keep, 0], idx[keep, 1]] = True
+            floor_vis = fp.plane(0.0, ground=ground)
+            # 충돌 바닥 = 스캔 범위 ∪ 보이는 바닥 범위, 1 m 넓게 (보이는 바닥이 스캔 정점보다 넓게 깔린 곳도 덮게)
+            col_xy = np.vstack([np.asarray(scene.vertices)[:, :2], np.asarray(floor_vis.vertices)[:, :2]])
+            floor_col = Footprint(col_xy, sf["collision_cell_m"], margin=sf["collision_margin_m"]).plane(0.0, ground=ground)
+            if sf.get("collision_floor_min_tris"):   # 범위 가장자리에서 떨어져 나온 바닥 섬 (연석 단차 위아래에 걸리면 '바닥 위 납작한 조각')
+                floor_col, st = cleanup(floor_col, sf["collision_floor_min_tris"])
+                report["single_floor"]["collision_floor_islands_removed"] = st["small_clusters"]
+            report["fill"]["floor_area_m2"] = round(fp.area(), 1)
+            report["single_floor"].update(floor_tris=len(floor_vis.triangles), collision_floor_tris=len(floor_col.triangles))
+            o3d.io.write_triangle_mesh(os.path.join(out, "floor.ply"), floor_vis)
+            n_floor_tris = len(floor_vis.triangles)
+            if objects.has_vertex_colors() and not floor_vis.has_vertex_colors():   # colorize 를 안 쓰면 (TSDF 색 메쉬) 새 바닥에 색이 없음
+                floor_vis.vertex_colors = o3d.utility.Vector3dVector(          # → 합칠 때 물체 색까지 사라지므로 스캔 바닥 색을 옮김
+                    floor_colors([scene], np.asarray(floor_vis.vertices), sf["band_m"] + 0.02, ground))
+            scene = floor_vis + objects
+            scene.compute_vertex_normals()
+            sfr = report["single_floor"]
+            print(f"      바닥 한 장: 스캔 바닥 삼각형 {sfr['floor_tris_removed']:,} 빼고 높이 지도 바닥 {sfr['floor_tris']:,} 삼각형"
+                  f" | 바닥 부스러기 {sfr['debris_pieces']}조각 · 주행 통로 덩어리 {sfr['corridor_pieces']}조각 삭제")
+        elif f.get("small_hole_size_m", 0) > 0:
+            scene, report["fill"]["small_hole_tris_added"] = fill_small_holes(scene, f["small_hole_size_m"])
+        if f.get("floor_patch", False) and not sf:
+            patch, report["fill"]["floor_cells"] = floor_patch(scene, f["floor_cell_m"], f["floor_band_m"], ground=ground,
+                                                             min_floor_verts=f.get("min_floor_verts", 3),
+                                                             path_xy=fill_path_xy(cfg, poses, T),
+                                                             max_path_dist=f.get("max_path_dist_m"))
+            report["fill"]["floor_area_m2"] = round(report["fill"]["floor_cells"] * f["floor_cell_m"] ** 2, 2)
+            scene = scene + patch
+            o3d.io.write_triangle_mesh(os.path.join(out, "floor_patch.ply"), patch)
+        print(f"[4/8] 구멍 메우기: 작은 구멍 삼각형 +{report['fill'].get('small_hole_tris_added', 0):,}"
+              f" | 바닥 채움 {report['fill'].get('floor_area_m2', 0)} m²")
 
-    if "colorize" in cfg:
-        report["colorize"] = colorize(cfg, out, scene, ground, fr, poses, T)
-        print(f"      색 투영: 주 키프레임 {report['colorize']['keyframes']}장 (바닥 올림 {report['colorize']['floor_lift_m'] * 100:.1f} cm)"
-              f" | 색이 보인 정점 {report['colorize']['seen_pct']}%"
-              f" | 키프레임 depth ↔ 메쉬 차이 중앙 {report['colorize']['depth_vs_mesh_median_cm']} cm")
+        if "colorize" in cfg:
+            report["colorize"] = colorize(cfg, out, scene, ground, fr, poses, T)
+            print(f"      색 투영: 주 키프레임 {report['colorize']['keyframes']}장 (바닥 올림 {report['colorize']['floor_lift_m'] * 100:.1f} cm)"
+                  f" | 색이 보인 정점 {report['colorize']['seen_pct']}%"
+                  f" | 키프레임 depth ↔ 메쉬 차이 중앙 {report['colorize']['depth_vs_mesh_median_cm']} cm")
 
+        stage_save(cfg, out, mesh_path, dict(scene=scene, objects=objects, floor_col=floor_col, ground=ground, T=T, poses=poses, n_floor_tris=n_floor_tris,
+                                             report={k: v for k, v in report.items() if k not in stage_report0}))
     tex_info = None
     if cfg.get("floor_texture") and n_floor_tris and fr is not None:   # 바닥 한 장에 키프레임 사진을 텍스처로 (v0.6)
         if cfg["decimate"].get("visual_tris"):
@@ -384,7 +466,7 @@ def main():
         print(f"      벽 사진: 벽 {report['walls']['walls']}면 · {report['walls'].get('wall_area_m2', 0)} m²")
     if cfg.get("edge"):               # 테두리 마감 (v0.7): 경계 밖 정리 + 연석 · 인도 · 잔디 · 나무
         edge_mats, report["edge"] = edge_finish.run(cfg, os.path.expanduser(cfg["input"]["root"]), visuals, colliders,
-                                                   ground or Ground())
+                                                   ground or Ground(), T=T)
         materials.update(edge_mats)
         er = report["edge"]
         print(f"      테두리: 경계선 {er['outline_m']} m · 연석 {er['curb_h_m'] * 100:g} cm · 인도 {er['sidewalk_m']} m · 나무 {er['trees']}그루"
@@ -400,6 +482,9 @@ def main():
             cxyz = np.asarray(m.vertices)[np.asarray(m.triangles)].mean(1)
             ch = cxyz[:, 2] - ground.height(cxyz[:, :2])
             block.append(cxyz[:, :2] if name == "Curb" else cxyz[(ch > 0.3) & (ch < 1.2), :2])
+        hidden_curb = getattr(edge_finish.run, "curb", None)   # 연석을 숨긴 판 (edge.show_curb false) 도 같은 자리를 피함
+        if "Curb" not in visuals and hidden_curb is not None and len(hidden_curb.triangles):
+            block.append(np.asarray(hidden_curb.vertices)[np.asarray(hidden_curb.triangles)].mean(1)[:, :2])
         if "Boundary" in colliders and len(colliders["Boundary"].triangles):
             block.append(np.asarray(colliders["Boundary"].sample_points_uniformly(20000).points)[:, :2])
         sj = os.path.join(out, "floor_tex", "stalls.json")   # 바닥 텍스처에서 찾은 주차칸 (floor_texture.stalls) — 차를 칸에 맞춰 놓는 데 씀 (cars.arrange)

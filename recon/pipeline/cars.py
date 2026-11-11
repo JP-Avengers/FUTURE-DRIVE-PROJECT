@@ -6,6 +6,9 @@ build_usd.py 가 색 투영 · 바닥 텍스처 다음에 부름 — 가림 판�
 """
 import csv
 
+import json
+import os
+
 import numpy as np
 from scipy.spatial import cKDTree
 import open3d as o3d
@@ -66,6 +69,8 @@ def cut(mesh, keep):
     return out
 
 
+MANUAL_COLORS = {"white": (0.85, 0.85, 0.83), "silver": (0.62, 0.63, 0.64), "gray": (0.35, 0.36, 0.38), "black": (0.10, 0.10, 0.11),
+                 "blue": (0.18, 0.24, 0.36), "red": (0.45, 0.12, 0.12)}   # car_editor.py 의 색 이름
 PALETTE = [(0.85, 0.85, 0.83), (0.62, 0.63, 0.64), (0.35, 0.36, 0.38), (0.10, 0.10, 0.11), (0.18, 0.24, 0.36), (0.45, 0.12, 0.12)]
 
 
@@ -432,13 +437,36 @@ def models(rows, extra, ground, c, path_xy=None, scan_xy=None, block_xy=None):
     W = c.get("width_m", 1.8)
     vis, col = o3d.geometry.TriangleMesh(), o3d.geometry.TriangleMesh()
     slots.last = {}
-    sl = slots(rows, extra, c, path_xy, scan_xy, block_xy)
-    if c.get("arrange"):
-        sl, slots.last["arrange"] = arrange(sl, c.get("_stalls"), c, path_xy, block_xy)
+    colors = None
+    mf = c.get("manual_file")          # 손으로 놓은 차 (recon/tools/car_editor.py 로 만든 json) — 있으면 그대로 놓고 자동 자리 · 가지런히 · 빼기는 안 함
+    if mf and not os.path.isabs(os.path.expanduser(mf)):
+        mf = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "configs", mf)   # 상대 경로는 recon/configs 기준
+    if mf and os.path.exists(os.path.expanduser(mf)):
+        man = json.load(open(os.path.expanduser(mf), encoding="utf-8"))["cars"]
+        sl = [(float(m["x"]), float(m["y"]), float(np.radians(m["yaw_deg"])), float(m.get("length", 4.6)), float(m.get("height", 1.5))) for m in man]
+        colors = [MANUAL_COLORS.get(m.get("color"), None) for m in man]
+        slots.last = dict(manual_file=os.path.basename(mf), manual=len(sl))
+        if path_xy is not None and len(sl):
+            P_ = np.asarray(path_xy)[:, :2]
+            slots.last["manual_min_path_m"] = round(float(min(_rect_dist(P_, x, y, yaw, L, W).min() for x, y, yaw, L, H in sl)), 2)
+            slots.last["manual_overlaps"] = int(sum(_overlap(a_[:4], b_[:4], W) for i_, a_ in enumerate(sl) for b_ in sl[i_ + 1:]))
+        models.slots = [[round(x, 3), round(y, 3), round(float(np.degrees(yaw)), 2), round(L, 3), round(H, 3)] for x, y, yaw, L, H in sl]
+    else:
+        if mf:
+            print(f"      ! 차 배치 파일 없음 → 자동 자리로: {mf}")
+        sl = slots(rows, extra, c, path_xy, scan_xy, block_xy)
+        if c.get("arrange"):
+            sl, slots.last["arrange"] = arrange(sl, c.get("_stalls"), c, path_xy, block_xy)
+    if c.get("drop_xy") and colors is None:               # 이 사각형 [x0, x1, y0, y1] 안의 차는 놓지 않음 (v0.9, 11.11 — 한 줄로 빽빽한 북쪽 · 동쪽 줄: 상자 차가 벽처럼 보임)
+        keep_ = [o for o in sl if not any(b[0] <= o[0] <= b[1] and b[2] <= o[1] <= b[3] for b in c["drop_xy"])]
+        slots.last["dropped_in_boxes"] = len(sl) - len(keep_)
+        sl = keep_
     models.slots = [[round(x, 3), round(y, 3), round(float(np.degrees(yaw)), 2), round(L, 3), round(H, 3)] for x, y, yaw, L, H in sl]
-    for x, y, yaw, L, H in sl:
+    for k_car, (x, y, yaw, L, H) in enumerate(sl):
         z = float(ground.height(np.array([[x, y]]))[0]) if ground is not None else 0.0
         body = PALETTE[rng.integers(len(PALETTE))]
+        if colors is not None and colors[k_car] is not None:
+            body = colors[k_car]
         clr = c.get("clearance_m", 0.18)
         belt = clr + 0.55 * (H - clr)                                   # 몸체 위 = 창 아래
         vis += _box(x, y, z + clr, L, W, belt - clr, yaw, body)
