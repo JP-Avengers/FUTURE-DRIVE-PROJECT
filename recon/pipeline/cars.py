@@ -234,6 +234,74 @@ def slots(rows, extra, c, path_xy=None, scan_xy=None, block_xy=None):
     return kept
 
 
+def _lin_to_srgb(c):
+    c = np.clip(np.asarray(c, float), 0, 1)
+    return np.where(c <= 0.0031308, c * 12.92, 1.055 * c ** (1 / 2.4) - 0.055)
+
+
+def load_car_meshes(mesh_dir, names):
+    """차 모양 메쉬 (OBJ + MTL, 부위마다 단색 재질) → {이름: dict(v 정점 [앞, 왼쪽, 위] m · 바닥 0 · 가운데 0, tri, col 정점 색 sRGB, body 차체 정점 여부, size [길이, 폭, 높이])}.
+    v0.9 (11.11): 상자 차가 인위적 → CC0 저폴리곤 차 (Quaternius LowPoly Cars, CC0 1.0 — recon/README). 모델 좌표 = Y 위 · +Z 앞 · X 폭.
+    면마다 재질 색을 정점 색으로 (정점을 면마다 따로 — 색 경계가 번지지 않게). 차체 재질(색 이름) = 차마다 다른 색으로 다시 칠할 부분, 어두운 띠(Dark* · Material*)는 차체 색을 어둡게."""
+    fixed = ("Black", "Grey", "Windows", "Headlights", "TailLights", "WhiteLights", "BlueLights")
+    out = {}
+    for name in names:
+        op = os.path.join(mesh_dir, name + ".obj")
+        if not os.path.exists(op):
+            print(f"      ! 차 모델 없음: {op}")
+            continue
+        kd, cur = {}, None
+        mp = os.path.join(mesh_dir, name + ".mtl")
+        for ln in open(mp, encoding="utf-8", errors="replace") if os.path.exists(mp) else []:
+            if ln.startswith("newmtl"):
+                cur = ln.split(None, 1)[1].strip()
+            elif ln.startswith("Kd") and cur:
+                kd[cur] = _lin_to_srgb([float(x) for x in ln.split()[1:4]])
+        V, tris, tmat, cur = [], [], [], None
+        for ln in open(op, encoding="utf-8", errors="replace"):
+            if ln.startswith("v "):
+                V.append([float(x) for x in ln.split()[1:4]])
+            elif ln.startswith("usemtl"):
+                cur = ln.split(None, 1)[1].strip()
+            elif ln.startswith("f "):
+                idx = [int(t.split("/")[0]) - 1 for t in ln.split()[1:]]
+                for k in range(1, len(idx) - 1):
+                    tris.append([idx[0], idx[k], idx[k + 1]])
+                    tmat.append(cur)
+        V, tris = np.array(V), np.array(tris)
+        v = V[tris.ravel()]                                                         # 면마다 정점 따로
+        lo, hi = v.min(0), v.max(0)
+        cen = (lo + hi) / 2
+        v = np.c_[v[:, 2] - cen[2], v[:, 0] - cen[0], v[:, 1] - lo[1]]              # [앞, 왼쪽, 위]
+        col = np.zeros((len(v), 3))
+        body = np.zeros(len(v), bool)
+        shade = np.ones(len(v))
+        for k, m in enumerate(tmat):
+            sl_ = slice(3 * k, 3 * k + 3)
+            if m in fixed or m is None:
+                col[sl_] = kd.get(m, (0.2, 0.2, 0.2))
+            else:
+                body[sl_] = True
+                shade[sl_] = 0.72 if (m.startswith("Dark") or m.startswith("Material")) else 1.0
+        out[name] = dict(v=v, tri=np.arange(len(v)).reshape(-1, 3), col=col, body=body, shade=shade, size=[float(hi[2] - lo[2]), float(hi[0] - lo[0]), float(hi[1] - lo[1])])
+    return out
+
+
+def _car_mesh(model, x, y, z, yaw, L, H_target, W_max, color):
+    """모델을 길이 L 에 맞춰 놓음 (비율 유지, 폭이 W_max 를 넘으면 폭만 줄임, 높이는 실제 차 높이 H_target 쪽으로 최대 1.25배)."""
+    s = L / model["size"][0]
+    sw = s * min(1.0, W_max / (model["size"][1] * s))
+    sh = s * float(np.clip(H_target / (model["size"][2] * s), 1.0, 1.25))
+    v = model["v"] * [s, sw, sh]
+    c_, s_ = np.cos(yaw), np.sin(yaw)
+    w = np.c_[x + v[:, 0] * c_ - v[:, 1] * s_, y + v[:, 0] * s_ + v[:, 1] * c_, z + v[:, 2]]
+    col = model["col"].copy()
+    col[model["body"]] = np.asarray(color)[None, :] * model["shade"][model["body"]][:, None]
+    m = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(w), o3d.utility.Vector3iVector(model["tri"]))
+    m.vertex_colors = o3d.utility.Vector3dVector(np.clip(col, 0, 1))
+    return m, float(model["size"][2] * sh)
+
+
 def arrange(sl, stalls, c, path_xy=None, block_xy=None):
     """차 자리를 가지런히 (v0.9, 11.11 — 스캔 덩어리에서 나온 자리 · 방향이 들쭉날쭉). 보완(만든 것): 어느 칸에 차가 있었는지는 측정, 칸 안 자리는 만든 것.
     1) 주차칸(stalls.py 가 바닥 텍스처에서 찾은 사각형 [cx, cy, yaw, 폭, 길이, 줄, 기준선 쪽 x, y])에 든 차 = 칸 가운데 줄 · 칸 방향, 통로 쪽 끝에서 setback_m 들여 놓음
@@ -462,11 +530,26 @@ def models(rows, extra, ground, c, path_xy=None, scan_xy=None, block_xy=None):
         slots.last["dropped_in_boxes"] = len(sl) - len(keep_)
         sl = keep_
     models.slots = [[round(x, 3), round(y, 3), round(float(np.degrees(yaw)), 2), round(L, 3), round(H, 3)] for x, y, yaw, L, H in sl]
+    meshes = {}
+    if c.get("mesh_dir"):              # 차 모양 메쉬 (CC0 저폴리곤) — 없으면 상자 차
+        mm = c.get("mesh_models") or {}
+        meshes = load_car_meshes(os.path.expanduser(c["mesh_dir"]), list(mm))
+        mesh_names = [n for n in mm if n in meshes]
+        mesh_w = np.array([float(mm[n]) for n in mesh_names])
+    used = {}
     for k_car, (x, y, yaw, L, H) in enumerate(sl):
         z = float(ground.height(np.array([[x, y]]))[0]) if ground is not None else 0.0
         body = PALETTE[rng.integers(len(PALETTE))]
         if colors is not None and colors[k_car] is not None:
             body = colors[k_car]
+        if meshes:
+            name = mesh_names[int(rng.choice(len(mesh_names), p=mesh_w / mesh_w.sum()))]
+            tall = meshes[name]["size"][2] > 1.4                                    # SUV 류
+            cm_, h_vis = _car_mesh(meshes[name], x, y, z, yaw, L, c.get("mesh_h_suv_m", 1.68) if tall else c.get("mesh_h_car_m", 1.42), W, body)
+            vis += cm_
+            used[name] = used.get(name, 0) + 1
+            col += _box(x, y, z, L, W, h_vis, yaw, (0.5, 0.5, 0.5))               # 충돌 = 상자 하나 (높이는 보이는 차에 맞춤)
+            continue
         clr = c.get("clearance_m", 0.18)
         belt = clr + 0.55 * (H - clr)                                   # 몸체 위 = 창 아래
         vis += _box(x, y, z + clr, L, W, belt - clr, yaw, body)
@@ -478,6 +561,8 @@ def models(rows, extra, ground, c, path_xy=None, scan_xy=None, block_xy=None):
                 a, b = sa * 0.34 * L, sb * (W / 2 - 0.12)
                 vis += _box(x + a * np.cos(yaw) - b * np.sin(yaw), y + a * np.sin(yaw) + b * np.cos(yaw), z, 0.62, 0.22, clr + 0.25, yaw, (0.05, 0.05, 0.05))
         col += _box(x, y, z, L, W, H, yaw, (0.5, 0.5, 0.5))
+    if used:
+        slots.last["mesh_models"] = used
     vis.compute_vertex_normals()
     col.compute_vertex_normals()
     return vis, col, len(sl)

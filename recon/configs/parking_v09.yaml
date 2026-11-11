@@ -60,5 +60,7 @@ cars:
     drop_xy:                           # 한 줄로 빽빽한 두 줄은 차를 놓지 않음 (사용자 결정 11.11 — 상자 차가 벽처럼 보임). 스캔 차는 그대로 지워져 빈 주차칸이 됨
       - [-33.0, -6.0, 12.0, 21.0]      # 북쪽 줄 10대
       - [0.5, 12.0, -14.5, 13.0]       # 동쪽 줄 10대
+    mesh_dir: "~/jinwoo/data/cc0/quaternius_cars/pack/Realistic Car Pack - Nov 2018/OBJ"   # 차 모양 = CC0 저폴리곤 차 (Quaternius LowPoly Cars, CC0 1.0 — 레포에는 안 넣음, recon/README). 없으면 상자 차
+    mesh_models: {NormalCar1: 3, NormalCar2: 2, SUV: 3, SportsCar: 1, SportsCar2: 1}     # 쓸 모델: 고르는 비중 (택시 · 경찰차는 뺌)
     manual_file: parking_v09_cars.json # 손으로 놓은 차 (recon/tools/car_editor.py 화면에서 저장한 파일, recon/configs 기준). 있으면 그대로 놓음 — 없으면 아래 자동 자리
     arrange: true                      # 차를 가지런히 (cars.arrange): 주차칸에 든 차는 칸 가운데 · 칸 방향, 나머지는 이웃끼리 같은 방향 · 간격, 긴 주차선 옆 차는 선에 직각
