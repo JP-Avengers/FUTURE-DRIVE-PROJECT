@@ -96,9 +96,9 @@ def generate_launch_description():
                               description="Nav2 최종 명령 토픽 — 교사 녹화는 nav2/cmd_vel(sim/nav2/nav2_teacher.py 가 /cmd_vel 로 이어 줌)"),
         # /scan 높이 띠(3D LiDAR 프레임 기준 — LiDAR 는 base_link(≈ 바닥) 위 0.526 m). NVIDIA 예제는 -0.4 ~ 1.5 지만, 지도 장애물 띠
         # (바닥 위 0.12 ~ 1.0 m, make_map.py) 안에 들게 줄여야 AMCL 이 안 흐트러짐 — 1.0 m 위 나무 가지 · 지붕, 경사진 바닥이 스캔에만 잡힘(10.13)
-        DeclareLaunchArgument("scan_min_h", default_value="-0.30"),   # 바닥 위 약 0.23 m
+        DeclareLaunchArgument("scan_min_h", default_value="-0.20"),   # 바닥 위 약 0.33 m(11.11, 예전 −0.30): v0.8 남동 모서리에서 로봇이 기울면 8 m 앞 바닥이 −0.30 띠에 벽으로 잡혀 AMCL 이 틀어짐
         DeclareLaunchArgument("scan_max_h", default_value="0.47"),    # 바닥 위 약 1.0 m
-        DeclareLaunchArgument("scan_range_max", default_value="25.0"),
+        DeclareLaunchArgument("scan_range_max", default_value="15.0"),   # 11.11, 예전 25.0 — 먼 바닥 · 경계 밖 빔을 줄임(녹화 점 계산: 불일치 최대 28 → 19 %, 남는 빔 최소 110)
         # 시작 자세 — amcl 이면 초기 자세, gt 면 map → odom. 기본 = 실제 맵 r3 기준선 출발점(씬 시작 자세)
         DeclareLaunchArgument("x0", default_value="-1.756"),
         DeclareLaunchArgument("y0", default_value="-7.621"),
