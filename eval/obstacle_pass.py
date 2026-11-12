@@ -10,6 +10,7 @@
   지나감      d 가 + 에서 0 이하로 넘어간 표본이 있으면 지나감, 없으면 못 지나감(멈춤 · 개입 · 시간 초과)
   쪽          지나가는 순간 로봇 옆 − 장애물 옆의 부호 → 진행 방향 기준 왼 · 오. 기하 쪽 = 장애물 오프셋의 반대쪽
               (중앙 |lateral| ≤ 0.15 m 는 기하가 쪽을 약하게만 정함 — Nav2 도 68 %, e2e/results/side_vs_geometry_11_11)
+  옆 거리     그 순간 |로봇 옆 − 장애물 옆|(기준선 수직, 로봇 중심 ↔ 장애물 중심) — 회피 폭. 이탈 한도 2.0 m 와 견줄 값
   꺾기 시작   d ≤ 8 m 안에서 로봇 옆이 d = 8 m 때보다 0.15 m 넘게 벌어진 첫 d(Nav2 교사 중앙값 3.7 m)
   흔들림      d ∈ (0, 6] 에서 명령 ω(|ω| ≥ 0.05) 부호가 바뀐 횟수 — track 에 w_cmd 가 있을 때만(xm_route; Nav2 track 은 5칸)
   최소 거리   d ∈ (−1, 6] 의 clearance 최소(로봇 발자국 ↔ 장애물, 0 = 닿음)
@@ -109,11 +110,12 @@ def analyze_run(path, route):
                "scenario": sc.get("name", ""), "direction": direction, "seed": j.get("seed", ""), "obstacle": o.get("name", ""),
                "type": o.get("type", ""), "lateral": lo, "kind": "중앙" if abs(lo) <= CENTER else "옆",
                "geom_side": "-" if abs(lo) <= CENTER else ("오" if lo_tr > 0 else "왼"),
-               "passed": k_pass is not None, "side": "", "turn_start_m": None, "w_flips": None, "min_clear_m": None,
+               "passed": k_pass is not None, "side": "", "pass_offset_m": None, "turn_start_m": None, "w_flips": None, "min_clear_m": None,
                "stall_s": 0.0, "closest_d_m": round(float(np.min(np.where(near & (d > 0), d, np.inf))), 2) if (near & (d > 0)).any() else None}
         if k_pass is not None:
             rel = sign * (LAT[k_pass] - lo)                           # 진행 방향 기준 왼쪽 +
             row["side"] = "왼" if rel > 0 else "오"
+            row["pass_offset_m"] = round(float(abs(rel)), 2)
         app = near & (d > 0) & (d <= 8.0)
         if app.any():
             ia = np.where(app)[0]
@@ -156,25 +158,26 @@ def main():
     ap.add_argument("-o", "--out")
     ap.add_argument("--csv")
     a = ap.parse_args()
-    files = sorted({f for p in a.runs for f in (glob.glob(p) or [p]) if f.endswith(".json")})
-    route = load_route(a.route)
-    rows = []
+    files = sorted({f for p in a.runs for f in (glob.glob(p) or [p]) if f.endswith(".json") and not f.endswith(".meta.json")})
+    route = load_route(a.route)                                       # runs/ 의 *.xm_infer.meta.json 은 회가 아님
+    rows, n_runs = [], 0
     for f in files:
         try:
-            r, _ = analyze_run(f, route)
+            r, j = analyze_run(f, route)
             rows += r
+            n_runs += bool(j.get("track"))
         except Exception as e:                                        # 한 회가 깨져도 나머지는 봄
             print(f"[건너뜀] {f}: {e}", file=sys.stderr)
     if not rows:
         sys.exit("장애물 행 없음 — track 이 있는 회 JSON 인지 확인")
     keys = ["method", "model_version", "scenario", "direction", "seed", "obstacle", "kind", "lateral", "geom_side", "passed", "side",
-            "turn_start_m", "w_flips", "min_clear_m", "stall_s", "closest_d_m"]
-    names = ["방법", "모델", "시나리오", "방향", "시드", "장애물", "종류", "옆(m)", "기하 쪽", "지나감", "쪽", "꺾기 시작 m",
+            "pass_offset_m", "turn_start_m", "w_flips", "min_clear_m", "stall_s", "closest_d_m"]
+    names = ["방법", "모델", "시나리오", "방향", "시드", "장애물", "종류", "옆(m)", "기하 쪽", "지나감", "쪽", "나란할 때 옆 거리 m", "꺾기 시작 m",
              "ω 흔들림", "최소 거리 m", "멈춤 s", "가장 가까운 앞 거리 m"]
-    out = ["# 폐루프 장애물별 지나가기 (eval/obstacle_pass.py)\n", f"회 {len(files)}개 · 장애물 행 {len(rows)}개. 쪽 = 진행 방향 기준.\n",
+    out = ["# 폐루프 장애물별 지나가기 (eval/obstacle_pass.py)\n", f"회 {n_runs}개 · 장애물 행 {len(rows)}개. 쪽 = 진행 방향 기준.\n",
            "## 요약 (방법 × 중앙 · 옆)\n",
-           "| 방법 | 종류 | 장애물 | 지나감 | 기하 쪽과 같음 | 꺾기 시작 중앙값 m | ω 흔들림 평균 | 최소 거리 중앙값 m | 멈춤 있음 |",
-           "|---|---|---|---|---|---|---|---|---|"]
+           "| 방법 | 종류 | 장애물 | 지나감 | 기하 쪽과 같음 | 나란할 때 옆 거리 중앙값 · 최대 m | 꺾기 시작 중앙값 m | ω 흔들림 평균 | 최소 거리 중앙값 m | 멈춤 있음 |",
+           "|---|---|---|---|---|---|---|---|---|---|"]
     for m in sorted({r["method"] for r in rows}):
         for kd in ("중앙", "옆"):
             g = [r for r in rows if r["method"] == m and r["kind"] == kd]
@@ -185,8 +188,10 @@ def main():
             ts = [r["turn_start_m"] for r in g if r["turn_start_m"] is not None]
             wf = [r["w_flips"] for r in g if r["w_flips"] is not None]
             mc = [r["min_clear_m"] for r in g if r["min_clear_m"] is not None]
+            po = [r["pass_offset_m"] for r in g if r["pass_offset_m"] is not None]
             out.append(f"| {m} | {kd} | {len(g)} | {len(ps)}/{len(g)} | "
                        f"{(str(sum(r['side'] == r['geom_side'] for r in gs)) + '/' + str(len(gs))) if gs else '-'} | "
+                       f"{(fmt(float(np.median(po))) + ' · ' + fmt(max(po))) if po else '-'} | "
                        f"{fmt(float(np.median(ts))) if ts else '-'} | {fmt(round(float(np.mean(wf)), 2)) if wf else '-'} | "
                        f"{fmt(float(np.median(mc))) if mc else '-'} | {sum(r['stall_s'] > 0 for r in g)} |")
     pairs = {}
