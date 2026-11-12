@@ -277,6 +277,7 @@ global_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 10.0
           obstacle_min_range: 0.0
+          inf_is_valid: True   # FD 11.12: 안 맞은 빔으로도 칸을 지움 — v0.8 남동 모서리에서 기울 때 찍힌 바닥 점이 전역 지도에 남아 반시계 끝 회피 폭이 2 m 를 넘던 것(logs/nav2/v08r3_wide)
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
