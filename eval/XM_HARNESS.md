@@ -21,6 +21,8 @@ FD_CKPT=data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt FD_
   eval/xm_batch.sh eval/scenarios/parking_r3_straight_south.yaml eval/scenarios/parking_r3_obs_cones.yaml:ccw
 # → data/eval/1124_xmft/results.csv · runs/<시나리오>[_방향]_s<시드>.json(+ .node.log · .xm_infer.csv · .xm_infer.meta.json) · route_*.log · layers/
 #   끝에 eval/analyze_runs.py 로 스키마 검사(ANALYZE_RUNS_OK / FAIL)
+#   장애물마다(지나감 · 쪽 · 꺾기 시작 · ω 흔들림 · 최소 거리 · 멈춤, Nav2 회 JSON 과 나란히):
+#   python3 eval/obstacle_pass.py data/eval/1124_xmft/runs/*.json logs/nav2/<묶음>/*.json -o obstacle_pass.md
 
 # 씬이 이미 떠 있을 때 한 회(시스템 Jazzy · 도메인 43 셸)
 python3 eval/xm_route.py --scenario eval/scenarios/parking_r3_obs_cones.yaml --direction ccw \
