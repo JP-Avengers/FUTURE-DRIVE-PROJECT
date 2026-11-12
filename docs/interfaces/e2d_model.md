@@ -23,6 +23,7 @@
 - 현황(11.10): Git 에 안 올림(용량). **11.9 E Drive 폴더에 3개 업로드 · D 에 링크 전달**(링크는 메시지로만 — 이 레포는 공개라 적지 않음). 11.10 Drive 크기 = 로컬 원본과 바이트 단위로 같음 확인. 서버 `data/checkpoints/` 배치는 D(11.11 노드 시험 때, sha 대조). 파일 이름은 Kaggle 데이터셋 `fd-xm-ckpts` 와 같게: **`xm_ft_v0.1_e8.ckpt`**(= v0.1 best `epoch=8-step=10719.ckpt`, sha `d86970ce1faf`) · **`xm_ft_v0.1_aw30_e8.ckpt`**(= aw30 best, sha `4fdf249cda0a`). `xm_ft_v0.1_aw30_p3`(sha `114284109957`, 11.9 교차 평가 완료 · 종합 1위 후보)도 같은 식(`xm_ft_v0.1_aw30_p3_e8.ckpt`)으로
 - D 가 할 것: 받은 파일을 이름 그대로 `$CD1/data/checkpoints/xm_ft_v0.1/checkpoints/xm_ft_v0.1_e8.ckpt` · `.../xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt` 에 두고 `sha256sum <파일> | cut -c1-12` 로 위 sha 확인 → 첫 노드 시험(`eval/XM_HARNESS.md` §2, `--dry-run` 먼저)은 v0.1 로 충분, DAgger 주행은 aw30(또는 결정된 1순위). `eval/xm_batch.sh` 가 시작 줄에 sha 를 찍고 결과 CSV `note` 에 `ckpt_sha12` 를 남김
 - 11.12: **`xm_ft_v1.4_aw30_exec_pad05_e10`**(E5 = aw30 + 실행 명령 입력 + 직전 명령 드롭아웃 0.5, best 에폭 9 `epoch=9-step=21350.ckpt`, 1,034,138,748 B, sha256 `c9e01983a7ae`)를 같은 Drive 폴더에 **`xm_ft_v1.4_aw30_exec_pad05_e10_e9.ckpt`** 로 업로드(Drive md5 = 로컬 md5 확인). v1.5 오프라인 평가에서 가장 좋은 판(`e2e/results/v15_baseline_11_11.md`) — 짧은 폐루프(중앙 장애물 시나리오) 후보. 실행 명령으로 학습했으므로 노드는 **`prev_action_mode:=clamped`**(= `feed_clamped_action:=true`; `eval/xm_batch.sh` 면 `FD_XM_ARGS="--node-param prev_action_mode:=clamped"`) — 직전 명령 칸에 실제로 보낸(잘린) 명령을 넣어 학습 때와 같게. 경로 축척 없음(`path_scale` 기본 1), gin 은 같음(`e2e/configs/finetune_parking_r3.gin`)
+- 11.12 오후: **`xm_ft_v1.5_aw30_exec_e6`**(E6 = v1.5(v0.8 r3 자동 · Nav2 장애물 녹화 포함) + aw30 + 실행 명령 입력, 6 에폭, best 에폭 5 `epoch=5-step=21060.ckpt`, 1,034,138,748 B, sha256 `551cee7beb5d`)를 같은 폴더에 **`xm_ft_v1.5_aw30_exec_e6_e5.ckpt`** 로 업로드(md5 일치). v0.8 r3(60회 씬) 오프라인 지표가 E5 보다 좋아 **폐루프 1순위**(`e2e/results/xm_ft_v1.5_aw30_exec_e6/`) — 노드 설정은 E5 와 같음(`prev_action_mode:=clamped`, `path_scale` 1)
 - 납기: 모델 동결: 11.23
 
 ## 변경 이력
@@ -33,4 +34,4 @@
 | 11.5 | v0 | forward 위치 = 추론 노드 `fd_xm_infer`, 지연 측정 방법, best ckpt 기준(명령 손실) (E) | |
 | 11.6 | v0 | 첫 모델 파일 `xm_ft_v0.1`(크기 · sha · 학습 출처), 인계 현황(D 서버 전달 대기), 오프라인 처리량 19.57 프레임/s (E) | |
 | 11.9 | v0 | 동결 후보 `xm_ft_v0.1_aw30` · `xm_ft_v0.1_aw30_p3`(sha), 인계 = Drive 업로드 예정(11.9, 파일 이름 · sha) + D 서버 배치 경로 · sha 확인, p3 계열 `path_scale` (E) | |
-| 11.12 | v0 | 폐루프 후보 `xm_ft_v1.4_aw30_exec_pad05_e10`(E5, sha `c9e01983a7ae`) Drive 업로드 · 노드 `prev_action_mode:=clamped` (E) | |
+| 11.12 | v0 | 폐루프 후보 `xm_ft_v1.4_aw30_exec_pad05_e10`(E5, sha `c9e01983a7ae`) Drive 업로드 · 노드 `prev_action_mode:=clamped`, 오후 `xm_ft_v1.5_aw30_exec_e6`(E6, sha `551cee7beb5d`) 업로드 = 폐루프 1순위 (E) | |
