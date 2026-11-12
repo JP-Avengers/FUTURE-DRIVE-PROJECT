@@ -315,6 +315,14 @@ def run(cfg, root, visuals, colliders, ground, T=None):
         if nlab:
             cov = np.isin(lab, 1 + np.nonzero(ndimage.sum(cov, lab, range(1, nlab + 1)) * cell * cell >= pm.get("min_area_m2", 2.0))[0])
         keep &= look(cov, pc[:, :2])
+        if pmesh.has_vertex_colors() and pm.get("blown_lum", 0.8):   # 하얗게 날아간 덩어리 (노출 과다 · 하늘 비침) 는 버림 — 가는 흰 선(주차선)은 남김
+            plum = np.asarray(pmesh.vertex_colors)[ptri].mean(1).mean(1)
+            br = np.zeros(mask.shape, bool)
+            bj = np.clip(((pc[keep & (plum > pm.get("blown_lum", 0.8)), :2] - lo) / cell).astype(int), 0, shape - 1)
+            br[bj[:, 0], bj[:, 1]] = True
+            br = ndimage.binary_dilation(ndimage.binary_opening(br, iterations=max(1, int(pm.get("blown_min_w_m", 0.4) / cell / 2))), iterations=2)
+            st["perimeter_blown_m2"] = round(float(br.sum()) * cell * cell, 1)
+            keep &= ~look(br, pc[:, :2])
         perim = _cut(pmesh, keep)
         if len(perim.triangles):
             if perim.has_vertex_colors() and floor.has_vertex_colors() and pm.get("match_floor", True):   # 다른 날 · 다른 카메라 → 전체 밝기만 바닥에 맞춤

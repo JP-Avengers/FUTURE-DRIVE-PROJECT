@@ -287,14 +287,47 @@ def load_car_meshes(mesh_dir, names):
     return out
 
 
-def _car_mesh(model, x, y, z, yaw, L, H_target, W_max, color):
-    """모델을 길이 L 에 맞춰 놓음 (비율 유지, 폭이 W_max 를 넘으면 폭만 줄임, 높이는 실제 차 높이 H_target 쪽으로 최대 1.25배)."""
+def _ground_pose(ground, x, y, yaw, L, W, max_tilt_deg=5.0):
+    """차 밑 바닥에 맞는 평면 → (원점 [x, y, z], 축 [앞, 왼쪽, 위] 3×3 열벡터). 바닥이 기울면 차도 같이 기울어 바퀴가 뜨거나 묻히지 않음 (v0.9, 11.12 —
+    수평으로만 놓으면 네 바퀴 자리 바닥 높이 차가 중앙 8 cm · 최대 30 cm). 차 밑 5×3 점의 바닥 높이에 평면을 맞추고 (튀는 점은 한 번 걸러냄), 기울기는 max_tilt_deg 까지만."""
+    u, v = np.array([np.cos(yaw), np.sin(yaw)]), np.array([-np.sin(yaw), np.cos(yaw)])
+    if ground is None:
+        return np.array([x, y, 0.0]), np.c_[np.r_[u, 0], np.r_[v, 0], [0, 0, 1]]
+    f, l = np.meshgrid(np.linspace(-0.4, 0.4, 5) * L, np.linspace(-0.42, 0.42, 3) * W)
+    f, l = f.ravel(), l.ravel()
+    z = ground.height(np.array([x, y]) + np.outer(f, u) + np.outer(l, v))
+    A = np.c_[f, l, np.ones(len(f))]
+    co = np.linalg.lstsq(A, z, rcond=None)[0]
+    r = z - A @ co
+    ok = np.abs(r - np.median(r)) < max(0.03, 2.5 * np.median(np.abs(r - np.median(r))))    # 연석 턱 · 지도 가장자리처럼 튀는 점은 빼고 다시
+    if ok.sum() >= 6:
+        co = np.linalg.lstsq(A[ok], z[ok], rcond=None)[0]
+    t = np.tan(np.radians(max_tilt_deg))
+    a, b = float(np.clip(co[0], -t, t)), float(np.clip(co[1], -t, t))
+    fwd = np.r_[u, a]
+    fwd /= np.linalg.norm(fwd)
+    left = np.r_[v, b]
+    up = np.cross(fwd, left)
+    up /= np.linalg.norm(up)
+    left = np.cross(up, fwd)
+    return np.array([x, y, float(co[2])]), np.c_[fwd, left, up]
+
+
+def _box_pose(origin, axes, L, W, H, color):
+    """원점 · 축에 맞춘 상자 (바닥 가운데 = 원점)."""
+    b = o3d.geometry.TriangleMesh.create_box(L, W, H)
+    v = np.asarray(b.vertices) - [L / 2, W / 2, 0.0]
+    b.vertices = o3d.utility.Vector3dVector(origin + v @ axes.T)
+    b.paint_uniform_color(color)
+    return b
+
+
+def _car_mesh(model, origin, axes, L, H_target, W_max, color):
+    """모델을 길이 L 에 맞춰 놓음 (비율 유지, 폭이 W_max 를 넘으면 폭만 줄임, 높이는 실제 차 높이 H_target 쪽으로 최대 1.25배). 원점 · 축 = _ground_pose."""
     s = L / model["size"][0]
     sw = s * min(1.0, W_max / (model["size"][1] * s))
     sh = s * float(np.clip(H_target / (model["size"][2] * s), 1.0, 1.25))
-    v = model["v"] * [s, sw, sh]
-    c_, s_ = np.cos(yaw), np.sin(yaw)
-    w = np.c_[x + v[:, 0] * c_ - v[:, 1] * s_, y + v[:, 0] * s_ + v[:, 1] * c_, z + v[:, 2]]
+    w = origin + (model["v"] * [s, sw, sh]) @ axes.T
     col = model["col"].copy()
     col[model["body"]] = np.asarray(color)[None, :] * model["shade"][model["body"]][:, None]
     m = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(w), o3d.utility.Vector3iVector(model["tri"]))
@@ -536,7 +569,7 @@ def models(rows, extra, ground, c, path_xy=None, scan_xy=None, block_xy=None):
         meshes = load_car_meshes(os.path.expanduser(c["mesh_dir"]), list(mm))
         mesh_names = [n for n in mm if n in meshes]
         mesh_w = np.array([float(mm[n]) for n in mesh_names])
-    used = {}
+    used, tilts = {}, []
     for k_car, (x, y, yaw, L, H) in enumerate(sl):
         z = float(ground.height(np.array([[x, y]]))[0]) if ground is not None else 0.0
         body = PALETTE[rng.integers(len(PALETTE))]
@@ -545,10 +578,12 @@ def models(rows, extra, ground, c, path_xy=None, scan_xy=None, block_xy=None):
         if meshes:
             name = mesh_names[int(rng.choice(len(mesh_names), p=mesh_w / mesh_w.sum()))]
             tall = meshes[name]["size"][2] > 1.4                                    # SUV 류
-            cm_, h_vis = _car_mesh(meshes[name], x, y, z, yaw, L, c.get("mesh_h_suv_m", 1.68) if tall else c.get("mesh_h_car_m", 1.42), W, body)
+            org, axes = _ground_pose(ground, x, y, yaw, L, W, c.get("max_tilt_deg", 5.0))   # 바닥 기울기에 맞춰 놓음
+            cm_, h_vis = _car_mesh(meshes[name], org, axes, L, c.get("mesh_h_suv_m", 1.68) if tall else c.get("mesh_h_car_m", 1.42), W, body)
             vis += cm_
             used[name] = used.get(name, 0) + 1
-            col += _box(x, y, z, L, W, h_vis, yaw, (0.5, 0.5, 0.5))               # 충돌 = 상자 하나 (높이는 보이는 차에 맞춤)
+            col += _box_pose(org, axes, L, W, h_vis, (0.5, 0.5, 0.5))              # 충돌 = 상자 하나 (보이는 차와 같은 자세 · 높이)
+            tilts.append(float(np.degrees(np.arccos(np.clip(axes[2, 2], -1, 1)))))
             continue
         clr = c.get("clearance_m", 0.18)
         belt = clr + 0.55 * (H - clr)                                   # 몸체 위 = 창 아래
@@ -563,6 +598,7 @@ def models(rows, extra, ground, c, path_xy=None, scan_xy=None, block_xy=None):
         col += _box(x, y, z, L, W, H, yaw, (0.5, 0.5, 0.5))
     if used:
         slots.last["mesh_models"] = used
+        slots.last["tilt_deg_median_max"] = [round(float(np.median(tilts)), 2), round(float(np.max(tilts)), 2)]
     vis.compute_vertex_normals()
     col.compute_vertex_normals()
     return vis, col, len(sl)

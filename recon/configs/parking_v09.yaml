@@ -31,6 +31,14 @@ floor_texture:
     - [roof_cw, roof_ccw]
     - [hand_fecen]                     # 다른 날 · 손에 든 카메라 → 밝기 모형 따로
   set_max_dist_m: {hand_fecen: 4.0}    # 손 촬영은 4 m 안에서 본 바닥만 (자세 오차 0.1~0.3 m — 멀수록 주차선이 번지고 겹쳐 보임, 11.11 첫 빌드)
+  flatten:                             # 가운데 섬 · 외곽이 얼룩덜룩함 (11.12): 다른 날 · 다른 카메라 묶음이 칠한 구역이 색 통일에서 빠져 있었음
+    match_sets: [bonnet_ccw, hand_fecen]   # 묶음마다 아스팔트 중앙 색을 주 묶음에 맞춤 (채널별 배율). 지붕 묶음은 뺌 — 배율이 커서 그늘의 푸른 기가 밝게 튐
+    detint_shadow: 0.03                    # 그늘진 바닥의 푸른 기 빼기 (B − R 이 이보다 크고 어두운 무채색 계열 텍셀)
+    weak_sets: [roof_cw, roof_ccw, hand_fecen]                # 이 묶음이 칠한 곳은 색이 조금 낀 칸(sat_max_weak)도 아스팔트로 보고 색 통일
+    sat_max_weak: 0.14
+    force_island: true                 # 가운데 섬(B conf 구멍)은 B 구역이 '풀 · 기타'여도 아스팔트로 색 통일
+    smooth_sets: [roof_cw, roof_ccw]   # 지붕 카메라가 칠한 흐릿한 텍셀의 자잘한 얼룩을 넓게 흐림
+    smooth_m: 0.25
   stalls:                              # 주차칸 다듬기 (pipeline/stalls.py) — 구불거리는 주차선을 지우고 줄마다 같은 간격의 반듯한 선으로 다시 그림. 보완(만든 것)
     stall_w_m: 2.5                     # B 실측 (site_measurements.md): 폭 250 cm · 길이 500 cm(선 중심) · 선 15 cm
     stall_l_m: 5.0
