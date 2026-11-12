@@ -38,6 +38,8 @@ CUDA_VISIBLE_DEVICES=1 HF_HUB_OFFLINE=1 ros2 launch fd_xm_infer xm_infer.launch.
     ckpt:=$CD1/data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt \
     log_csv:=$CD1/logs/xm_infer/<이름>.csv
 #    p3 계열 ckpt(경로 라벨 ×1/3, 예 xm_ft_v0.1_aw30_p3)면 path_scale:=0.3333 을 더함 — ~/path(RViz)만 영향, 명령은 무관
+#    실행 명령 입력으로 학습한 ckpt(--prev-action-source exec, 예 xm_ft_v1.4_aw30_exec_pad05_e10 · xm_ft_v1.5_aw30_exec_e6)면
+#    prev_action_mode:=clamped 를 더함(11.12 전 런치 파일은 이 인자를 노드에 안 넘겨 조용히 own 으로 돌았음)
 
 # 경로를 기준선 CSV + odom(+ 시작 자세)으로 직접 만들 때(xm_route.py 없이). 시작 자세 = 씬이 로봇을 띄운 자세(r3 루트 -96°,
 # parking_v0.4b_r3.usda:27). 안 주면 CSV 옆 YAML start 인데 parking_r3_ccw.yaml 은 84° → 반시계 CSV 를 씬 그대로 띄운 로봇에
