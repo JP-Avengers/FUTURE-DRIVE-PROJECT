@@ -7,6 +7,7 @@ Nav2 교사로 녹화함. 한 바퀴에 장애물 4개(직선 구간마다 하�
 
   python3 eval/scenarios/gen_rand_obstacles.py --prefix tr --n 20 --seed 1000   # 학습용(녹화)
   python3 eval/scenarios/gen_rand_obstacles.py --prefix ev --n 6  --seed 9000   # 평가용(녹화 안 함)
+  python3 eval/scenarios/gen_rand_obstacles.py --prefix trside --n 10 --seed 2000 --min-lateral 0.4   # 11.12 E: 중앙 없이 '같은 쪽' 녹화용
   → eval/scenarios/rand/parking_r3_rand_<prefix>_NN.yaml
 
 자리 규칙(10.14 시나리오 결과 바탕):
@@ -43,8 +44,11 @@ def jitter(rng, base, d=0.08):
     return [round(min(1.0, max(0.0, c + rng.uniform(-d, d))), 2) for c in base]
 
 
-def obstacle(rng, i, s):
-    lat = rng.uniform(-0.15, 0.15) if rng.random() < 0.5 else rng.choice([-1, 1]) * rng.uniform(0.3, 0.7)
+def obstacle(rng, i, s, min_lat=None):
+    if min_lat is None:   # 기본(11.05 규칙, 같은 seed 면 같은 배치)
+        lat = rng.uniform(-0.15, 0.15) if rng.random() < 0.5 else rng.choice([-1, 1]) * rng.uniform(0.3, 0.7)
+    else:                 # --min-lateral: 모두 ±min_lat~0.7 — Nav2 가 오프셋 반대쪽으로 지나는 비율 0.4 m 이상 77/77(side_vs_geometry_11_11)
+        lat = rng.choice([-1, 1]) * rng.uniform(min_lat, 0.7)
     r = rng.random()
     if r < 0.5:
         w, d, h = rng.uniform(0.4, 0.8), rng.uniform(0.4, 0.8), rng.uniform(0.5, 1.0)
@@ -75,14 +79,19 @@ def main():
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--k", type=int, default=4, help="한 바퀴 장애물 수(구간 수 4 이하)")
     ap.add_argument("--outdir", default="eval/scenarios/rand")
+    ap.add_argument("--min-lateral", type=float, help="모든 장애물을 |lateral| ≥ 이 값(~0.7 m)에 — 중앙 장애물 없음(예 0.4)")
     a = ap.parse_args()
+    if a.min_lateral is not None and not 0.0 < a.min_lateral < 0.7:
+        ap.error("--min-lateral 은 0 과 0.7 사이")
     os.makedirs(a.outdir, exist_ok=True)
-    use = "학습(Nav2 교사 녹화)" if a.prefix == "tr" else "평가(폐루프, 학습에 안 씀)"
+    use = "학습(Nav2 교사 녹화)" if a.prefix.startswith("tr") else "평가(폐루프, 학습에 안 씀)"
+    if a.min_lateral is not None:
+        use += f" · 중앙 없음(|lateral| ≥ {a.min_lateral:g})"
     for j in range(a.n):
         seed = a.seed + j
         rng = random.Random(seed)
         name = f"parking_r3_rand_{a.prefix}_{j:02d}"
-        body = "".join(obstacle(rng, i, s) for i, s in enumerate(layout(rng, a.k)))
+        body = "".join(obstacle(rng, i, s, a.min_lateral) for i, s in enumerate(layout(rng, a.k)))
         path = os.path.join(a.outdir, name + ".yaml")
         with open(path, "w") as f:
             f.write(HEAD.format(name=name, seed=seed, use=use) + body + TAIL)
