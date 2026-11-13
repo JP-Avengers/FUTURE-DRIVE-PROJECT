@@ -129,6 +129,7 @@ for b in data/teacher/dagger_v1/*/; do ~/xmobility_test/venv/bin/python sim/expo
 ## 7. D 에게 질문 (동결 전)
 
 1. **반시계 바퀴 출발 방향** — 씬 루트는 시계 방향(yaw −96°, `sim/scenes/parking/parking_v0.4b_r3.usda:27`)으로 띄우고, 장애물 레이어는 바퀴 시나리오에서 로봇을 안 건드립니다(`make_obstacles.py:115` 는 `start.s` 일 때만). Nav2 는 제자리에서 돌아 출발하지만, X-Mobility 학습 데이터는 FOLLOW 구간만이라(MANIFEST `xm_v1` 행) 180° 돌기는 배운 적이 없습니다. (a) 같은 조건(`FD_XM_CCW_START=scene`, 기본) (b) X-Mobility 만 84° 로 띄움(`align` — `Nova_Carter_ROS` `xformOp:rotateZ` 만 덮는 레이어) (c) Nav2 도 84° 로 다시. 또 노드 기본값 주의: `start_x` 등이 nan 이면 CSV 옆 YAML `start` 를 쓰는데(`node.py:389-395`) `parking_r3_ccw.yaml:10` 은 84° 라 (a) 에서 180° 틀립니다 — 하네스는 항상 출발 자세를 넘김.
+   11.13 고침: '180° 돌기는 배운 적이 없다'는 v1.4 까지 얘기입니다. v1.5 부터는 v0.8 r3 Nav2 장애물 녹화 반시계(train 8회, v1.6 은 18회)가 씬 출발 자세(−96°)의 돌아서기부터 들어 있고(앞머리 안 자름), 학습에 안 쓴 val 녹화 출발에서 E6 · E7 은 Nav2 처럼 제자리 오른쪽 회전(ω −0.7)을 예측합니다(열린 고리, `e2e/results/xm_ft_v1.5_aw30_exec_pad05_e6/judge_11_13.md`). 폐루프 (a) 는 확인 전.
 2. **위치 입력 `pose_source=odom`** — 평가 규칙(`topics.md:39` "평가는 센서로 구한 위치로")에 맞춰 odom + 출발 자세. 학습 데이터 경로는 정답 위치로 만들었습니다(`sim/export_xmobility.py:208-209`, 정답 위치 있으면 그것). odom 과 정답 위치 차는 1.4 cm · 0.8°(`topics.md:39`, r3 양방향)라 영향은 작다고 보지만 확인 필요. 서버 `tools/xm_route.py` 의 `/route`(`route_source=topic`)로 갈지도(그 도구가 정답 위치를 쓰면 같은 질문). 이름이 이 파일과 같아 헷갈리면 이 파일 이름을 바꿔 주세요.
 3. **개입 정의**(`results_schema.md` §6 질문 2) — 지금은 넘으면 그 회 끝(0/1). 리셋 후 이어 가기는 로봇을 옮기는 수단이 없어 안 만들었습니다.
 4. **제한 시간** — Nav2 일괄과 같게 300 s. yaml `timeout_s`(구간 120 · 바퀴 300)를 쓰려면 `--timeout-from-yaml` — 그러면 Nav2 도 같이 바꿔야 같은 조건.
