@@ -20,7 +20,8 @@ PAD05 = "--prev-action-dropout 0.5"
 
 # 행 수(train): v1.4 = 68,441(RESPLIT · 11.10 확인), xm_v08r3_v1 train = 28,548 · xm_v08r3_nav2_v1 train = 15,551(MANIFEST 11.11) → v1.5 = 112,540.
 # 시퀀스 ≈ 행 / 4(xm_v1 38k행 → 9,529 · v1.3 48,082 → 11,987 실측 비 0.249)
-ROWS = {"v1.4": 68441, "v1.5": 68441 + 28548 + 15551}
+# v1.6 = v1.5 + D v0.8 r3 Nav2 장애물 재녹화 v2.0 → train 120,344(MANIFEST 11.12).
+ROWS = {"v1.4": 68441, "v1.5": 68441 + 28548 + 15551, "v1.6": 120344}
 STEP_S = 0.66                                  # Kaggle T4×2 본 학습 실측(v0.1 0.655 · aw30 0.657)
 WORLD, BATCH, ACCUM = 2, 2, 2
 
@@ -34,7 +35,7 @@ def plan(rows, budget_h, max_epochs):
     return dict(seq=seq, spe=spe, per_min=per / 60, fit=fit, epochs=ep, hours=per * ep / 3600, opt_steps=ep * math.ceil(spe / ACCUM))
 
 
-def runs(v15_ds):
+def runs(v15_ds, v16_ds=f"{USER}/dataset-09-xm-v1-6"):
     return {
         # v1.4 — 데이터 이미 있음. 집 PC E4(xm_ft_v1.4_aw30_exec_e10) 결과 보고 고름
         "v14_exec_pad05": dict(run="xm_ft_v1.4_aw30_exec_pad05", extra=f"{AW30} {EXEC} {PAD05}", data=[V14, PRE], ver="v1.4",
@@ -60,6 +61,13 @@ def runs(v15_ds):
         "v15_exec_pad05": dict(run="xm_ft_v1.5_aw30_exec_pad05", extra=f"{AW30} {EXEC} {PAD05}", data=[v15_ds, PRE], ver="v1.5",
                                max_epochs=6, budget=10.5, kernel="fd-xm-finetune-aw30",
                                note="v1.5 × E5 설정"),
+        # 11.13: E7(= v15_exec_pad05, 집 PC) 이 폐루프 1순위 → 11.14 두 세션은 아래 둘
+        "v16_exec_pad05": dict(run="xm_ft_v1.6_aw30_exec_pad05", extra=f"{AW30} {EXEC} {PAD05}", data=[v16_ds, PRE], ver="v1.6",
+                               max_epochs=6, budget=10.5, kernel="fd-xm-finetune",
+                               note="v1.6(= v1.5 + v0.8 r3 Nav2 장애물 재녹화 13회) × E7 설정 — 새 맵 장애물 데이터 늘린 효과"),
+        "v15_exec_pad05_seed1": dict(run="xm_ft_v1.5_aw30_exec_pad05_seed1", extra=f"{AW30} {EXEC} {PAD05} --seed 1", data=[v15_ds, PRE], ver="v1.5",
+                                     max_epochs=6, budget=10.5, kernel="fd-xm-finetune-aw30",
+                                     note="E7 시드 반복(규칙 3) — E7 대 E6 · E5 차가 시드 차 밖인지"),
     }
 
 
@@ -79,9 +87,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", action="append", default=[])
     ap.add_argument("--v15-dataset", default=f"{USER}/dataset-08-xm-v1-5", help="v1.5 Kaggle 데이터셋(만든 뒤 이름 맞출 것)")
+    ap.add_argument("--v16-dataset", default=f"{USER}/dataset-09-xm-v1-6")
     ap.add_argument("--out", default=HERE)
     a = ap.parse_args()
-    R = runs(a.v15_dataset)
+    R = runs(a.v15_dataset, a.v16_dataset)
     want = set(a.only) or set(R)
     assert want <= set(R), f"모르는 이름: {want - set(R)}"
     base = json.load(open(NB_FT, encoding="utf-8"))
