@@ -62,15 +62,15 @@ for b in data/teacher/dagger_v1/*/; do ~/xmobility_test/venv/bin/python sim/expo
 
 | 단계 | 동작 | 출처 · 대응 |
 | --- | --- | --- |
-| 준비 1 | `/ground_truth/tf` 첫 메시지 15 s | `nav2_route.py:213-217` |
+| 준비 1 | `/ground_truth/tf` 첫 메시지 15 s | `nav2_route.py:214-218` |
 | 준비 2 | `/cmd_vel` 발행자 0 (2 s 발견 대기 뒤) — 있으면 코드 3 | `topics.md:40` · `:63`, 대기는 `node.py:466-469` |
-| 준비 3 | odom + 출발 자세(노드와 같은 식)가 정답 위치와 0.5 m · 10° 안 — 아니면 코드 3 | 위치 0.5 m 는 `nav2_route.py:227` 의 AMCL 확인과 같은 값, 식은 `core.py:105-109` = `topics.md:22-23`. 방향 10° 는 여기서 정함 |
+| 준비 3 | odom + 출발 자세(노드와 같은 식)가 정답 위치와 0.5 m · 10° 안 — 아니면 코드 3 | 위치 0.5 m 는 `nav2_route.py:231` 의 AMCL 확인과 같은 값, 식은 `core.py:105-109` = `topics.md:22-23`. 방향 10° 는 여기서 정함 |
 | 노드 | 자식 프로세스(새 세션)로 띄움 — `route_source=csv` · `pose_source=odom` · `route_csv` · `goal_s`(구간 = `goal.s`, 바퀴 = −1) · 출발 자세 · `seed` · `log_csv` | 노드 파라미터는 `node.py:249-260` |
-| 시작 | 노드의 첫 `/cmd_vel` 을 받으면 궤적 기록 시작, 첫 표본 시각 = `t_goal` | `nav2_route.py:243`("목표를 보낸 시뮬 시각") |
-| 표본 | 정답 위치 `World → nova_carter` 를 시뮬 0.1 s 마다 `(t, x, y, cte, 장애물 거리)` + 덧붙임 `(yaw, v_cmd, ω_cmd, odom v, 진행 s)` | `nav2_route.py:133-140`, 덧붙임 순서는 `results_schema.md` §4 |
-| 끝내기 | ① cte(3자리 반올림) > `deviation_limit_m` → `INTERVENED`(`--intervene stop`, 기본) ② 기준선 진행이 마지막 경유점 `s[i_goal]` 을 지남 → `SUCCEEDED` ③ `t − t_goal > timeout` → `CANCELED` ④ 노드 종료 → `FAILED`(fail_reason `harness`) ⑤ (선택) `--stall-abort-s` 정지 → `CANCELED` | ① `results_schema.md` §3 · 장애물 yaml 주석 "넘으면 개입(자동 종료 · 리셋)" ② `i_goal` = `nav2_route.py:198-204` ③ `nav2_route.py:253-255` |
+| 시작 | 노드의 첫 `/cmd_vel` 을 받으면 궤적 기록 시작, 첫 표본 시각 = `t_goal` | `nav2_route.py:247`("목표를 보낸 시뮬 시각") |
+| 표본 | 정답 위치 `World → nova_carter` 를 시뮬 0.1 s 마다 `(t, x, y, cte, 장애물 거리)` + 덧붙임 `(yaw, v_cmd, ω_cmd, odom v, 진행 s)` | `nav2_route.py:134-141`, 덧붙임 순서는 `results_schema.md` §4 |
+| 끝내기 | ① cte(3자리 반올림) > `deviation_limit_m` → `INTERVENED`(`--intervene stop`, 기본) ② 기준선 진행이 마지막 경유점 `s[i_goal]` 을 지남 → `SUCCEEDED` ③ `t − t_goal > timeout` → `CANCELED` ④ 노드 종료 → `FAILED`(fail_reason `harness`) ⑤ (선택) `--stall-abort-s` 정지 → `CANCELED` | ① `results_schema.md` §3 · 장애물 yaml 주석 "넘으면 개입(자동 종료 · 리셋)" ② `i_goal` = `nav2_route.py:199-205` ③ `nav2_route.py:257-259` |
 | 멈추기 | 노드에 SIGINT → (10 s) SIGTERM → (5 s) SIGKILL. 노드가 정지 명령 5번 내고 끝남 → 노드가 사라진 뒤 하네스도 정지 명령 5번 → odom \|v\| < 0.05 m/s 또는 시뮬 3 s 까지 표본 더 받음 | `node.py:434-443` · `:718-745`, 5번은 `sim/teleop_ramp.py:257-259` |
-| 판정 | `summarize` = `nav2_route.py:258-289` 문장 순서 그대로 → JSON + CSV 한 행 + `XM_ROUTE_DONE` 한 줄 | §5 |
+| 판정 | `summarize` = `nav2_route.py:264-298` 문장 순서 그대로 → JSON + CSV 한 행 + `XM_ROUTE_DONE` 한 줄 | §5 |
 
 ## 4. 결과 CSV 열 대응 (`results_schema.md` v0, 열 순서 = `analyze_runs.py:42-93` `COLS`)
 
@@ -86,19 +86,19 @@ for b in data/teacher/dagger_v1/*/; do ~/xmobility_test/venv/bin/python sim/expo
 | `scenario` · `scenario_version` · `direction` | yaml `name` · `version` · 구간은 yaml `direction`, 바퀴는 `--direction`(yaml `directions` 안인지 확인) | `results_schema.md:32-34` |
 | `seed` | `--seed` = 반복 번호. 노드 `seed`(확산 정책 noise, `node.py:241`)에도 같은 값 | 짝 열쇠(`scenario` · `direction` · `seed`) |
 | `result` | `SUCCEEDED` · `INTERVENED` · `CANCELED` · `FAILED` | §3 끝내기 |
-| `pass` · 기준 6개 | `nav2_route.py:288-289` 의 AND 를 항목별로 — **같은 피연산자**(`max_cte` 는 3자리 반올림 값, 정지 · 목표 거리 · 달린 거리는 반올림 전 값). `pass == AND(기준)` 를 assert | `summarize` |
+| `pass` · 기준 6개 | `nav2_route.py:297-298` 의 AND 를 항목별로 — **같은 피연산자**(`max_cte` 는 3자리 반올림 값, 정지 · 목표 거리 · 달린 거리는 반올림 전 값). `pass == AND(기준)` 를 assert | `summarize` |
 | `fail_reason` | 주 원인 하나: `harness` > `collision` > `max_dev` > `long_stop` > `timeout`(CANCELED) > `not_completed` > `goal` > `distance`, `:` 뒤에 위치(기준선 s) · 값. `INTERVENED` 는 `max_dev` 로 잡힘 | 코드 목록 `analyze_runs.py:95` |
-| `mean_cte` · `max_cte` · `lap_sim_s` · `max_stall_s` · `collision` · `min_clearance` · `dist_m` · `plan_m` · `goal_err` · `over_2m_frac` | `nav2_route.py` JSON 과 같은 키 · 같은 계산 · 같은 반올림. 장애물 없으면 `collision=false` · `min_clearance` 빈칸 | `nav2_route.py:258-284` |
+| `mean_cte` · `max_cte` · `lap_sim_s` · `max_stall_s` · `collision` · `min_clearance` · `dist_m` · `plan_m` · `goal_err` · `over_2m_frac` | `nav2_route.py` JSON 과 같은 키 · 같은 계산 · 같은 반올림. 장애물 없으면 `collision=false` · `min_clearance` 빈칸 | `nav2_route.py:264-293` |
 | `p95_cte` | `numpy.nanpercentile(c, 95)`, c = `mean_cte` 와 같은 표본 | `results_schema.md:61` |
 | `interventions` | cte(3자리 반올림)가 한도를 **위로 넘는 순간 수**, 궤적 전체 — Nav2 JSON 에도 같은 함수(`count_interventions`). `stop` 모드면 0 또는 1 | `results_schema.md:66` |
 | `log_path` | 회 JSON 경로(레포 루트 기준) | §4 |
 | 선택 열 | `kind`(`analyze_runs.py:255-264` 규칙) · `route` · `wall_s` · 한도 4개(yaml 값, `timeout_s` 는 실제 쓴 값) · `rc`(0) · `attempt` · `note`(`pose_source` · `intervene` · `ckpt_sha12`). `localization` · `nav2_map` · `recoveries` · `amcl_*` 는 X-Mobility 에서 빈칸 | `results_schema.md` §2.4 |
 
-회 JSON 은 `nav2_route.py --out` 과 같은 키(`route` · `result` · `spacing_m` · `waypoints` · `lap_sim_s` · `wall_s` · `mean_cte` · `max_cte` · `over_2m_frac` · `recoveries` · `max_stall_s` · [`scenario` · `min_clearance` · `collision`] · `goal_err` · `dist_m` · `plan_m` · `amcl_start_err` · `initialpose_resent` · [`segment`] · `pass`, 대괄호는 nav2 와 같은 조건일 때만, Nav2 전용 칸은 null) + 스키마 칸 · `criteria` · `t_goal` · `end_reason` · `start_check` · 노드 명령 · `track`(앞 5칸 = nav2, 3자리 반올림 = `nav2_route.py:293`).
+회 JSON 은 `nav2_route.py --out` 과 같은 키(`route` · `result` · `spacing_m` · `waypoints` · `lap_sim_s` · `wall_s` · `mean_cte` · `max_cte` · `over_2m_frac` · `recoveries` · `max_stall_s` · [`scenario` · `min_clearance` · `collision`] · `goal_err` · `dist_m` · `plan_m` · `amcl_start_err` · `initialpose_resent` · [`segment`] · `pass`, 대괄호는 nav2 와 같은 조건일 때만, Nav2 전용 칸은 null) + 스키마 칸 · `criteria` · `t_goal` · `end_reason` · `start_check` · 노드 명령 · `track`(앞 5칸 = nav2, 3자리 반올림 = `nav2_route.py:302`).
 
 ## 5. Nav2 와 같은 것 — 옮긴 곳
 
-`nav2_route.py` 는 모듈 수준에서 argparse · `rclpy.init()` · `BasicNavigator()` 를 실행해(`nav2_route.py:34-42` · `:116-118`) import 할 수 없습니다. 판정에 쓰는 순수 계산만 옮겨 적고 줄 번호를 달았습니다(전역 → 인자만 바꿈). 아래 `xm_route.py` 쪽은 함수 이름만 — 줄 번호는 고칠 때마다 밀려 뺐고, 각 함수 docstring 에 `nav2_route.py` 줄 번호가 있습니다.
+`nav2_route.py` 는 모듈 수준에서 argparse · `rclpy.init()` · `BasicNavigator()` 를 실행해(`nav2_route.py:35-43` · `:117-119`) import 할 수 없습니다. 판정에 쓰는 순수 계산만 옮겨 적고 줄 번호를 달았습니다(전역 → 인자만 바꿈). 아래 `xm_route.py` 쪽은 함수 이름만 — 줄 번호는 고칠 때마다 밀려 뺐고, 각 함수 docstring 에 `nav2_route.py` 줄 번호가 있습니다.
 
 | `xm_route.py` | `nav2_route.py` |
 | --- | --- |
@@ -118,27 +118,46 @@ for b in data/teacher/dagger_v1/*/; do ~/xmobility_test/venv/bin/python sim/expo
 
 ## 6. Nav2 와 다른 것
 
-1. **도착 판단** — Nav2 는 자기 goal checker(`nav2_params.yaml:156` `xy_goal_tolerance` 0.25 m, AMCL 위치)로 끝냅니다. X-Mobility 노드는 멈추지 않는 경로 추종기라 하네스가 정답 위치의 기준선 진행(감은 s, 사영 창 = `core.py:173-188` 과 같은 back 1 · fwd 10 m)이 `s[i_goal]` 을 지나면 끝냅니다. 정답 위치를 종료 판단에만 쓰고 모델 입력에는 안 씀(`topics.md:39` 채점용 범위). 진행 거리로 거르므로 바퀴 출발 직후(마지막 경유점이 1 m 뒤) 도착으로 끝나는 일(`nav2_route.py:202` 주석의 Nav2 경우)은 생기지 않습니다(시험 T5b).
+1. **도착 판단** — Nav2 는 자기 goal checker(`nav2_params.yaml:156` `xy_goal_tolerance` 0.25 m, AMCL 위치)로 끝냅니다. X-Mobility 노드는 멈추지 않는 경로 추종기라 하네스가 정답 위치의 기준선 진행(감은 s, 사영 창 = `core.py:173-188` 과 같은 back 1 · fwd 10 m)이 `s[i_goal]` 을 지나면 끝냅니다. 정답 위치를 종료 판단에만 쓰고 모델 입력에는 안 씀(`topics.md:39` 채점용 범위). 진행 거리로 거르므로 바퀴 출발 직후(마지막 경유점이 1 m 뒤) 도착으로 끝나는 일(`nav2_route.py:203` 주석의 Nav2 경우)은 생기지 않습니다(시험 T5b).
 2. **개입** — Nav2 일괄은 2.0 m 를 넘어도 계속 달립니다(10.14 `corner_exit` 시계 2.07 m 로 완주 · 실패). X-Mobility 는 기본으로 넘는 순간 끝냄(`INTERVENED`). `pass` 는 어느 쪽이든 같음(`max_dev_ok` 거짓). `lap_sim_s` · `dist_m` · `goal_err` 는 끊긴 때까지라 다름(분석기는 랩을 통과한 회만 평균, `analyze_runs.py:397`). `--intervene off` 면 Nav2 와 같게 계속.
-3. **목표 전 표본** — `nav2_route.py:258` 은 `mean_cte` · `max_cte` 에 궤적 **전체**(구독 시작부터, 목표를 보내기 전 예열 · AMCL 확인 수 s 포함)를 씁니다. X-Mobility 는 노드가 준비된 뒤 기록을 시작해 목표 전 표본이 거의 없습니다(첫 표본 = `t_goal`). 출발 자리에서 서 있는 표본은 cte ≈ 0 이라 Nav2 `mean_cte` 가 그만큼 낮게 나옵니다. 정지 · 거리는 둘 다 `t ≥ t_goal` 만.
+3. **목표 전 표본** — 11.14 부터 같음: 두 방법 모두 `mean_cte` · `max_cte` · `over_2m_frac` 을 `t ≥ t_goal` 표본으로만(`nav2_route.py:264`, D 05c32ba · `summarize` 같은 줄). 그 전 Nav2 JSON 은 궤적 **전체**(목표를 보내기 전 예열 · AMCL 확인 0.4~6.9 s 포함)를 세어 `mean_cte` 가 0.000~0.018 m 낮음 — `--rejudge` 로 다시 내면 같은 조건(§7-5). X-Mobility 는 첫 표본이 `t_goal` 이라 원래 이 구간만 셈. 정지 · 거리는 처음부터 둘 다 `t ≥ t_goal` 만.
 4. **멈춘 뒤 표본** — 끝낸 뒤 로봇이 멈출 때까지(최대 시뮬 3 s) 표본을 더 받아 `lap_sim_s` · `goal_err` 에 들어감. Nav2 는 스스로 감속해 멈춘 시점에 끝남.
 5. **레이어 위치** — `scenario_batch.sh:74` 는 `sim/scenes/parking/obstacles/<이름>.usda` 를 다시 써 작업 트리가 더러워졌습니다(`MANIFEST.md:40` "19개 -dirty 는 … start_json 재생성뿐"). 여기서는 `$FD_OUT/layers/` 에 씀(형상 같음).
 6. **씬** — `scenario_batch.sh:22` 는 r3 고정, 여기는 yaml `scene`(또는 `FD_SCENE`). r3 시나리오는 같음, `parking_v05_lap` · `v06_lap` 만 다름.
 7. **준비 확인** — Nav2 의 AMCL 0.5 m 확인 대신 odom + 출발 자세 확인(위치 0.5 m · 방향 10°). 반시계 바퀴에서 노드 기본 출발 자세(아래 질문 1)를 쓰면 여기서 코드 3 으로 멈춤.
 
-## 7. D 에게 질문 (동결 전)
+## 7. D 에게 질문 (동결 전) — 11.14 D 답 반영
+
+각 항목 끝 **→ D 11.14** 가 답(메시지 · `E 전달 7`). 정할 것이 남은 것은 1(E6 로 2회 더) · 60회 구성(아래).
 
 1. **반시계 바퀴 출발 방향** — 씬 루트는 시계 방향(yaw −96°, `sim/scenes/parking/parking_v0.4b_r3.usda:27`)으로 띄우고, 장애물 레이어는 바퀴 시나리오에서 로봇을 안 건드립니다(`make_obstacles.py:115` 는 `start.s` 일 때만). Nav2 는 제자리에서 돌아 출발하지만, X-Mobility 학습 데이터는 FOLLOW 구간만이라(MANIFEST `xm_v1` 행) 180° 돌기는 배운 적이 없습니다. (a) 같은 조건(`FD_XM_CCW_START=scene`, 기본) (b) X-Mobility 만 84° 로 띄움(`align` — `Nova_Carter_ROS` `xformOp:rotateZ` 만 덮는 레이어) (c) Nav2 도 84° 로 다시. 또 노드 기본값 주의: `start_x` 등이 nan 이면 CSV 옆 YAML `start` 를 쓰는데(`node.py:389-395`) `parking_r3_ccw.yaml:10` 은 84° 라 (a) 에서 180° 틀립니다 — 하네스는 항상 출발 자세를 넘김.
    11.13 고침: '180° 돌기는 배운 적이 없다'는 v1.4 까지 얘기입니다. v1.5 부터는 v0.8 r3 Nav2 장애물 녹화 반시계(train 8회, v1.6 은 18회)가 씬 출발 자세(−96°)의 돌아서기부터 들어 있고(앞머리 안 자름), 학습에 안 쓴 val 녹화 출발에서 E6 · E7 은 Nav2 처럼 제자리 오른쪽 회전(ω −0.7)을 예측합니다(열린 고리, `e2e/results/xm_ft_v1.5_aw30_exec_pad05_e6/judge_11_13.md`). 폐루프 (a) 는 확인 전.
+   **→ D 11.14**: (a) 씬 출발로 감 — E7 이 씬 출발 반시계(장애물 없는 바퀴) 시드 1 · 2 를 둘 다 스스로 돌아서 통과(최대 이탈 1.58 · 1.70 m, 출발 제자리 회전 정지 3.2 s), Nav2 와 같은 조건. 동결 모델이 E6(또는 E6 계열)이면 그 모델로 2회 더 돌리고 확정. (c) 는 기준선 묶음을 다 다시 돌려야 해 안 함.
 2. **위치 입력 `pose_source=odom`** — 평가 규칙(`topics.md:39` "평가는 센서로 구한 위치로")에 맞춰 odom + 출발 자세. 학습 데이터 경로는 정답 위치로 만들었습니다(`sim/export_xmobility.py:208-209`, 정답 위치 있으면 그것). odom 과 정답 위치 차는 1.4 cm · 0.8°(`topics.md:39`, r3 양방향)라 영향은 작다고 보지만 확인 필요. 서버 `tools/xm_route.py` 의 `/route`(`route_source=topic`)로 갈지도(그 도구가 정답 위치를 쓰면 같은 질문). 이름이 이 파일과 같아 헷갈리면 이 파일 이름을 바꿔 주세요.
+   **→ D 11.14**: `pose_source=odom` + 출발 자세로 감. `/route` 형식은 서버 `tools/xm_route.py` 와 같음(20점 · 0.5 m 간격, 프레임 odom, 첫 점 = 로봇 위치 자체). 60회 추론은 `fd_xm_infer` + `eval/xm_batch.sh`.
 3. **개입 정의**(`results_schema.md` §6 질문 2) — 지금은 넘으면 그 회 끝(0/1). 리셋 후 이어 가기는 로봇을 옮기는 수단이 없어 안 만들었습니다.
+   **→ D 11.14**: 그대로 — 2 m 넘으면 그 회 종료(0/1), 리셋 뒤 이어 가기 없음, 회마다 씬을 다시 띄움.
 4. **제한 시간** — Nav2 일괄과 같게 300 s. yaml `timeout_s`(구간 120 · 바퀴 300)를 쓰려면 `--timeout-from-yaml` — 그러면 Nav2 도 같이 바꿔야 같은 조건.
-5. **`mean_cte` 의 목표 전 표본**(§6-3) — 두 방법 모두 `t ≥ t_goal` 로 맞출지. 바꾸려면 `nav2_route.py:258` 한 줄(D 영역)과 `summarize` 를 같이.
+   **→ D 11.14**: 두 방법 모두 300 s 그대로.
+5. **`mean_cte` 의 목표 전 표본**(§6-3) — 두 방법 모두 `t ≥ t_goal` 로 맞출지. 바꾸려면 `nav2_route.py:264` 한 줄(D 영역)과 `summarize` 를 같이.
+   **→ D 11.14**: 맞춤에 동의 · `nav2_route.py` 는 D 가 고침(05c32ba), `summarize` 는 E 가 같은 줄로(11.15, §8). Nav2 기존 결과는 D 가 `--rejudge` 로 다시 냄.
 6. **재시도 · 행**(`results_schema.md` §6 질문 3) — 준비 실패(코드 3 · 124)는 행을 안 쓰고 JSON(`result: PREP_FAIL`)만 남김. 주행 중 노드가 죽으면 `FAILED` · `harness:` 행을 씀(다시 안 돌림). 주행 중 시뮬이 멈추면(정답 위치 30 s 없음) 코드 3 → 다시 띄움(Nav2 일괄의 15분 → 124 와 같은 취급).
+   **→ D 11.14**: 그대로 — 준비 실패는 행 없이 JSON 만, 60회에 안 셈. 주행 중 노드가 죽은 회는 `FAILED` 행으로 세고 다시 안 돌림.
 7. **LiDAR** — 기본 켬(`scenario_batch.sh:22` 와 같게 — RTF 를 Nav2 회와 맞춤, `topics.md:51-52`: 끄면 약 1.7, 켜면 1.27~1.32). `topics.md:45` 는 "수집·평가 설정에서는 끔". 노드 주기 · 상태는 시뮬 시간이라 RTF 가 다르면 추론 지연이 시뮬 시간으로 다르게 들어갑니다.
+   **→ D 11.14**: 켬(Nav2 회와 실시간 비율 맞춤). `topics.md` 의 "평가 설정에서는 끔"은 D 가 고침.
 8. **공용 모듈** — `results_schema.md` §3 제안대로 판정 함수를 `eval/` 공용 모듈로 빼면 이 복사본이 필요 없어집니다. 그 전까지는 복사 + 시험(§8)으로 같음을 확인.
-9. **Nav2 JSON 에 `t_goal` · `direction` 추가** — `nav2_route.py:283` 부근 한 줄이면 `--rejudge` 가 `lap_sim_s` 로 되짚는 근사(0.1 s 반올림) 없이 Nav2 행을 만듭니다.
+   **→ D 11.14**: 동결 전에는 안 옮김 — 지금처럼 복사 + 같은 값 시험.
+9. **Nav2 JSON 에 `t_goal` · `direction` 추가** — `nav2_route.py:292` 부근 한 줄이면 `--rejudge` 가 `lap_sim_s` 로 되짚는 근사(0.1 s 반올림) 없이 Nav2 행을 만듭니다.
+   **→ D 11.14**: 넣음(05c32ba, `nav2_route.py:281` — `t_goal` 은 표본 시각 그대로, `direction` 은 구간이면 yaml · 바퀴면 기준선 파일 이름). 그 뒤 JSON 은 `--rejudge` 가 근사 없이 씀.
 10. **충돌 범위**(`results_schema.md` §6 질문 4) — 계산은 Nav2 와 같음(시나리오 장애물 다각형 vs 발자국 2D). 충돌해도 끝내지 않음(Nav2 와 같음) — 상자에 걸려 서면 제한 시간까지 감. `--stall-abort-s` 로 일찍 끝낼 수 있음(기본 끔, Nav2 일괄과 다름).
+   **→ D 11.14**: 시나리오 장애물과 발자국의 2D 겹침만 셈. `--stall-abort-s` 는 끈 채로(Nav2 일괄에는 같은 기능이 없어 300 s · 벽시계 15분으로만 끝남 — 꺼 둬야 같은 조건).
+
+그 밖(D 11.14):
+
+- **`max_cte` = `max_dev`**(11.11 질문) — 같은 값. 하네스 · Nav2 모두 기준선까지 거리의 최댓값을 한도와 비교(`nav2_route.py:276` · `:297`, `eval/xm_route.py:341` · `:358`). 11.05~06 폐루프 30회(옛 도구)의 `max_cte` 도 뜻은 같고 바퀴 시작 뒤 표본만 · 3.5 m 에서 끊는 점만 다름 — 2 m 기준으로 다시 센 30회는 그대로 씀.
+- **`seed` 뜻** — 같은 시드라도 회마다 결과가 다름(11.14 E6 대조: 11.13 에 통과한 ev_00 시계 · ev_04 시계가 같은 조건 다시 돌리기에서 이탈 한도 실패, ev_04 시계는 s 51 까지 궤적 차 0.2 m 안이다가 콘 앞에서 갈림). 그래서 `seed` 는 "반복 번호"로만 쓰고 같은 조건을 뜻하지 않음(D 제안).
+- **60회 구성** — 11.16 까지 D 가 확정: 방법 3(파인튜닝 · 공개 모델 · Nav2) × 20가지(고정 장애물 9종 × 양방향 + 바퀴 2) × 시드 1, 또는 방법을 줄이고 반복을 늘리는 안(예: 2방법 × 10가지 × 3회). 9.28 계획("본 평가 40 + 교사 20")과 달라 팀 · 멘토 확인 필요. 평가 4종 kind 목록도 그때.
+- **씬** — v0.8 r3 확정(3819f75). v0.9 는 화면용.
 
 ## 8. 확인한 것 · 안 한 것
 
@@ -148,6 +167,7 @@ for b in data/teacher/dagger_v1/*/; do ~/xmobility_test/venv/bin/python sim/expo
 - **nav2_route.py 와 같은 값** — `nav2_route.py` 를 ast 로 읽어 그 파일의 문장(44-113 · 130-140 · 198-204 · 258-289행)을 그대로 실행한 결과와 대조. 8가지 합성 궤적(60 Hz 정답 위치, 바퀴 링크 변환 섞음)에서 `R` · `s` · `L` · `i_goal` · 장애물 다각형 · `plan_len` · 표본(`on_gt`) 전부 같고, 요약 13~16키(`mean_cte` · `max_cte` · `over_2m_frac` · `max_stall_s` · `min_clearance` · `collision` · `goal_err` · `dist_m` · `plan_m` · `lap_sim_s` · `scenario` · `segment` · `pass` …)가 모두 같음. `Episode` 가 이어 센 정지 시간 = 정지 루프(259-266)의 값.
 - **기준별 판정** — 직진 통과(출발 전 2 s 정지 포함) · 남동 모서리 2.4 m 넘침(개입 → `INTERVENED` · `max_dev:s 12.2`, 끝까지 가면 `SUCCEEDED` 인데 `max_dev`) · 12 s 정지(`long_stop:11.7 s`) · 상자 가로지름(`collision:s 27.6`, `min_clearance` 0) · 0.5 m 만 움직이고 SUCCEEDED(`distance`, 같은 궤적에서 `Episode` 는 도착을 안 냄) · 반시계 라바콘 우회 통과(최소 거리 0.74 m) · 0.1 m/s 로 기어감(`CANCELED` → `timeout`). 결과 CSV 8행 → `python3 -I eval/analyze_runs.py <csv> --expect-n 8` **ANALYZE_RUNS_OK · 경고 0**. `CSV_COLUMNS` = `analyze_runs.COLS`(49열), `CRITERIA` · `SCHEMA_VERSION` · fail_reason 코드 = 분석기.
 - **실주행 경로(가짜 rclpy)** — 가짜 rclpy · 메시지 + 대본 세계(정답 위치 · odom · `/cmd_vel`) + 가짜 노드 프로세스로 7가지: 도착(노드 파라미터 · `model_version` · 노드 rc 0 · pid 파일 정리 · 노드가 끝난 뒤 하네스 정지 명령 5번) · 개입 · 출발 방향 틀림(84°, 코드 3, 노드 안 띄움) · `/cmd_vel` 발행자 있음(코드 3) · 노드 시작 실패(코드 3) · 주행 중 노드 죽음(`FAILED` · `harness`) · 반시계 바퀴 장애물. 실주행 궤적 앞 5칸이 같은 메시지를 `nav2_route.py` 의 `on_gt` 에 넣은 결과와 같음. CSV 4행(준비 실패 3회는 행 없음) 분석기 통과, `--rejudge`(nav2 모양 JSON, `t_goal` 없음)로 만든 nav2 행과 합쳐 `--ref nav2` 짝 비교 1쌍 잡힘 · 경고 0.
+- **11.15 `t ≥ t_goal`(§7-5)** — `summarize` 이탈 표본 줄만 바꿈(`xm_route.py:336`). 05c32ba 의 `nav2_route.py:264-298` 문장을 그대로 실행한 결과와 대조: 합성 궤적 30개(바퀴 · 장애물 · 무작위 배치 · 구간, 목표 전 0~7 s 대기 · 출발 자리 0 / 0.4 / 2.5 m 옆) 에서 요약 11키 전부 같음 (목표 전 2.5 m 표본이 있으면 궤적 전체로 센 값과 `mean_cte` 0.08 대 0.14 · `max_cte` 도 다름 — 바뀐 줄이 실제로 걸림). D 11.13~14 실데이터 `--rejudge`: 하네스 회 27개(E6 무작위 12 · E7 무작위 12 · E6 대조 3) 저장값과 같음, Nav2 무작위 12회(05c32ba 전 JSON, `t_goal` 근사)는 `mean_cte` 만 +0.000~0.017 m(D 커밋 메시지의 +0.001~0.018 과 같은 범위) · 나머지 같음. 같이 고침: `--rejudge` 의 `XM_ROUTE_REJUDGE_DIFF` 가 JSON track 3자리 반올림 때문에 `goal_err` 0.001 차를 다르다고 찍던 것(E7 12회 중 7회) — 0.0015 까지는 같다고 봄. `analyze_runs.py` 가 무작위 배치 yaml 을 `eval/scenarios/rand/` 에서도 찾음(D 전달 6 · 7 의 '시나리오 파일 없음' 경고 → 0). 이 파일 · `xm_route.py` 의 `nav2_route.py:` 줄 번호를 c79d111 · 05c32ba 뒤 줄로 고침(diff 대응, 대상 줄 내용 확인).
 
 안 한 것:
 

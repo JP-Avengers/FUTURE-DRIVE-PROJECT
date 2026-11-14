@@ -370,7 +370,9 @@ def validate(df, a, rep):
         rep.warn(f"장애물 시나리오인데 min_clearance 빈칸 {int(bad.sum())}행 ({where(df, bad)})")
     # 시나리오 파일과 대조
     for name, g in df.groupby("scenario", sort=True):
-        path = os.path.join(a.scenarios_dir, f"{name}.yaml")
+        # 무작위 배치(gen_rand_obstacles.py)는 rand/ 아래 — 11.13~14 D 전달 6 · 7 의 '시나리오 파일 없음' 경고
+        path = next((p for p in (os.path.join(a.scenarios_dir, f"{name}.yaml"), os.path.join(a.scenarios_dir, "rand", f"{name}.yaml"))
+                     if os.path.isfile(p)), os.path.join(a.scenarios_dir, f"{name}.yaml"))
         if not os.path.isfile(path):
             rep.warn(f"시나리오 파일 없음: {path} ({len(g)}행)")
             continue

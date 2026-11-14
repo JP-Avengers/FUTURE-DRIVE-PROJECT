@@ -9,17 +9,17 @@
     python3 eval/xm_route.py --rejudge <run.json> --scenario ... [--direction ..] --method nav2 --csv ...   # 저장된 궤적을 다시 판정
 
 한 회 순서
-  1. 준비 확인 — /ground_truth/tf 첫 메시지(15 s, nav2_route.py:213-217) · /cmd_vel 발행자 0(topics.md:40 · :63) ·
-     odom + 출발 자세가 정답 위치와 0.5 m · 10° 안(nav2_route.py:221-238 의 AMCL 확인에 해당). 실패면 코드 3(일괄이 다시 띄움,
+  1. 준비 확인 — /ground_truth/tf 첫 메시지(15 s, nav2_route.py:214-218) · /cmd_vel 발행자 0(topics.md:40 · :63) ·
+     odom + 출발 자세가 정답 위치와 0.5 m · 10° 안(nav2_route.py:222-242 의 AMCL 확인에 해당). 실패면 코드 3(일괄이 다시 띄움,
      scenario_batch.sh:96 과 같은 규칙) — CSV 행은 안 씀.
   2. 추론 노드(python -m fd_xm_infer.node, ml_env)를 자식 프로세스로 띄움 — route_source=csv · pose_source=odom · 출발 자세 · goal_s.
-  3. 노드의 첫 /cmd_vel 이 오면 궤적 기록 시작. 첫 표본 시각 = t_goal(nav2_route.py:243 "목표를 보낸 시뮬 시각").
-  4. 0.1 s 표본마다(nav2_route.py:137) 끝내기 판단: cte > deviation_limit_m → INTERVENED(results_schema.md §3) · 기준선 진행이
-     마지막 경유점(nav2_route.py:198-204 의 i_goal)을 지남 → SUCCEEDED · t − t_goal > timeout → CANCELED(nav2_route.py:253-255) ·
+  3. 노드의 첫 /cmd_vel 이 오면 궤적 기록 시작. 첫 표본 시각 = t_goal(nav2_route.py:247 "목표를 보낸 시뮬 시각").
+  4. 0.1 s 표본마다(nav2_route.py:138) 끝내기 판단: cte > deviation_limit_m → INTERVENED(results_schema.md §3) · 기준선 진행이
+     마지막 경유점(nav2_route.py:199-205 의 i_goal)을 지남 → SUCCEEDED · t − t_goal > timeout → CANCELED(nav2_route.py:257-259) ·
      노드 종료 → FAILED.
   5. 노드에 SIGINT(노드가 정지 명령 5번, ros2_ws/src/fd_xm_infer/fd_xm_infer/node.py:434-443) → 노드가 사라진 뒤 이쪽도 정지 명령
      5번(발행자 1개 규칙) → 멈출 때까지 표본을 더 받음.
-  6. 판정 = nav2_route.py:258-289 의 식(summarize) → JSON(nav2_route --out 과 같은 키 + 스키마 칸) · 결과 CSV 한 행(results_schema.md v0).
+  6. 판정 = nav2_route.py:264-298 의 식(summarize) → JSON(nav2_route --out 과 같은 키 + 스키마 칸) · 결과 CSV 한 행(results_schema.md v0).
 
 nav2_route.py 는 import 하면 argparse · rclpy · Nav2 가 바로 돌아(모듈 수준 코드) 가져올 수 없다 — 판정에 쓰는 순수 계산만 아래에 옮겨
 적고 줄 번호를 달았다. 같은지는 nav2_route.py 의 문장을 ast 로 떼어 같은 궤적에 돌려 대조함(XM_HARNESS.md "확인").
@@ -46,25 +46,25 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA_VERSION = "v0"                       # eval/results_schema.md · analyze_runs.py:40
 
 # ---------------------------------------------------------------- nav2_route.py 와 같은 값
-SAMPLE_DT = 0.1                             # nav2_route.py:137 — 정답 위치를 시뮬 0.1 s 마다 표본
-STALL_V = 0.05                              # nav2_route.py:259 · :264 — 0.05 m/s 미만이면 정지
-STALL_STRIDE = 5                            # nav2_route.py:261 — 표본 5개(0.5 s) 간격 속도
-OVER_M = 2.0                                # nav2_route.py:271 — over_2m_frac 은 한도와 무관하게 2.0 고정
-DIST_RATIO = 0.8                            # nav2_route.py:289
-LAP_GOAL_BACK_M = 1.0                       # nav2_route.py:203 — 바퀴의 마지막 경유점 = 결승 1 m 앞
-LIM_DEFAULT = (2.0, 10.0, 1.0)              # nav2_route.py:287 · :289 — deviation_limit_m · stall_limit_s · goal.radius_m
-FOOT = [(0.14, 0.25), (0.14, -0.25), (-0.607, -0.25), (-0.607, 0.25)]   # nav2_route.py:70 = nav2_params.yaml:212
-GT_PARENT, GT_CHILD = "World", "nova_carter"                            # nav2_route.py:135 · topics.md:39
+SAMPLE_DT = 0.1                             # nav2_route.py:138 — 정답 위치를 시뮬 0.1 s 마다 표본
+STALL_V = 0.05                              # nav2_route.py:265 · :270 — 0.05 m/s 미만이면 정지
+STALL_STRIDE = 5                            # nav2_route.py:267 — 표본 5개(0.5 s) 간격 속도
+OVER_M = 2.0                                # nav2_route.py:277 — over_2m_frac 은 한도와 무관하게 2.0 고정
+DIST_RATIO = 0.8                            # nav2_route.py:298
+LAP_GOAL_BACK_M = 1.0                       # nav2_route.py:204 — 바퀴의 마지막 경유점 = 결승 1 m 앞
+LIM_DEFAULT = (2.0, 10.0, 1.0)              # nav2_route.py:296 · :298 — deviation_limit_m · stall_limit_s · goal.radius_m
+FOOT = [(0.14, 0.25), (0.14, -0.25), (-0.607, -0.25), (-0.607, 0.25)]   # nav2_route.py:71 = nav2_params.yaml:212
+GT_PARENT, GT_CHILD = "World", "nova_carter"                            # nav2_route.py:136 · topics.md:39
 TIMEOUT_S = 300.0                           # scenario_batch.sh:89 — nav2_route.py 에 --timeout 300 (yaml timeout_s 는 안 씀)
 GOAL_XY_TOL = 0.25                          # nav2_params.yaml:156 xy_goal_tolerance — Nav2 가 SUCCEEDED 를 내는 반경.
                                             # 구간 s[i_goal] 은 goal.s 보다 0.21~0.24 m 뒤(계산 s ≠ CSV s 열)인데 노드 · 학습 경로는 goal.s 에서 끝남
 # ---------------------------------------------------------------- 여기서 정한 값(nav2 에 없는 부분)
-START_POS_TOL, START_YAW_TOL_DEG = 0.5, 10.0   # 출발 확인 — 위치는 nav2_route.py:227 의 0.5 m, 방향은 여기서 정함
+START_POS_TOL, START_YAW_TOL_DEG = 0.5, 10.0   # 출발 확인 — 위치는 nav2_route.py:231 의 0.5 m, 방향은 여기서 정함
 PROJ_BACK, PROJ_FWD = 1.0, 10.0             # 진행 거리 사영 창 = fd_xm_infer core.py:27 PROJECT_BACK · FWD(= export_xmobility.py:239)
 SETTLE_V, SETTLE_SIM_S = 0.05, 3.0          # 끝낸 뒤 odom |v| < 0.05 m/s 가 되거나 시뮬 3 s 까지 표본을 더 받음
 METHODS = ("xmobility_ft", "xmobility_zeroshot", "nav2")   # analyze_runs.py:96
 METHOD_SHORT = {"xmobility_ft": "xmft", "xmobility_zeroshot": "xmzs", "nav2": "nav2"}
-TRACK_COLS = ["t_sim", "x", "y", "cte", "clearance", "yaw", "v_cmd", "w_cmd", "v_odom", "station"]   # 앞 5칸 = nav2_route.py:140
+TRACK_COLS = ["t_sim", "x", "y", "cte", "clearance", "yaw", "v_cmd", "w_cmd", "v_odom", "station"]   # 앞 5칸 = nav2_route.py:141
 # 결과 CSV 열 — analyze_runs.py:42-93 COLS 의 순서 그대로(필수 33 + 선택 15). 시험이 COLS 와 같은지 확인
 CSV_COLUMNS = [
     "schema_version", "run_id", "timestamp", "repo_rev", "method", "model_version", "scene", "scene_version", "scenario",
@@ -84,7 +84,7 @@ def _abs(p):
 # ---------------------------------------------------------------- 판정 계산 — nav2_route.py 에서 옮김(전역 → 인자만 바꿈)
 
 def load_route(path):
-    """nav2_route.py:50-53 — 기준선 CSV run 0 점 → (R, seg, s, L)."""
+    """nav2_route.py:51-54 — 기준선 CSV run 0 점 → (R, seg, s, L)."""
     R = np.array([(float(r["x"]), float(r["y"])) for r in csv.DictReader(open(_abs(path))) if r.get("run", "0") == "0"])
     seg = np.diff(R, axis=0)
     s = np.concatenate([[0], np.cumsum(np.hypot(seg[:, 0], seg[:, 1]))])
@@ -92,7 +92,7 @@ def load_route(path):
 
 
 def cte(R, seg, x, y):
-    """nav2_route.py:62-67 — 기준선(닫힌 꺾은선)까지 거리."""
+    """nav2_route.py:63-68 — 기준선(닫힌 꺾은선)까지 거리."""
     a0, d = R[:-1], seg
     t = np.clip(((x - a0[:, 0]) * d[:, 0] + (y - a0[:, 1]) * d[:, 1]) / np.maximum((d ** 2).sum(1), 1e-12), 0, 1)
     px, py = a0[:, 0] + t * d[:, 0], a0[:, 1] + t * d[:, 1]
@@ -100,7 +100,7 @@ def cte(R, seg, x, y):
 
 
 def build_obstacles(SC):
-    """nav2_route.py:72-88 — 장애물 다각형(sim/make_obstacles.py:34-39 on_route 와 같은 자리)."""
+    """nav2_route.py:73-89 — 장애물 다각형(sim/make_obstacles.py:34-39 on_route 와 같은 자리)."""
     OBS = []
     RS = np.array([(float(r["s"]), float(r["x"]), float(r["y"])) for r in csv.DictReader(open(_abs(SC["route"]))) if r.get("run", "0") == "0"])
     for o in SC.get("obstacles", []):
@@ -122,20 +122,20 @@ def build_obstacles(SC):
 
 
 def _seg_dist(p, a_, b_):
-    """nav2_route.py:91-94."""
+    """nav2_route.py:92-95."""
     ax, ay = a_; bx, by = b_; px, py = p
     dx, dy = bx - ax, by - ay; t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / max(dx * dx + dy * dy, 1e-12)))
     return math.hypot(px - ax - t * dx, py - ay - t * dy)
 
 
 def _inside(p, poly):
-    """nav2_route.py:97-99."""
+    """nav2_route.py:98-100."""
     sgn = [((b_[0] - a_[0]) * (p[1] - a_[1]) - (b_[1] - a_[1]) * (p[0] - a_[0])) for a_, b_ in zip(poly, poly[1:] + poly[:1])]
     return all(v >= 0 for v in sgn) or all(v <= 0 for v in sgn)
 
 
 def clearance(OBS, x, y, th):
-    """nav2_route.py:102-113 — 로봇 발자국과 가장 가까운 장애물 사이 거리(m, 겹치면 0)."""
+    """nav2_route.py:103-114 — 로봇 발자국과 가장 가까운 장애물 사이 거리(m, 겹치면 0)."""
     rob = [(x + px * math.cos(th) - py * math.sin(th), y + px * math.sin(th) + py * math.cos(th)) for px, py in FOOT]
     best = float("inf")
     for o in OBS:
@@ -149,12 +149,12 @@ def clearance(OBS, x, y, th):
 
 
 def quat_yaw(x, y, z, w):
-    """nav2_route.py:139."""
+    """nav2_route.py:140."""
     return math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
 
 
 def max_stall(track, t_goal):
-    """nav2_route.py:259-266 — 가장 긴 정지(0.05 m/s 미만), 0.5 s 간격 속도, t_goal 부터."""
+    """nav2_route.py:265-272 — 가장 긴 정지(0.05 m/s 미만), 0.5 s 간격 속도, t_goal 부터."""
     stall, run, prev = 0.0, 0.0, None
     for t in [t for t in track if t[0] >= t_goal][::STALL_STRIDE]:
         if prev is not None:
@@ -168,13 +168,13 @@ def max_stall(track, t_goal):
 # ---------------------------------------------------------------- 시나리오 · 기준선
 
 class Ctx:
-    """시나리오 하나 · 방향 하나의 판정 재료 — nav2_route.py:44-53 · :72-88 · :198-204 · :282 · :287-289."""
+    """시나리오 하나 · 방향 하나의 판정 재료 — nav2_route.py:45-54 · :73-89 · :199-205 · :291 · :296-298."""
 
     def __init__(self, scenario, direction=None, route=None):
         import yaml
         self.scenario_path = scenario
         self.SC = SC = yaml.safe_load(open(_abs(scenario)))
-        self.segment = "s" in (SC.get("goal") or {})                               # nav2_route.py:48
+        self.segment = "s" in (SC.get("goal") or {})                               # nav2_route.py:49
         dirs = SC.get("directions") or ([SC["direction"]] if SC.get("direction") else [])
         if self.segment:
             direction = direction or SC.get("direction")
@@ -185,25 +185,25 @@ class Ctx:
         if dirs and direction not in dirs:
             raise SystemExit(f"{scenario}: 방향 {direction} 이 yaml {dirs} 에 없음")
         self.direction = direction
-        # 기준선 — 구간이면 시나리오 route, 바퀴면 방향별 CSV(nav2_route.py:49 · scenario_batch.sh:79)
+        # 기준선 — 구간이면 시나리오 route, 바퀴면 방향별 CSV(nav2_route.py:50 · scenario_batch.sh:79)
         self.route = SC["route"] if self.segment else (route or f"eval/routes/parking_r3_{direction}.csv")
         self.R, self.seg, self.s, self.L = load_route(self.route)
-        self.OBS = build_obstacles(SC)                                             # nav2_route.py:72-88
-        if self.segment:                                                           # nav2_route.py:198-204 (i_goal 만)
+        self.OBS = build_obstacles(SC)                                             # nav2_route.py:73-89
+        if self.segment:                                                           # nav2_route.py:199-205 (i_goal 만)
             self.s0, self.s1 = float(SC["start"]["s"]), float(SC["goal"]["s"])
             self.i_goal = int(min(np.searchsorted(self.s, self.s1), len(self.R) - 1))
         else:
             self.s0 = self.s1 = None
             self.i_goal = int(np.searchsorted(self.s, self.L - LAP_GOAL_BACK_M))
-        self.plan_len = (self.s1 - self.s0) if self.segment else self.L           # nav2_route.py:282
-        self.lim_dev = float(SC.get("deviation_limit_m", LIM_DEFAULT[0]))         # nav2_route.py:287
+        self.plan_len = (self.s1 - self.s0) if self.segment else self.L           # nav2_route.py:291
+        self.lim_dev = float(SC.get("deviation_limit_m", LIM_DEFAULT[0]))         # nav2_route.py:296
         self.lim_stall = float(SC.get("stall_limit_s", LIM_DEFAULT[1]))
-        self.radius = float((SC.get("goal") or {}).get("radius_m", LIM_DEFAULT[2]))   # nav2_route.py:289
+        self.radius = float((SC.get("goal") or {}).get("radius_m", LIM_DEFAULT[2]))   # nav2_route.py:298
         self.goal_station = float(self.s[self.i_goal])
         self.name = SC.get("name") or os.path.splitext(os.path.basename(scenario))[0]
 
     def sample(self, st, x, y, th):
-        """nav2_route.py:140 의 표본 한 줄 (시뮬 초, x, y, cte, 장애물 거리 — 장애물 없으면 −1)."""
+        """nav2_route.py:141 의 표본 한 줄 (시뮬 초, x, y, cte, 장애물 거리 — 장애물 없으면 −1)."""
         return (st, x, y, cte(self.R, self.seg, x, y), clearance(self.OBS, x, y, th) if self.OBS else -1.0)
 
     def start_pose(self):
@@ -280,7 +280,7 @@ class Episode:
         ref0 = ctx.s0 if ctx.segment else 0.0
         self.station = ref0 + _wrap_s(p0 - ref0, ctx.L)
         self.s_prev = p0
-        # nav2_route.py:260-266 정지 루프를 표본마다 이어 셈 — t_goal 표본(첫 표본)이 [::5] 의 0번
+        # nav2_route.py:266-272 정지 루프를 표본마다 이어 셈 — t_goal 표본(첫 표본)이 [::5] 의 0번
         self.k, self.prev, self.run = 1, (t_goal, x0, y0), 0.0
         self.reason, self.detail = None, ""
 
@@ -299,7 +299,7 @@ class Episode:
             self.k += 1
         if self.reason:
             return None
-        # max_dev_ok 가 쓰는 값(3자리 반올림, nav2_route.py:270 · :288)과 같은 값으로 비교 — 개입 ⇔ max_dev_ok 거짓
+        # max_dev_ok 가 쓰는 값(3자리 반올림, nav2_route.py:276 · :297)과 같은 값으로 비교 — 개입 ⇔ max_dev_ok 거짓
         if self.intervene and round(cte_v, 3) > ctx.lim_dev:
             self.reason, self.detail = "INTERVENED", f"cte {cte_v:.3f} > {ctx.lim_dev} at s {p:.1f}"
         elif self.station >= ctx.goal_station - GOAL_XY_TOL:
@@ -332,29 +332,29 @@ def count_interventions(c, lim):
 
 def summarize(ctx, track, t_goal, name, wall_s=None, recoveries=None, spacing=None, waypoints=None,
               amcl_start_err=None, initialpose_resent=None):
-    """nav2_route.py:258-289 의 판정을 문장 순서 그대로 — summ(같은 키 · 같은 반올림)과 기준별 bool."""
-    c = np.array([t[3] for t in track]) if track else np.array([np.nan])                  # :258
-    stall = max_stall(track, t_goal)                                                         # :259-266
-    clr = [t[4] for t in track if t[4] >= 0]                                                 # :267
-    summ = {"route": ctx.route, "result": name, "spacing_m": spacing, "waypoints": waypoints,   # :268-272
+    """nav2_route.py:264-298 의 판정을 문장 순서 그대로 — summ(같은 키 · 같은 반올림)과 기준별 bool."""
+    c = np.array([t[3] for t in track if t[0] >= t_goal] or [np.nan])                     # :264 — t ≥ t_goal(11.14, §7-5)
+    stall = max_stall(track, t_goal)                                                         # :265-272
+    clr = [t[4] for t in track if t[4] >= 0]                                                 # :273
+    summ = {"route": ctx.route, "result": name, "spacing_m": spacing, "waypoints": waypoints,   # :274-278
             "lap_sim_s": round(track[-1][0] - t_goal, 1) if track else None, "wall_s": wall_s,
             "mean_cte": round(float(np.nanmean(c)), 3), "max_cte": round(float(np.nanmax(c)), 3),
             "over_2m_frac": round(float(np.mean(c > OVER_M)), 4), "recoveries": recoveries,
             "max_stall_s": round(stall, 1)}
-    if ctx.OBS:                                                                              # :273-274
+    if ctx.OBS:                                                                              # :282-283
         summ.update({"scenario": ctx.scenario_path, "min_clearance": round(min(clr), 3) if clr else None,
                      "collision": bool(clr and min(clr) <= 0.0)})
-    gx, gy = ctx.R[ctx.i_goal]                                                               # :277-278
+    gx, gy = ctx.R[ctx.i_goal]                                                               # :286-287
     goal_err = math.hypot(track[-1][1] - gx, track[-1][2] - gy) if track else float("inf")
-    tr = [t for t in track if t[0] >= t_goal]                                                # :280-281
+    tr = [t for t in track if t[0] >= t_goal]                                                # :289-290
     dist = float(sum(math.hypot(q[1] - p[1], q[2] - p[2]) for p, q in zip(tr, tr[1:])))
-    plan_len = ctx.plan_len                                                                  # :282
-    summ.update({"goal_err": round(goal_err, 3), "dist_m": round(dist, 1), "plan_m": round(plan_len, 1),   # :283-284
+    plan_len = ctx.plan_len                                                                  # :291
+    summ.update({"goal_err": round(goal_err, 3), "dist_m": round(dist, 1), "plan_m": round(plan_len, 1),   # :292-293
                  "amcl_start_err": amcl_start_err, "initialpose_resent": initialpose_resent})
-    if ctx.segment:                                                                          # :285-286
+    if ctx.segment:                                                                          # :294-295
         summ.update({"scenario": ctx.scenario_path, "segment": [ctx.s0, ctx.s1]})
-    lim_dev, lim_stall = ctx.lim_dev, ctx.lim_stall                                          # :287
-    # :288-289 의 AND 를 항목별로 — 같은 피연산자(max_cte 는 반올림 값, 정지 · 목표 · 거리는 반올림 전 값)
+    lim_dev, lim_stall = ctx.lim_dev, ctx.lim_stall                                          # :296
+    # :297-298 의 AND 를 항목별로 — 같은 피연산자(max_cte 는 반올림 값, 정지 · 목표 · 거리는 반올림 전 값)
     crit = {"completed": name == "SUCCEEDED", "max_dev_ok": summ["max_cte"] <= lim_dev,
             "no_collision": not summ.get("collision", False), "no_long_stop": stall < lim_stall,
             "goal_reached": goal_err <= ctx.radius, "distance_ratio_ok": dist >= DIST_RATIO * plan_len}
@@ -494,7 +494,7 @@ def run_id_of(ts, method, ctx, seed, attempt=1):
 
 
 def finish(ctx, a, track, t_goal, name, meta, extra, wall_s=None, harness="", summ_kw=None, t_end=None):
-    """요약 · 판정 → JSON(nav2_route.py:291-293 모양 + 칸 추가) · CSV 행 · NAV2_ROUTE_DONE 같은 한 줄.
+    """요약 · 판정 → JSON(nav2_route.py:300-302 모양 + 칸 추가) · CSV 행 · NAV2_ROUTE_DONE 같은 한 줄.
     t_end 가 있으면 판정은 끝내기 판단 시각까지의 표본만(nav2_route.py 궤적은 isTaskComplete 에서 끝남 — 멈추는 동안의 표본이
     lap_sim_s · goal_err · dist_m 에 안 들어감). JSON track 은 멈춘 뒤까지 전부."""
     judge = [t for t in track if t_end is None or t[0] <= t_end + 1e-6] or track
@@ -508,7 +508,7 @@ def finish(ctx, a, track, t_goal, name, meta, extra, wall_s=None, harness="", su
     out.update({"criteria": crit, "scenario_yaml": ctx.scenario_path, "t_goal": round(t_goal, 3) if t_goal is not None else None,
                 "judged_samples": len(judge), "track_columns": TRACK_COLS[:len(track[0])] if track else []})
     out.update(extra)
-    out["track"] = [[round(float(v), 3) for v in t] for t in track]                       # nav2_route.py:293 과 같은 3자리
+    out["track"] = [[round(float(v), 3) for v in t] for t in track]                       # nav2_route.py:302 과 같은 3자리
     if a.out:
         os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
         with open(a.out, "w", encoding="utf-8") as f:
@@ -528,7 +528,7 @@ def finish(ctx, a, track, t_goal, name, meta, extra, wall_s=None, harness="", su
 
 def rejudge(a):
     """--rejudge — 이 하네스나 nav2_route.py --out 의 JSON 궤적을 같은 summarize 로 다시 판정(nav2 행 만들기 · 판정 바꿀 때 재계산).
-    t_goal 이 JSON 에 없으면(nav2_route.py JSON) track[-1][0] − lap_sim_s 로 되짚음 — lap_sim_s 가 0.1 s 반올림이라 근사."""
+    t_goal 이 JSON 에 없으면(05c32ba 전 nav2_route.py JSON) track[-1][0] − lap_sim_s 로 되짚음 — lap_sim_s 가 0.1 s 반올림이라 근사."""
     j = json.load(open(a.rejudge, encoding="utf-8"))
     route = a.route or j.get("route") or None
     m = re.search(r"_(cw|ccw)\.csv$", route or "")
@@ -537,7 +537,7 @@ def rejudge(a):
     t_goal = j.get("t_goal")
     approx = t_goal is None
     if approx:
-        # nav2_route.py:243 의 t_goal 은 표본 시각 그 자체 — lap_sim_s(0.1 s 반올림) · 3자리 반올림 · 부동소수 뺄셈 오차로
+        # nav2_route.py:247 의 t_goal 은 표본 시각 그 자체 — lap_sim_s(0.1 s 반올림) · 3자리 반올림 · 부동소수 뺄셈 오차로
         # 첫 표본이 t ≥ t_goal 에서 빠지면 [::5] 정지 보폭이 한 칸 밀려 max_stall_s 가 0.5 s 까지 달라짐 → 가장 가까운 표본 시각에 붙임
         approx_t = track[-1][0] - float(j["lap_sim_s"])
         t_goal = min((t[0] for t in track), key=lambda v: abs(v - approx_t))
@@ -556,8 +556,11 @@ def rejudge(a):
                    amcl_start_err=j.get("amcl_start_err"), initialpose_resent=j.get("initialpose_resent"))
     summ, crit, row = finish(ctx, a, track, t_goal, j["result"], meta, {"rejudged_from": a.rejudge}, wall_s=j.get("wall_s"),
                              harness=j.get("harness_failed") or "", summ_kw=summ_kw, t_end=j.get("t_end_decision"))
+    # JSON track 은 3자리 반올림이라 다시 계산하면 goal_err 등이 0.001 다를 수 있음(11.14 E7 12회 중 7회) — 그만큼은 같다고 봄
+    tol = {"mean_cte": 0.0015, "max_cte": 0.0015, "min_clearance": 0.0015, "goal_err": 0.0015}
     diff = {k: (j[k], summ[k]) for k in ("mean_cte", "max_cte", "max_stall_s", "min_clearance", "collision", "goal_err", "dist_m",
-                                         "plan_m", "pass") if k in j and k in summ and j[k] != summ[k]}
+                                         "plan_m", "pass") if k in j and k in summ and j[k] != summ[k]
+            and not (k in tol and j[k] is not None and summ[k] is not None and abs(j[k] - summ[k]) <= tol[k])}
     if diff:
         print(f"XM_ROUTE_REJUDGE_DIFF 저장값과 다름 {diff}", flush=True)
     return 0
@@ -603,20 +606,20 @@ class Live:
         self.rclpy, self.Twist = rclpy, Twist
         self.a, self.ctx = a, ctx
         rclpy.init()
-        self.node = Node("xm_route", parameter_overrides=[Parameter("use_sim_time", Parameter.Type.BOOL, True)])   # nav2_route.py:118
+        self.node = Node("xm_route", parameter_overrides=[Parameter("use_sim_time", Parameter.Type.BOOL, True)])   # nav2_route.py:119
         self.track, self.recording, self.ep, self.t_goal = [], False, None, None
         self.gt_last = self.gt_wall = self.odom = None
         self.cmd, self.n_cmd = (0.0, 0.0), 0
         self.proc, self.node_log = None, None
         self.t_end = None
-        # 정답 위치 — nav2_route.py:143 과 같은 QoS
+        # 정답 위치 — nav2_route.py:144 과 같은 QoS
         self.node.create_subscription(TFMessage, "/ground_truth/tf", self._on_gt, QoSProfile(depth=50, reliability=ReliabilityPolicy.BEST_EFFORT))
         self.node.create_subscription(Odometry, "/chassis/odom", self._on_odom, qos_profile_sensor_data)
         self.node.create_subscription(Twist, "/cmd_vel", self._on_cmd, qos_profile_sensor_data)
 
     # ---- 받기
     def _on_gt(self, m):
-        for t in m.transforms:                                                     # nav2_route.py:133-140
+        for t in m.transforms:                                                     # nav2_route.py:134-141
             if t.header.frame_id == GT_PARENT and t.child_frame_id == GT_CHILD:
                 st = t.header.stamp.sec + t.header.stamp.nanosec * 1e-9
                 x, y = t.transform.translation.x, t.transform.translation.y
@@ -625,7 +628,7 @@ class Live:
                 if self.recording and (not self.track or st - self.track[-1][0] >= SAMPLE_DT):
                     smp = self.ctx.sample(st, x, y, th)
                     v_odom = self.odom[3] if self.odom else float("nan")
-                    if self.ep is None:                                            # 첫 표본 = t_goal(nav2_route.py:243)
+                    if self.ep is None:                                            # 첫 표본 = t_goal(nav2_route.py:247)
                         self.t_goal = st
                         self.ep = Episode(self.ctx, st, x, y, self.a.timeout, self.a.intervene == "stop", self.a.stall_abort_s,
                                           self.a.goal_stop_s)
@@ -750,7 +753,7 @@ def run_live(a):
     signal.signal(signal.SIGTERM, on_term)      # 일괄의 timeout(SIGTERM)에도 노드를 끄고 나감
     try:
         # 1. 준비 확인
-        if not L.spin_until(lambda: L.gt_last is not None, a.gt_timeout):         # nav2_route.py:213-217
+        if not L.spin_until(lambda: L.gt_last is not None, a.gt_timeout):         # nav2_route.py:214-218
             return prep_fail("NO_GT", f"/ground_truth/tf 를 {a.gt_timeout:g} s 안에 못 받음")
         L.spin_until(lambda: False, 2.0)                                           # 발견 대기 — teleop_ramp.py:190-192 · node.py:466-469
         if L.other_cmd_pubs():
@@ -863,7 +866,7 @@ def parse_args(argv=None):
     ap.add_argument("--node-param", action="append", help="노드에 더 넘길 -p 이름:=값 (여러 번)")
     ap.add_argument("--cuda-visible-devices", default="1", help="노드 CUDA_VISIBLE_DEVICES(노드 README:19). 빈칸이면 안 건드림")
     ap.add_argument("--ready-timeout", type=float, default=300.0, help="노드 첫 /cmd_vel 까지 실제 초(모델 로드)")
-    ap.add_argument("--gt-timeout", type=float, default=15.0, help="nav2_route.py:213 의 15 s")
+    ap.add_argument("--gt-timeout", type=float, default=15.0, help="nav2_route.py:214 의 15 s")
     ap.add_argument("--gt-silence-s", type=float, default=30.0, help="주행 중 정답 위치가 이만큼 안 오면 시뮬 멈춤으로 보고 코드 3")
     ap.add_argument("--note", default="", help="결과 CSV note")
     ap.add_argument("--repo-rev", help="(rejudge) repo_rev 지정")
