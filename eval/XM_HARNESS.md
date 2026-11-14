@@ -14,11 +14,16 @@
 ```bash
 cd $CD1   # = ~/Capstone_Design_1, tmux 안에서
 # ckpt 는 best 파일(동결 후보) — Drive 에서 받은 이름 그대로 두고 sha 를 docs/interfaces/e2d_model.md 버전 칸 · MANIFEST 와 대조
-# (last.ckpt 는 마지막 에폭이라 동결 모델이 아님. 후보들은 Kaggle 파일 이름이 모두 epoch=8-step=10719.ckpt 라 sha 로만 구분)
-sha256sum data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt | cut -c1-12   # aw30 4fdf249cda0a · v0.1 d86970ce1faf · aw30_p3 114284109957
+# (last.ckpt 는 마지막 에폭이라 동결 모델이 아님. v0.1 계열은 Kaggle 파일 이름이 모두 epoch=8-step=10719.ckpt 라 sha 로만 구분)
+sha256sum data/checkpoints/xm_ft_v1.5_aw30_exec_e6/checkpoints/xm_ft_v1.5_aw30_exec_e6_e5.ckpt | cut -c1-12   # E6 551cee7beb5d
+#   (예전 후보: E7 93f1c105df96 · E5 c9e01983a7ae · aw30 4fdf249cda0a · v0.1 d86970ce1faf · aw30_p3 114284109957)
+# 후보별 한 줄(e2e/FREEZE_11_16.md §1) — 실행 명령 입력판(exec)은 노드 prev_action_mode:=clamped 필수(학습 입력 = 실제로 보낸 명령)
+#   E6(폐루프 1순위, 11.15)  FD_CKPT=data/checkpoints/xm_ft_v1.5_aw30_exec_e6/checkpoints/xm_ft_v1.5_aw30_exec_e6_e5.ckpt FD_XM_ARGS="--node-param prev_action_mode:=clamped"
+#   제로샷(비교군)            FD_CKPT=<공개 x_mobility-nav2-semantic_action_path.ckpt, sha 339c68f9e027> FD_METHOD=xmobility_zeroshot   (FD_XM_ARGS 없음 — 노드 기본)
+#   E9(v1.6 × E6 설정)        11.15 학습 중 — 폐루프 후보가 되면 E6 줄과 같은 꼴(파일 이름 · sha 는 e2d_model.md)
 # 일괄 — 노드 python 사전 확인(import, 실패면 코드 2 → FD_NODE_PYTHON 으로 바꿈) → 항목마다 레이어 → 씬 → xm_route.py(노드를 띄우고 끔) → 씬 끄기. 준비 실패면 최대 3번
-FD_CKPT=data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt FD_SEEDS="1 2 3" FD_OUT=data/eval/1124_xmft \
-  eval/xm_batch.sh eval/scenarios/parking_r3_straight_south.yaml eval/scenarios/parking_r3_obs_cones.yaml:ccw
+FD_CKPT=data/checkpoints/xm_ft_v1.5_aw30_exec_e6/checkpoints/xm_ft_v1.5_aw30_exec_e6_e5.ckpt FD_XM_ARGS="--node-param prev_action_mode:=clamped" \
+  FD_SEEDS="1 2 3" FD_OUT=data/eval/1124_xmft eval/xm_batch.sh eval/scenarios/parking_r3_straight_south.yaml eval/scenarios/parking_r3_obs_cones.yaml:ccw
 # → data/eval/1124_xmft/results.csv · runs/<시나리오>[_방향]_s<시드>.json(+ .node.log · .xm_infer.csv · .xm_infer.meta.json) · route_*.log · layers/
 #   끝에 eval/analyze_runs.py 로 스키마 검사(ANALYZE_RUNS_OK / FAIL)
 #   장애물마다(지나감 · 쪽 · 꺾기 시작 · ω 흔들림 · 최소 거리 · 멈춤, Nav2 회 JSON 과 나란히):
@@ -26,7 +31,7 @@ FD_CKPT=data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt FD_
 
 # 씬이 이미 떠 있을 때 한 회(시스템 Jazzy · 도메인 43 셸)
 python3 eval/xm_route.py --scenario eval/scenarios/parking_r3_obs_cones.yaml --direction ccw \
-  --ckpt data/checkpoints/xm_ft_v0.1_aw30/checkpoints/xm_ft_v0.1_aw30_e8.ckpt --method xmobility_ft --seed 1 \
+  --ckpt data/checkpoints/xm_ft_v1.5_aw30_exec_e6/checkpoints/xm_ft_v1.5_aw30_exec_e6_e5.ckpt --node-param prev_action_mode:=clamped --method xmobility_ft --seed 1 \
   --out data/eval/1124_xmft/runs/obs_cones_ccw_s1.json --csv data/eval/1124_xmft/results.csv
 python3 eval/xm_route.py ... --dry-run     # ROS 없이 출발 자세 · 목표 지점 · 노드 명령만 출력
 
