@@ -1,14 +1,32 @@
-# 복도 (실내 시험) — 데이터가 오면 input 만 채우고 실행. ★ 표시 확인.
+# 복도 (실내 시험, 목표 3) — B 실내 복도 맵 v0.2 (11/8 D435i 손 촬영, 받은 날 11.14). 약 50 m 직선 복도 + 가운데 로비.
 #   python recon/pipeline/run.py --config recon/configs/corridor.yaml
+# 좌표 = B 건물 좌표 (복도 축 x · 출발점 원점 · 바닥 z 0). 주차장 맵과 이어져 있지 않음.
 base: templates/indoor_rtabmap.yaml
 
 name: corridor
-out: ~/recon_out/corridor_v01          # ★ 판마다 v01, v02 …
+out: ~/jinwoo/out/pipeline/corridor_v02
 
 input:
-  root: ~/recon_data/CHANGE_ME          # ★ B 가 준 복도 폴더 (영문 경로)
-  keyframes: keyframes                 # ★ B 폴더 안 이름에 맞춤
-  poses: trajectory_camera_optical.txt # ★ 카메라 광학 좌표계 궤적 (camera_link 아님)
+  root: ~/jinwoo/data/FutureDrive_corridor_v0.2/corridor_v0.2
+  keyframes: keyframes                 # 주 묶음 281장 (inside_2 왕복)
+  poses: trajectory_camera_optical.txt # 카메라 광학 좌표계 궤적 (camera_link 아님)
 
-# geometry:                            # ★ B 가 형상 메쉬를 주면 켬
-#   mesh: geometry_clean_5cm.ply
+geometry:                              # B 형상 메쉬 (주 + 보조 두 묶음을 합친 2 cm TSDF, 색 있음). 끄면 tsdf.py 가 주 묶음만으로 만듦 (벽이 더 낮음)
+  mesh: geometry_tsdf_2cm.ply
+
+colorize:
+  extra_inputs:                        # 보조 묶음 (B README 순서) — 벽 위쪽은 rightwall 묶음에만 찍혀 있음
+    - name: rightwall                  # 벽을 45° 로 보며 한 바퀴. 복도 방향으로 0.2~0.3 m 어긋난 곳이 있음 (B)
+      input: {format: rtabmap_keyframes, root: ~/jinwoo/data/FutureDrive_corridor_v0.2/corridor_v0.2, keyframes: keyframes_rightwall, poses: trajectory_rightwall_camera_optical.txt, depth_scale: 1000.0}
+    - name: in1                        # 정방향 133장
+      input: {format: rtabmap_keyframes, root: ~/jinwoo/data/FutureDrive_corridor_v0.2/corridor_v0.2, keyframes: keyframes_in1, poses: trajectory_in1_camera_optical.txt, depth_scale: 1000.0}
+
+walls:                                 # 벽: 첫 빌드(틀 기본값)는 같은 벽이 얇은 평면 11개로 쪼개져 51 m² 만 잡히고 나머지는 울퉁불퉁한 스캔 그대로였음 (11.14)
+  dist_m: 0.08                         # 평면에서 이 안 = 벽 (묶음 사이 벽면 어긋남 2~3 cm + 깊이 잡음)
+  min_normal_cos: 0.5                  # 면 방향이 벽과 60° 안이면 벽 (울퉁불퉁한 면도 포함)
+  sheet: true                          # 벽 한 장: 벽 평면 dist_m 안의 스캔 면을 빼고 평평한 격자 한 장을 새로 깖 — 보완(만든 것). 충돌은 스캔 그대로
+  min_area_m2: 3.0
+  depth_tol_m: 0.08                    # 새로 깐 벽과 키프레임 깊이의 차이를 이만큼 허용 (벽면이 묶음마다 2~3 cm 어긋남)
+
+usd:
+  double_sided: [Visual, Wall0, Wall1, Wall2, Wall3, Wall4, Wall5, Wall6, Wall7, Wall8, Wall9, Wall10, Wall11]   # 벽 한 장은 한쪽 면만 있어, 로비 쪽 등 뒤에서 봐도 비쳐 보이지 않게 양면으로
