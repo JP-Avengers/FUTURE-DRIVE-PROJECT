@@ -34,6 +34,32 @@ def frame(n, d):
     return A
 
 
+def _flatten_wall(im, f, cell):
+    """벽 색 고르기 (복도 v0.2, 11.14): 흰 벽은 실제로는 한 가지 색인데, 키프레임마다 자동 노출 · 화이트밸런스가 달라 이어 붙인 자리마다
+    밝기 · 색조가 달라지고 (덧칠한 것처럼 보임), 사진이 안 닿은 곳은 흐린 스캔 색이라 또 다름. 바닥의 아스팔트 색 통일과 같은 방식 —
+    무채색(sat_max 안) · 밝은(벽 중앙 밝기의 low~high 배) 텍셀의 넓은 색 흐름(sigma_m 보다 넓은 것)만 벽 중앙 색으로 맞추고, 그보다 작은 무늬
+    (문틀 · 표지판 · 얼룩)와 색 있는 면(문 · 게시판)은 그대로 둠. 보완: 벽이 한 가지 색이라는 가정."""
+    a = np.asarray(im).astype(np.float32) / 255
+    lum, sat = a.mean(-1), a.max(-1) - a.min(-1)
+    cand = sat < f.get("sat_max", 0.14)
+    if cand.sum() < 1000:
+        return im
+    m0 = float(np.median(lum[cand & (lum > 0.25)])) if (cand & (lum > 0.25)).any() else float(np.median(lum[cand]))
+    wall = cand & (lum > m0 * f.get("low", 0.55)) & (lum < m0 * f.get("high", 1.5))
+    if wall.sum() < 1000:
+        return im
+    target = np.median(a[wall], axis=0)
+    sg = f.get("sigma_m", 0.4) / cell
+    den = ndimage.gaussian_filter(wall.astype(np.float32), sg)
+    soft = np.clip(ndimage.gaussian_filter(wall.astype(np.float32), 3) * 1.5, 0, 1)
+    out = a.copy()
+    for ch in range(3):
+        low = ndimage.gaussian_filter(np.where(wall, a[..., ch], 0), sg) / np.maximum(den, 1e-4)
+        r = np.clip(target[ch] / np.where(den > 0.02, low, target[ch]), *f.get("range", (0.6, 1.7)))
+        out[..., ch] = a[..., ch] * (1 + (r - 1) * soft)
+    return Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8))
+
+
 def find(mesh, cams, c):
     """→ [(n, d, 삼각형 bool)] 넓은 벽부터. n 은 카메라가 많은 쪽으로."""
     tri = np.asarray(mesh.triangles)
@@ -138,7 +164,10 @@ def run(cfg, out, visuals, occ_mesh, sets):
         os.makedirs(dk, exist_ok=True)
         region, st = floor_texture.bake(wsets, flat, Ground(), occ, c, dk)
         color = os.path.join(dk, f"wall{k}_color.jpg")
-        Image.open(os.path.join(dk, "bake_raw.png")).convert("RGB").save(color, quality=c.get("jpeg_quality", 92))
+        raw = Image.open(os.path.join(dk, "bake_raw.png")).convert("RGB")
+        if c.get("flatten"):
+            raw = _flatten_wall(raw, c["flatten"], c.get("cell_m", 0.01))
+        raw.save(color, quality=c.get("jpeg_quality", 92))
         name = f"Wall{k}"
         visuals[name] = part
         mats[name] = dict(color=color, region=region, uv_T=A.tolist(), tile_m=1.0)

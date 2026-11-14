@@ -21,11 +21,17 @@ colorize:
     - name: in1                        # 정방향 133장
       input: {format: rtabmap_keyframes, root: ~/jinwoo/data/FutureDrive_corridor_v0.2/corridor_v0.2, keyframes: keyframes_in1, poses: trajectory_in1_camera_optical.txt, depth_scale: 1000.0}
 
+# 바닥은 틀 기본값 그대로 (밝기 맞춤 · 색 고르기를 켜 봤더니 광택 바닥의 반사 때문에 키프레임 모양대로 네모난 얼룩이 생겨 되돌림, 11.14)
+
 walls:                                 # 벽: 첫 빌드(틀 기본값)는 같은 벽이 얇은 평면 11개로 쪼개져 51 m² 만 잡히고 나머지는 울퉁불퉁한 스캔 그대로였음 (11.14)
   dist_m: 0.08                         # 평면에서 이 안 = 벽 (묶음 사이 벽면 어긋남 2~3 cm + 깊이 잡음)
   min_normal_cos: 0.5                  # 면 방향이 벽과 60° 안이면 벽 (울퉁불퉁한 면도 포함)
   sheet: true                          # 벽 한 장: 벽 평면 dist_m 안의 스캔 면을 빼고 평평한 격자 한 장을 새로 깖 — 보완(만든 것). 충돌은 스캔 그대로
   min_area_m2: 3.0
+  photometric_groups: [[main, rightwall, in1]]   # 벽 사진도 키프레임 밝기를 맞춘 뒤 섞음
+  photometric_max_rms: 0.12
+  gain_range: [0.6, 1.6]
+  flatten: {sigma_m: 0.4, sat_max: 0.14, low: 0.55, high: 1.5}   # 흰 벽의 넓은 색 흐름을 벽 중앙 색으로 (문 · 표지판 · 작은 무늬는 그대로) — 보완
   depth_tol_m: 0.08                    # 새로 깐 벽과 키프레임 깊이의 차이를 이만큼 허용 (벽면이 묶음마다 2~3 cm 어긋남)
 
 usd:
