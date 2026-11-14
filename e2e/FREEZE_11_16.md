@@ -9,9 +9,11 @@
 | 제로샷(비교군) | — | 공개 `x_mobility-nav2-semantic_action_path.ckpt` | `339c68f9e027` | `FD_METHOD=xmobility_zeroshot` | `obstacle_diag` 중앙 0.10 |
 | aw30(백업) | xm_v1 | `--gin XMobilityLoss.action_weight=30` | `xm_ft_v0.1_aw30_e8.ckpt` · `4fdf249cda0a` | 없음 | v1.4 test w_mae 0.082 · 중앙 0.18 |
 | A | xm_v1_1_p3 | aw30 + 경로 ×1/3 데이터 | `xm_ft_v0.1_aw30_p3_e8.ckpt` · `114284109957` | `path_scale:=0.3333`(`~/path` 만) | 11.9 교차 평가 1위 |
-| ‹E4 · E5 · E6 중› | v1.4 · v1.5 | aw30 + `--prev-action-source exec` [+ `--prev-action-dropout 0.5`] | ‹› · ‹› | **`feed_clamped_action:=true`** | ‹중앙 크기 비 · w_mae› |
+| **E6**(폐루프 1순위, 11.15) | xm_v1_5 | aw30 + `--prev-action-source exec`, 6 에폭(드롭아웃 없음) | `xm_ft_v1.5_aw30_exec_e6_e5.ckpt` · `551cee7beb5d` | **`prev_action_mode:=clamped`** | 폐루프 무작위 배치 11/15(Nav2 12/12) · 고정 중앙 장애물 8/8 · v1.5 test w_mae 0.041 (`results/closed_loop_rand_ev_11_14.md`) |
+| E9(학습 중, 11.15) | xm_v1_6 | E6 와 같음 | ‹› · ‹› | **`prev_action_mode:=clamped`** | ‹오프라인 = E6 이상인지 · rand_ev 폐루프› — E6 이상일 때만 후보 |
 
-- **실행 명령 입력판(`exec`) 은 `feed_clamped_action:=true`**: 학습 입력 `exec_command` = 실제로 보낸 명령(상한 v 0–0.8 · |ω| ≤ 0.7 안). 노드 기본(false)은 자르기 전 예측을 넣음. 하네스에서는 `FD_XM_ARGS="--node-param feed_clamped_action:=true"`.
+- 11.15 결정 2: 열린 고리로는 E7(E6 + 직전 명령 드롭아웃 0.5)이 더 좋았지만 무작위 배치 폐루프에서 1/12(E6 11/15) — 드롭아웃 계열(E5 · E7 · E8)은 뺌. 순위는 폐루프로.
+- **실행 명령 입력판(`exec`) 은 `feed_clamped_action:=true`**(= `prev_action_mode:=clamped`, 11.12 부터 이 이름을 씀): 학습 입력 `exec_command` = 실제로 보낸 명령(상한 v 0–0.8 · |ω| ≤ 0.7 안). 노드 기본(false)은 자르기 전 예측을 넣음. 하네스에서는 `FD_XM_ARGS="--node-param feed_clamped_action:=true"`.
 - p3 계열이 아니면 `path_scale` 기본 1.0. 드롭아웃은 학습 때만 — 노드 설정 없음.
 
 ## 2. 11.16 기능 동결 (코드 · 문서)
