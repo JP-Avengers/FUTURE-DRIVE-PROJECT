@@ -15,6 +15,7 @@ Nav2(sim/nav2/nav2.launch.py)가 떠 있어야 한다. 경유점 사이는 Nav2 
 """
 import argparse
 import csv
+import re
 import json
 import math
 import os
@@ -258,7 +259,9 @@ while not nav.isTaskComplete():
         break
 res = nav.getResult()
 name = {TaskResult.SUCCEEDED: "SUCCEEDED", TaskResult.CANCELED: "CANCELED", TaskResult.FAILED: "FAILED"}.get(res, str(res))
-c = np.array([t[3] for t in track]) if track else np.array([np.nan])
+# 이탈 표본은 목표를 보낸 뒤(t ≥ t_goal)만 — 출발 전 대기(지도 · AMCL 확인) 표본이 평균을 낮추지 않게(11.14, eval/XM_HARNESS.md §7 질문 5.
+# X-Mobility 하네스는 첫 표본이 t_goal 이라 원래 이 구간만 셈). 정지 · 거리와 같은 구간
+c = np.array([t[3] for t in track if t[0] >= t_goal]) if track else np.array([np.nan])
 # 가장 긴 정지(0.05 m/s 미만) — 0.5 s 간격 속도로
 stall, run, prev = 0.0, 0.0, None
 for t in [t for t in track if t[0] >= t_goal][::5]:
@@ -273,6 +276,9 @@ summ = {"route": ROUTE, "result": name, "spacing_m": a.spacing, "waypoints": len
         "mean_cte": round(float(np.nanmean(c)), 3), "max_cte": round(float(np.nanmax(c)), 3),
         "over_2m_frac": round(float(np.mean(c > 2.0)), 4), "recoveries": getattr(nav.getFeedback(), "number_of_recoveries", None),
         "max_stall_s": round(stall, 1)}
+# t_goal · direction — eval/xm_route.py --rejudge 가 lap_sim_s(0.1 s 반올림)로 되짚지 않고 그대로 씀(11.14, §7 질문 9)
+_dm = re.search(r"_(cw|ccw)\.csv$", ROUTE)
+summ.update({"t_goal": round(t_goal, 3), "direction": SC.get("direction") or (_dm.group(1) if _dm else None)})
 if OBS:
     summ.update({"scenario": a.scenario, "min_clearance": round(min(clr), 3) if clr else None, "collision": bool(clr and min(clr) <= 0.0)})
 # 마지막 경유점(바퀴면 출발점 바로 앞, 구간이면 goal.s)까지 실제 거리 — Nav2 가 SUCCEEDED 라도 여기서 다시 확인(10.14: 안 움직이고
