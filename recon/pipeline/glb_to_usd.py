@@ -114,6 +114,69 @@ def find_floor(mesh, c):
                    floor_plane_inlier_pct=round(100 * len(inl) / max(1, sel.sum()), 1))
 
 
+def drop_floating(parts, ground, c):
+    """땅에 닿지 않고 떠 있는 조각(이어진 덩어리의 가장 낮은 점이 바닥 위 float_h_m 보다 높음)을 부분마다 지움. → (새 parts, 지운 삼각형 수)"""
+    allm = merged(parts)
+    allm.remove_duplicated_vertices()                         # 부분(텍스처 장) 사이 이음매를 이어 붙임 — 삼각형 순서는 그대로
+    v, t = np.asarray(allm.vertices), np.asarray(allm.triangles)
+    lab, cnt, _ = allm.cluster_connected_triangles()
+    lab, cnt = np.asarray(lab), np.asarray(cnt)
+    rel = v[:, 2] - (ground.height(v[:, :2]) if ground is not None else 0.0)
+    low = np.full(len(cnt), np.inf)
+    np.minimum.at(low, lab, rel[t].min(1))
+    drop = ((low > c.get("float_h_m", 0.3)) & (cnt < c.get("float_max_tris", 20000)))[lab]
+    out, k = [], 0
+    for name, m, uv, img in parts:
+        n = len(m.triangles)
+        keep = ~drop[k:k + n]
+        k += n
+        if keep.all():
+            out.append((name, m, uv, img))
+            continue
+        tri = np.asarray(m.triangles)[keep]
+        used, inv = np.unique(tri, return_inverse=True)
+        mm = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(np.asarray(m.vertices)[used]), o3d.utility.Vector3iVector(inv.reshape(-1, 3)))
+        if m.has_vertex_colors():
+            mm.vertex_colors = o3d.utility.Vector3dVector(np.asarray(m.vertex_colors)[used])
+        mm.compute_vertex_normals()
+        if len(tri):
+            out.append((name, mm, None if uv is None else uv[used], img))
+    return out, int(drop.sum())
+
+
+def redact(parts, path):
+    """가릴 상자(씬 좌표) 안의 삼각형이 쓰는 텍스처 자리를 한 가지 색(그 자리 중앙값)으로 덮음 — 차 번호판 등. 형상은 그대로.
+    파일: {"boxes": [{"center": [x,y,z], "right": [..], "fwd": [..], "half": [가로, 세로(z), 깊이]}]} → (새 parts, 덮은 화소 수)"""
+    from PIL import ImageDraw
+    boxes = json.load(open(path, encoding="utf-8"))["boxes"]
+    out, npx = [], 0
+    for name, m, uv, img in parts:
+        if uv is None:
+            out.append((name, m, uv, img))
+            continue
+        v, t = np.asarray(m.vertices), np.asarray(m.triangles)
+        arr = None
+        for b in boxes:
+            d = v - np.array(b["center"])
+            inside = (np.abs(d @ np.array(b["right"])) < b["half"][0]) & (np.abs(d[:, 2]) < b["half"][1]) & (np.abs(d @ np.array(b["fwd"])) < b["half"][2])
+            tri = t[inside[t].any(1)]
+            if len(tri) == 0:
+                continue
+            if arr is None:
+                arr = np.asarray(img.convert("RGB")).copy()
+            H, W = arr.shape[:2]
+            mask = Image.new("L", (W, H), 0)
+            dr = ImageDraw.Draw(mask)
+            px = np.c_[uv[:, 0] % 1.0 * W, (1 - uv[:, 1] % 1.0) * H]
+            for a in tri:
+                dr.polygon([tuple(px[i]) for i in a], fill=255, outline=255)
+            mk = ndimage.binary_dilation(np.asarray(mask) > 0, iterations=2)
+            arr[mk] = np.median(arr[mk], axis=0)
+            npx += int(mk.sum())
+        out.append((name, m, uv, img if arr is None else Image.fromarray(arr)))
+    return out, npx
+
+
 def align_matrix(path):
     """맞춤 파일(json) → 4x4. 다른 맵(기준 좌표)에 맞춰 둔 변환을 그대로 씀 — 바닥 찾기 · 원점 옮기기를 건너뜀.
     xy = scale * R @ xy + t (수평 닮음 변환), z = scale * z − (a x' + b y' + c) (기준 바닥과의 높이 · 기울기 차, 없으면 0)."""
@@ -296,10 +359,24 @@ def main():
     usd_dir = os.path.join(out, "usd")
     tex_dir = os.path.join(out, "glb_tex")
     os.makedirs(tex_dir, exist_ok=True)
-    visuals, materials = {}, {}
-    for k, (name, m, uv, img) in enumerate(parts):
+    for _, m, _, _ in parts:
         m.transform(M)
         m.compute_vertex_normals()
+    cl = cfg.get("clean", {})
+    here = os.path.dirname(os.path.abspath(args.config))
+    if cl.get("float_h_m"):                                     # 떠 있는 조각 지움 (보이는 층 · 충돌 둘 다)
+        g0 = scan_ground(whole, cfg.get("collision", {})) if cfg.get("collision", {}).get("ground") == "scan" else None
+        parts, nd = drop_floating(parts, g0, cl)
+        whole = merged(parts)
+        whole.compute_vertex_normals()
+        report["clean"] = dict(floating_tris_removed=nd)
+        print(f"      떠 있는 조각: 삼각형 {nd:,} 지움")
+    if cl.get("redact_file"):                                   # 번호판 등: 텍스처에서 가림
+        parts, npx = redact(parts, os.path.join(here, cl["redact_file"]))
+        report.setdefault("clean", {})["redacted_texels"] = npx
+        print(f"      가림: 텍스처 화소 {npx:,} 덮음 ({cl['redact_file']})")
+    visuals, materials = {}, {}
+    for k, (name, m, uv, img) in enumerate(parts):
         pname = "Visual" if len(parts) == 1 else f"Visual{k}"
         visuals[pname] = m
         if uv is not None:

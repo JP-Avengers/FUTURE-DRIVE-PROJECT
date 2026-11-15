@@ -3,7 +3,7 @@
 base: templates/polycam_glb.yaml
 
 name: parking
-out: ~/jinwoo/out/pipeline/polycam_out_v1
+out: ~/jinwoo/out/pipeline/polycam_out_v2
 
 input:
   root: ~/jinwoo/data/polycam_out
@@ -24,3 +24,8 @@ collision:
   floor_fill_depth_m: 0.05
   floor_margin_m: 0.0                  # 스캔 범위 밖으로 넓히지 않음
   boundary_height_m: 2.0
+
+clean:
+  float_h_m: 0.3                       # 가장 낮은 점이 바닥 위 0.3 m 보다 높은 덩어리 = 떠 있는 조각 → 지움
+  float_max_tris: 20000
+  redact_file: parking_polycam_redact.json   # 차 10대의 번호판 13곳: 텍스처에서 한 가지 색으로 덮음 (옆면 렌더에서 자리를 읽음)
