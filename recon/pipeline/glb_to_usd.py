@@ -280,6 +280,10 @@ def align_matrix(path):
     """맞춤 파일(json) → 4x4. 다른 맵(기준 좌표)에 맞춰 둔 변환을 그대로 씀 — 바닥 찾기 · 원점 옮기기를 건너뜀.
     xy = scale * R @ xy + t (수평 닮음 변환), z = scale * z − (a x' + b y' + c) (기준 바닥과의 높이 · 기울기 차, 없으면 0)."""
     T = json.load(open(path, encoding="utf-8"))
+    if "matrix" in T:                                           # 4x4 를 통째로 (실내: 스캔 자체 바닥으로 수평 · z 0 을 잡은 것 + 수평 회전 · 이동)
+        M = np.array(T["matrix"], float)
+        return M, dict(align_file=os.path.basename(path), scale=round(float(np.cbrt(abs(np.linalg.det(M[:3, :3])))), 5),
+                       yaw_deg=round(float(np.degrees(np.arctan2(M[1, 0], M[0, 0]))), 3), t_xy=np.round(M[:2, 3], 3).tolist(), floor_tilt_deg=T.get("own_floor_tilt_deg", 0.0))
     s, R, t = float(T["scale"]), np.array(T["R"], float), np.array(T["t"], float)
     a, b, c = T.get("z_plane", [0.0, 0.0, 0.0])
     M = np.eye(4)
