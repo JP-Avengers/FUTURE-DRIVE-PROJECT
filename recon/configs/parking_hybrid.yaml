@@ -1,0 +1,19 @@
+# 실외 주차장 — 혼합 맵 (11.13 미팅의 세 맵 중 C): 리얼센스 맵 v0.9 를 뼈대(좌표 · 바닥 높이 · 충돌 바닥)로, 폴리캠을 휘어 맞춰 겉모습으로 얹음.
+# 폴리캠 단독 맵(parking_polycam.yaml)에 없는 것만 적음: 휘기(축척 · 기울기 · 틀어짐 보정) · 기준 맵 바닥 높이 · 기준 맵 바닥 prim.
+base: parking_polycam.yaml
+
+out: ~/jinwoo/out/pipeline/hybrid_v1
+
+orient:
+  warp_file: parking_hybrid_warp.npz   # 놓은 폴리캠 → v0.9: 주차선을 구간별(20 → 10 → 6 m 칸)로 맞춘 수평 변위장 + 높이 차 지도 (폴리캠 바닥을 v0.9 바닥에 붙임)
+
+collision:
+  ground: null
+  ground_file: ~/jinwoo/out/pipeline/map_v09/ground.npz   # 충돌 바닥 = v0.9 바닥 높이 (경로 위 높이가 v0.9 와 같음 → 로봇 시작 자세 그대로)
+  ground_outside: scan                 # v0.9 바닥이 측정된 범위 밖(인도 · 화단 · 건물 앞)은 폴리캠 바닥 높이
+  floor_fill: false                    # 받침 바닥 대신 v0.9 의 사진 바닥이 구멍 · 범위 밖을 채움
+
+base_map:
+  usd: ~/jinwoo/out/pipeline/map_v09/usd/parking_mesh.usdc
+  prims: [Floor]                       # v0.9 의 사진 바닥. 차 · 스캔 물체(Visual) · 둘레 바닥은 안 가져옴 — 물체와 바깥쪽은 폴리캠 것
+  drop_m: 0.04
