@@ -23,7 +23,7 @@
 - [x] `docs/interfaces/e2d_model.md` 버전 칸: 후보 ckpt 이름 · sha12 · 크기 · 노드 파라미터, 변경 이력 한 줄. — 11.15 E6(상태 합의 · 추론 지연 실측 포함). E6 시드 반복이 후보가 되면 한 줄 더(E9 는 11.15 탈락)
 - [x] `eval/XM_HARNESS.md` §2: 후보별 `FD_CKPT` · `FD_XM_ARGS` 한 줄씩(exec 판 `feed_clamped_action`). — 11.15 E6 · 제로샷(`--node-param prev_action_mode:=clamped` = `feed_clamped_action:=true`), E6 시드 반복 자리(E9 는 탈락)
 - [x] `e2e/README.md`: 학습 · 평가 명령을 최종 설정으로(v1.4 · v1.5, `--prev-action-source exec`). — 11.15 "4) 동결 후보 설정"(E6 argv 그대로, 시드 반복 = + `--seed 1`; v1.6 은 E9 탈락으로 안 씀)
-- [ ] MANIFEST: 학습 데이터 행(v1.4 · v1.5) · 후보 ckpt 행(아래 형식). — 11.15: v1.5 · v1.6 행 · E6 ckpt 행(11.12) 있음, **v1.4 행 없음**(Kaggle dataset-07, sha `f3ddcfb6e8d9` — v1.5 행 출처 칸에만). E6 시드 반복이 후보가 되면 ckpt 행 추가
+- [x] MANIFEST: 학습 데이터 행(v1.4 · v1.5) · 후보 ckpt 행(아래 형식). — 11.15: v1.5 · v1.6 행 · E6 ckpt 행(11.12) 있음, v1.4 행도 11.15 추가(집 PC 사본으로 sha `f3ddcfb6e8d9` 다시 계산해 일치). E6 시드 반복이 후보가 되면 ckpt 행 추가
 - [ ] 레포 커밋 해시를 이 파일 끝에 — 그 뒤 `e2e/` · `ros2_ws/src/fd_xm_infer/` 기능 변경 없음(버그 수정만, 커밋 메시지에 '동결 뒤 수정').
 
 MANIFEST ckpt 행 형식(기존 11.9 A 행과 같게):
