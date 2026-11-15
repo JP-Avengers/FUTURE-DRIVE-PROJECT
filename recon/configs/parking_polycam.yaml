@@ -1,16 +1,16 @@
-# 실외 주차장 — 폴리캠 단독 맵 (11.13 미팅의 세 맵 중 B). 폴리캠 GLB 하나만으로 만들고, 주행 비교를 위해 좌표만 리얼센스 맵(v0.9)에 맞춤.
-# 폴리캠 안의 틀어짐(가장자리 30~80 cm)은 펴지 않음 — 그게 이 맵의 비교 대상.
+# 실외 주차장 — 폴리캠 단독 맵 (11.13 미팅의 세 맵 중 B). 폴리캠 GLB 하나만으로 만들고, 같은 경로로 달릴 수 있게 맵 좌표에 놓기만 함 (수평 회전 + 이동, 축척 1 · 기울기 보정 없음).
+# 폴리캠의 크기 · 수평 · 틀어짐(가장자리 30~80 cm)은 고치지 않음 — 그게 이 맵의 비교 대상. 리얼센스 맵에 맞춘 보정은 혼합 맵에서.
 base: templates/polycam_glb.yaml
 
 name: parking
-out: ~/jinwoo/out/pipeline/polycam_out_v2
+out: ~/jinwoo/out/pipeline/polycam_out_v3
 
 input:
   root: ~/jinwoo/data/polycam_out
   mesh: polycam_out.glb
 
 orient:
-  align_file: parking_polycam_align.json   # 주차선으로 v0.9 맵 좌표에 맞춘 변환 (수평 닮음 변환 한 번 + 바닥 기울기). 바닥 찾기 · 원점 옮기기는 건너뜀
+  align_file: parking_polycam_align.json   # 주차선으로 v0.9 맵 좌표에 맞춘 변환 (수평 회전 + 이동 + 높이 이동). 바닥 찾기 · 원점 옮기기는 건너뜀
 
 collision:
   ground: scan                         # 실외: 바닥이 평평하지 않음 → 폴리캠 바닥으로 높이 지도를 만들어 그 위에 바닥 한 장
