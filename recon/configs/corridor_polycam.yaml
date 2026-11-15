@@ -19,3 +19,6 @@ collision:
 
 preview:
   args: [--ray-top, 1.0]               # 천장이 있으므로 바닥은 1 m 높이에서 아래로 찾음 (기본 50 m 는 천장 위에 카메라가 놓임)
+
+clean:
+  redact_file: corridor_polycam_redact.json   # 복도 벽의 사진 게시판(얼굴 사진 · 이름 카드): 텍스처에서 한 가지 색으로 덮음
