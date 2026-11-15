@@ -23,7 +23,7 @@ from scipy import ndimage
 from scipy.spatial import cKDTree
 
 import config
-from mesh_utils import Footprint
+from mesh_utils import Footprint, Ground, _interp_xy
 from usd_utils import verify_scene, write_scene
 
 Y_UP_TO_Z_UP = np.array([[1, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], float)   # (x, y, z) → (x, −z, y)
@@ -114,12 +114,65 @@ def find_floor(mesh, c):
                    floor_plane_inlier_pct=round(100 * len(inl) / max(1, sel.sum()), 1))
 
 
-def floor_color(visuals, materials, band):
+def align_matrix(path):
+    """맞춤 파일(json) → 4x4. 다른 맵(기준 좌표)에 맞춰 둔 변환을 그대로 씀 — 바닥 찾기 · 원점 옮기기를 건너뜀.
+    xy = scale * R @ xy + t (수평 닮음 변환), z = scale * z − (a x' + b y' + c) (기준 바닥과의 높이 · 기울기 차, 없으면 0)."""
+    T = json.load(open(path, encoding="utf-8"))
+    s, R, t = float(T["scale"]), np.array(T["R"], float), np.array(T["t"], float)
+    a, b, c = T.get("z_plane", [0.0, 0.0, 0.0])
+    M = np.eye(4)
+    M[:2, :2] = s * R
+    M[:2, 3] = t
+    M[2, :2] = -(np.array([a, b]) @ (s * R))
+    M[2, 2] = s
+    M[2, 3] = -(a * t[0] + b * t[1] + c)
+    tilt = float(np.degrees(np.arctan(np.hypot(a, b))))
+    return M, dict(align_file=os.path.basename(path), scale=round(s, 5), yaw_deg=round(float(np.degrees(np.arctan2(R[1, 0], R[0, 0]))), 3),
+                   t_xy=np.round(t, 3).tolist(), floor_tilt_deg=round(tilt, 2))
+
+
+def scan_ground(mesh, c):
+    """평평하지 않은 바닥(실외): 스캔의 위를 향한 면으로 바닥 높이 격자를 만듦 (mesh_utils.Ground).
+    1) 거친 칸(rough_cell_m)마다 위 향한 정점 높이의 낮은 쪽(15%) = 대략의 바닥 (차 지붕 · 보닛은 빠짐)
+    2) 그 ± ground_band_m 안의 정점만으로 잔 칸(ground_cell_m) 중앙값 → 빈 칸(구멍 · 차 밑)은 둘레에서 보간 → 다듬기"""
+    v, n = np.asarray(mesh.vertices), np.asarray(mesh.vertex_normals)
+    up = n[:, 2] > 0.9
+    p = v[up]
+    margin = 2.0
+    lo = v[:, :2].min(0) - margin
+
+    def cells(cell, pts, stat):
+        shape = np.ceil((v[:, :2].max(0) + margin - lo) / cell).astype(int) + 1
+        ij = np.floor((pts[:, :2] - lo) / cell).astype(int)
+        key = ij[:, 0] * shape[1] + ij[:, 1]
+        order = np.lexsort((pts[:, 2], key))
+        keys, start, count = np.unique(key[order], return_index=True, return_counts=True)
+        grid = np.full(shape, np.nan)
+        ok = count >= 3
+        grid.flat[keys[ok]] = pts[:, 2][order][start[ok] + (count[ok] * stat).astype(int)]
+        have = ~np.isnan(grid)
+        grid[~have] = _interp_xy(np.argwhere(have).astype(float), grid[have])(np.argwhere(~have).astype(float))
+        return grid, have
+
+    rc = c.get("rough_cell_m", 3.0)
+    rough, _ = cells(rc, p, 0.15)
+    rough = Ground(ndimage.median_filter(rough, size=3), lo, rc)
+    near = np.abs(p[:, 2] - rough.height(p[:, :2])) < c.get("ground_band_m", 0.2)
+    gc = c.get("ground_cell_m", 0.5)
+    grid, have = cells(gc, p[near], 0.5)
+    grid = ndimage.gaussian_filter(ndimage.median_filter(grid, size=3), c.get("ground_sigma_cells", 1.0))
+    g = Ground(grid, lo, gc)
+    g.stats = dict(cell_m=gc, floor_vertices=int(near.sum()), measured_cells=int(have.sum()),
+                   z_range_m=[round(float(grid[have].min()), 2), round(float(grid[have].max()), 2)])
+    return g
+
+
+def floor_color(visuals, materials, band, ground=None):
     """보이는 바닥 색 (중앙값): 부분마다 위를 향한 바닥 높이 정점의 정점 색, 텍스처 부분은 그 정점 UV 자리의 텍스처 색."""
     cols = []
     for name, m in visuals.items():
         v, n = np.asarray(m.vertices), np.asarray(m.vertex_normals)
-        sel = (n[:, 2] > 0.9) & (np.abs(v[:, 2]) < band)
+        sel = (n[:, 2] > 0.9) & (np.abs(v[:, 2] - (ground.height(v[:, :2]) if ground else 0.0)) < band)
         if sel.sum() == 0:
             continue
         if name in materials:
@@ -216,10 +269,16 @@ def main():
         print(f"      ⚠ 범위가 이상함 ({ext.max():.2f} m) — 단위 확인 (input.scale: cm 이면 0.01)")
 
     o = cfg.get("orient", {})
-    M, st = find_floor(whole, o)
+    if o.get("align_file"):                                     # 기준 맵에 맞춰 둔 변환 (설정 파일 옆)
+        M, st = align_matrix(os.path.join(os.path.dirname(os.path.abspath(args.config)), o["align_file"]))
+        st["floor_area_m2"] = "-"
+    else:
+        M, st = find_floor(whole, o)
     whole.transform(M)
     v = np.asarray(whole.vertices)
-    if o.get("origin", "min_corner") == "min_corner":
+    if o.get("align_file"):
+        pass
+    elif o.get("origin", "min_corner") == "min_corner":
         M2 = np.eye(4)
         M2[:2, 3] = -v[:, :2].min(0)
         M = M2 @ M
@@ -251,7 +310,19 @@ def main():
     print(f"[3/5] 보이는 부분: prim {len(visuals)}개 · 사진 텍스처 {len(materials)}")
 
     cc = cfg.get("collision", {})
-    col = o3d.geometry.TriangleMesh(whole.vertices, whole.triangles)
+    ground = None
+    flat = whole                                                # 바닥을 0 으로 편 사본 (바닥 · 물체 가르기 · 빈 곳 찾기는 여기서)
+    if cc.get("ground") == "scan":
+        ground = scan_ground(whole, cc)
+        ground.save(os.path.join(out, "ground.npz"))
+        fv = np.asarray(whole.vertices).copy()
+        fv[:, 2] -= ground.height(fv[:, :2])
+        flat = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(fv), whole.triangles)
+        flat.compute_triangle_normals()
+        flat.compute_vertex_normals()
+        report["ground"] = ground.stats
+        print(f"      바닥 높이 지도 (스캔): 칸 {ground.stats['cell_m']} m · 높이 {ground.stats['z_range_m']} m")
+    col = o3d.geometry.TriangleMesh(flat.vertices, flat.triangles)
     col.remove_duplicated_vertices()
     col.remove_degenerate_triangles()
     tri_c, n_c, _ = col.cluster_connected_triangles()
@@ -261,22 +332,32 @@ def main():
     vv, tt = np.asarray(col.vertices), np.asarray(col.triangles)
     cen = vv[tt].mean(1)
     scan_floor = (np.asarray(col.triangle_normals)[:, 2] > 0.9) & (np.abs(cen[:, 2]) < cc.get("floor_band_m", 0.03))
+    if cc.get("low_h_m"):                                       # 바닥에 붙은 낮은 것(울퉁불퉁한 스캔 바닥 · 턱)도 뺌 — 바닥 한 장과 겹치면 로봇이 걸림
+        scan_floor |= cen[:, 2] < cc["low_h_m"]
     if cc.get("flat_floor", True):                              # 스캔 바닥은 빼고 평평한 한 장
         col.remove_triangles_by_mask(scan_floor)
     col.remove_unreferenced_vertices()
+    if cc.get("min_cluster_tris_after"):                        # 바닥을 뺀 뒤 남은 부스러기
+        tri_c, n_c, _ = col.cluster_connected_triangles()
+        col.remove_triangles_by_mask(np.asarray(n_c)[np.asarray(tri_c)] < cc["min_cluster_tris_after"])
+        col.remove_unreferenced_vertices()
     if cc.get("tris") and len(col.triangles) > cc["tris"]:
         col = col.simplify_quadric_decimation(target_number_of_triangles=cc["tris"])
+    if ground is not None:                                      # 편 것을 다시 바닥 높이로
+        cv = np.asarray(col.vertices).copy()
+        cv[:, 2] += ground.height(cv[:, :2])
+        col.vertices = o3d.utility.Vector3dVector(cv)
     colliders = {}
     fs_cfg = cfg.get("drive_path", {})
-    fp, free = free_space(whole, fs_cfg)
+    fp, free = free_space(flat, fs_cfg)
     floor_fp = Footprint(np.asarray(whole.vertices)[:, :2], cc.get("floor_cell_m", 0.1), margin=cc.get("floor_margin_m", 0.3))
-    colliders["Collision"] = col + floor_fp.plane(0.0) if cc.get("flat_floor", True) else col
-    if cc.get("floor_fill", True):                              # 보이는 바닥 받침: 스캔 바닥 아래 한 장 (스캔 가장자리 · 벽 밑 틈이 하얗게 비치지 않게)
-        fill = floor_fp.plane(-cc.get("floor_fill_depth_m", 0.02))   # 스캔 바닥이 몇 mm 출렁여도 뚫고 나오지 않게 2 cm 아래
-        fill.paint_uniform_color(floor_color(visuals, materials, cc.get("floor_band_m", 0.03)))
+    colliders["Collision"] = col + floor_fp.plane(0.0, ground=ground) if cc.get("flat_floor", True) else col
+    if cc.get("floor_fill", True):                              # 보이는 바닥 받침: 스캔 바닥 아래 한 장 (스캔 가장자리 · 벽 밑 틈 · 바닥 구멍이 하얗게 비치지 않게)
+        fill = floor_fp.plane(-cc.get("floor_fill_depth_m", 0.02), ground=ground)   # 스캔 바닥이 몇 mm 출렁여도 뚫고 나오지 않게 2 cm 아래
+        fill.paint_uniform_color(floor_color(visuals, materials, cc.get("floor_band_m", 0.03), ground))
         visuals["FloorFill"] = fill
     if cc.get("boundary_height_m", 2.0) > 0:
-        colliders["Boundary"] = floor_fp.walls(cc.get("boundary_height_m", 2.0))
+        colliders["Boundary"] = floor_fp.walls(cc.get("boundary_height_m", 2.0), ground=ground, below=0.5 if ground is not None else 0.0)
     report["collision"] = dict(object_tris=len(col.triangles), scan_floor_tris_removed=int(scan_floor.sum()) if cc.get("flat_floor", True) else 0,
                                floor_area_m2=round(floor_fp.area(), 1), boundary_height_m=cc.get("boundary_height_m", 2.0))
     print(f"[4/5] 충돌: 물체 삼각형 {len(col.triangles):,} (스캔 바닥 {report['collision']['scan_floor_tris_removed']:,} 빼고)"
@@ -285,6 +366,9 @@ def main():
     xy = skeleton_path(fp, free, fs_cfg)
     h = fs_cfg.get("camera_height_m", 0.3)
     poses = path_poses(xy, h)
+    if ground is not None and len(xy):
+        for P, z in zip(poses, ground.height(xy)):
+            P[2, 3] += z
     W, H, fov = 640, 480, 90.0
     fx = W / 2 / np.tan(np.radians(fov / 2))
     json.dump(dict(note="GLB 입력 — 바닥 빈 곳 뼈대로 만든 가상 경로 (실제 촬영 경로 아님)", camera_height_m=h,
