@@ -234,6 +234,48 @@ def add_base_prims(mesh_path, usdc, prims, drop):
             shutil.copy(os.path.join(td, f), os.path.join(os.path.dirname(mesh_path), "textures", f))
 
 
+def match_base_color(mesh_path, prim, visuals, materials, ground, band, near_m=3.0):
+    """기준 맵에서 가져온 바닥의 텍스처 색을 얹은 스캔 바닥 색에 맞춤 — 스캔 바닥의 구멍으로 기준 맵 바닥이 보일 때 이음매가 덜 보이게.
+    기준 바닥 중 스캔 바닥이 없는 자리(구멍)의 색 중앙값 → 그 둘레 near_m 안 스캔 바닥 색 중앙값이 되도록 채널마다 한 배율 (이 맵에 복사한 텍스처만 바꿈)."""
+    from pxr import Usd, UsdGeom, UsdShade
+    pts, cols = [], []
+    for name, m in visuals.items():                             # 스캔 바닥 정점과 그 색
+        if name not in materials or materials[name].get("uv") is None:
+            continue
+        v, n = np.asarray(m.vertices), np.asarray(m.vertex_normals)
+        sel = (n[:, 2] > 0.9) & (np.abs(v[:, 2] - (ground.height(v[:, :2]) if ground else 0.0)) < band)
+        if not sel.any():
+            continue
+        im = np.asarray(Image.open(materials[name]["color"]).convert("RGB")) / 255.0
+        uv = np.asarray(materials[name]["uv"])[sel] % 1.0
+        pts.append(v[sel, :2])
+        cols.append(im[((1 - uv[:, 1]) * (im.shape[0] - 1)).astype(int), (uv[:, 0] * (im.shape[1] - 1)).astype(int)])
+    pts, cols = np.vstack(pts), np.vstack(cols)
+    st = Usd.Stage.Open(mesh_path)
+    g = UsdGeom.Mesh(st.GetPrimAtPath(f"/{st.GetDefaultPrim().GetName()}/{prim}"))
+    bp = np.array(g.GetPointsAttr().Get())[:, :2]
+    buv = np.array(UsdGeom.PrimvarsAPI(g).GetPrimvar("st").Get())
+    tex = None
+    for sh in st.Traverse():
+        if sh.GetName() == "ColorTex" and prim in str(sh.GetPath()):
+            tex = UsdShade.Shader(sh).GetInput("file").Get().resolvedPath
+    if tex is None:
+        return None
+    hole = cKDTree(pts).query(bp)[0] > 0.3                      # 기준 바닥 정점 중 스캔 바닥이 없는 자리
+    if hole.sum() < 100:
+        return None
+    step = max(1, int(hole.sum() // 20000))
+    hp = bp[hole][::step]
+    near = np.unique(np.concatenate(cKDTree(pts).query_ball_point(hp[::10], near_m)).astype(int))
+    im = np.asarray(Image.open(tex).convert("RGB")).astype(np.float32) / 255.0
+    huv = buv[hole][::step]
+    ok = (huv >= 0).all(1) & (huv <= 1).all(1)
+    src = im[((1 - huv[ok, 1]) * (im.shape[0] - 1)).astype(int), (huv[ok, 0] * (im.shape[1] - 1)).astype(int)]
+    gain = np.median(cols[near], axis=0) / np.maximum(np.median(src, axis=0), 1e-3)
+    Image.fromarray((np.clip(im * gain, 0, 1) * 255).astype(np.uint8)).save(tex, quality=92)
+    return np.round(gain, 3).tolist()
+
+
 def align_matrix(path):
     """맞춤 파일(json) → 4x4. 다른 맵(기준 좌표)에 맞춰 둔 변환을 그대로 씀 — 바닥 찾기 · 원점 옮기기를 건너뜀.
     xy = scale * R @ xy + t (수평 닮음 변환), z = scale * z − (a x' + b y' + c) (기준 바닥과의 높이 · 기울기 차, 없으면 0)."""
@@ -545,6 +587,10 @@ def main():
         add_base_prims(mesh_path, os.path.expanduser(bm["usd"]), bm["prims"], bm.get("drop_m", 0.04))
         report["base_map"] = dict(prims=bm["prims"], drop_m=bm.get("drop_m", 0.04))
         print(f"      기준 맵에서 가져옴: {' · '.join(bm['prims'])} ({bm.get('drop_m', 0.04) * 100:.0f} cm 내림)")
+        if bm.get("match_color"):
+            gain = match_base_color(mesh_path, bm["prims"][0], visuals, materials, ground, cc.get("floor_band_m", 0.03))
+            report["base_map"]["color_gain"] = gain
+            print(f"      기준 바닥 색을 스캔 바닥에 맞춤: 채널 배율 {gain}")
     problems, counts = verify_scene(scene_path, mesh_path)
     report["usd"] = dict(scene=scene_path, mesh=mesh_path, mesh_mb=round(os.path.getsize(mesh_path) / 1e6, 2), problems=problems, prims=counts)
     report["seconds"] = round(time.time() - t0, 1)

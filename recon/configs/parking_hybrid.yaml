@@ -17,3 +17,4 @@ base_map:
   usd: ~/jinwoo/out/pipeline/map_v09/usd/parking_mesh.usdc
   prims: [Floor]                       # v0.9 의 사진 바닥. 차 · 스캔 물체(Visual) · 둘레 바닥은 안 가져옴 — 물체와 바깥쪽은 폴리캠 것
   drop_m: 0.04
+  match_color: true                    # v0.9 바닥 텍스처 색을 구멍 둘레 폴리캠 바닥 색에 맞춤 (이음매가 덜 보이게)
