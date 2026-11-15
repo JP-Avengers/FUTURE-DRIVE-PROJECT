@@ -1,0 +1,24 @@
+# 실내 복도 — 폴리캠 단독 맵 (11.13 미팅의 세 맵 중 폴리캠). 폴리캠 GLB 하나만으로 만들고, 복도 맵 v0.2 좌표에 놓기만 함 (수평 회전 + 이동, 축척 1).
+# 수평 · 바닥 z 0 은 폴리캠 자체 바닥으로 잡음. 리얼센스 맵에 맞춘 보정은 넣지 않음 (혼합 맵에서).
+base: templates/polycam_glb.yaml
+
+name: corridor
+out: ~/jinwoo/out/pipeline/polycam_in_v1
+
+input:
+  root: ~/jinwoo/data/polycam_in
+  mesh: polycam_in.glb
+
+orient:
+  align_file: corridor_polycam_align.json   # 벽 단면을 복도 맵 v0.2 에 겹쳐 구한 놓기 변환 (4x4)
+
+collision:
+  tris: 100000
+  floor_band_m: 0.05
+  floor_margin_m: 0.0
+
+preview:
+  args: [--ray-top, 1.0]               # 천장이 있으므로 바닥은 1 m 높이에서 아래로 찾음 (기본 50 m 는 천장 위에 카메라가 놓임)
+
+clean:
+  redact_file: corridor_polycam_redact.json   # 복도 벽의 사진 게시판(얼굴 사진 · 이름 카드): 텍스처에서 한 가지 색으로 덮음

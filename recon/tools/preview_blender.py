@@ -24,6 +24,7 @@ def args():
     ap.add_argument("--views", type=int, default=6)
     ap.add_argument("--light", default="both", choices=["both", "overcast", "sun"])
     ap.add_argument("--height", type=float, default=0.35)
+    ap.add_argument("--ray-top", type=float, default=50.0, help="바닥을 찾는 빛을 쏘기 시작하는 높이 (m). 천장이 있는 실내는 천장 아래 값 (예: 1.0)")
     ap.add_argument("--hfov", type=float, default=90.0)
     ap.add_argument("--pitch", type=float, default=5.0, help="아래로 몇 도")
     ap.add_argument("--res", default="960x540")
@@ -78,9 +79,12 @@ def vertex_color_materials():
             ob.data.materials.append(mat)
 
 
+RAY_TOP = 50.0
+
+
 def ground_z(x, y):
     dg = bpy.context.evaluated_depsgraph_get()
-    hit, loc, *_ = bpy.context.scene.ray_cast(dg, Vector((x, y, 50.0)), Vector((0, 0, -1)))
+    hit, loc, *_ = bpy.context.scene.ray_cast(dg, Vector((x, y, RAY_TOP)), Vector((0, 0, -1)))
     return loc.z if hit else 0.0
 
 
@@ -91,7 +95,9 @@ def look(cam, eye, target):
 
 
 def main():
+    global RAY_TOP
     a = args()
+    RAY_TOP = a.ray_top
     os.makedirs(a.out, exist_ok=True)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.wm.usd_import(filepath=os.path.abspath(a.usd), import_materials=True, import_usd_preview=True,
