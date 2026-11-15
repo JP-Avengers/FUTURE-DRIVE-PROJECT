@@ -20,7 +20,7 @@ sha256sum data/checkpoints/xm_ft_v1.5_aw30_exec_e6/checkpoints/xm_ft_v1.5_aw30_e
 # 후보별 한 줄(e2e/FREEZE_11_16.md §1) — 실행 명령 입력판(exec)은 노드 prev_action_mode:=clamped 필수(학습 입력 = 실제로 보낸 명령)
 #   E6(폐루프 1순위, 11.15)  FD_CKPT=data/checkpoints/xm_ft_v1.5_aw30_exec_e6/checkpoints/xm_ft_v1.5_aw30_exec_e6_e5.ckpt FD_XM_ARGS="--node-param prev_action_mode:=clamped"
 #   제로샷(비교군)            FD_CKPT=<공개 x_mobility-nav2-semantic_action_path.ckpt, sha 339c68f9e027> FD_METHOD=xmobility_zeroshot   (FD_XM_ARGS 없음 — 노드 기본)
-#   E6 시드 반복(+ --seed 1)  11.15 학습 중 — 폐루프 후보가 되면 E6 줄과 같은 꼴(파일 이름 · sha 는 e2d_model.md). E9(v1.6)는 11.15 개루프 거르기 탈락
+#   (E9(v1.6) · E6 시드 반복은 11.15 개루프 거르기 탈락 — 후보는 E6 하나)
 # 일괄 — 노드 python 사전 확인(import, 실패면 코드 2 → FD_NODE_PYTHON 으로 바꿈) → 항목마다 레이어 → 씬 → xm_route.py(노드를 띄우고 끔) → 씬 끄기. 준비 실패면 최대 3번
 FD_CKPT=data/checkpoints/xm_ft_v1.5_aw30_exec_e6/checkpoints/xm_ft_v1.5_aw30_exec_e6_e5.ckpt FD_XM_ARGS="--node-param prev_action_mode:=clamped" \
   FD_SEEDS="1 2 3" FD_OUT=data/eval/1124_xmft eval/xm_batch.sh eval/scenarios/parking_r3_straight_south.yaml eval/scenarios/parking_r3_obs_cones.yaml:ccw
