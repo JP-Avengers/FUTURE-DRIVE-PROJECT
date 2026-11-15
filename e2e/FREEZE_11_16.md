@@ -10,7 +10,8 @@
 | aw30(백업) | xm_v1 | `--gin XMobilityLoss.action_weight=30` | `xm_ft_v0.1_aw30_e8.ckpt` · `4fdf249cda0a` | 없음 | v1.4 test w_mae 0.082 · 중앙 0.18 |
 | A | xm_v1_1_p3 | aw30 + 경로 ×1/3 데이터 | `xm_ft_v0.1_aw30_p3_e8.ckpt` · `114284109957` | `path_scale:=0.3333`(`~/path` 만) | 11.9 교차 평가 1위 |
 | **E6**(폐루프 1순위, 11.15) | xm_v1_5 | aw30 + `--prev-action-source exec`, 6 에폭(드롭아웃 없음) | `xm_ft_v1.5_aw30_exec_e6_e5.ckpt` · `551cee7beb5d` | **`prev_action_mode:=clamped`** | 폐루프 무작위 배치 11/15(Nav2 12/12) · 고정 중앙 장애물 8/8 · v1.5 test w_mae 0.041 (`results/closed_loop_rand_ev_11_14.md`) |
-| E9(학습 중, 11.15) | xm_v1_6 | E6 와 같음 | ‹› · ‹› | **`prev_action_mode:=clamped`** | ‹오프라인 = E6 이상인지 · rand_ev 폐루프› — E6 이상일 때만 후보 |
+| E6 시드 반복(학습 중, 11.15) | xm_v1_5 | E6 + `--seed 1` | ‹› · ‹› | **`prev_action_mode:=clamped`** | ‹E9 와 같은 개루프 거르기 · rand_ev 폐루프› — E6 이상일 때만 후보 |
+| ~~E9~~(11.15 탈락) | xm_v1_6 | E6 와 같음 | Kaggle 만 · `7e12f1b16646` | — | 개루프 거르기 탈락: 새 맵 자동 ω MAE val +0.004 · test +0.001 (`results/xm_ft_v1.6_aw30_exec_e6/judge_11_15.md`) |
 
 - 11.15 결정 2: 열린 고리로는 E7(E6 + 직전 명령 드롭아웃 0.5)이 더 좋았지만 무작위 배치 폐루프에서 1/12(E6 11/15) — 드롭아웃 계열(E5 · E7 · E8)은 뺌. 순위는 폐루프로.
 - **실행 명령 입력판(`exec`) 은 `feed_clamped_action:=true`**(= `prev_action_mode:=clamped`, 11.12 부터 이 이름을 씀): 학습 입력 `exec_command` = 실제로 보낸 명령(상한 v 0–0.8 · |ω| ≤ 0.7 안). 노드 기본(false)은 자르기 전 예측을 넣음. 하네스에서는 `FD_XM_ARGS="--node-param feed_clamped_action:=true"`.
@@ -19,10 +20,10 @@
 ## 2. 11.16 기능 동결 (코드 · 문서)
 
 - [ ] 노드 `fd_xm_infer` 파라미터 고정 — 위 표의 칸 외에는 기본값. 바꿀 것이 생기면 11.16 전에만.
-- [x] `docs/interfaces/e2d_model.md` 버전 칸: 후보 ckpt 이름 · sha12 · 크기 · 노드 파라미터, 변경 이력 한 줄. — 11.15 E6(상태 합의 · 추론 지연 실측 포함). E9 가 후보가 되면 한 줄 더
-- [x] `eval/XM_HARNESS.md` §2: 후보별 `FD_CKPT` · `FD_XM_ARGS` 한 줄씩(exec 판 `feed_clamped_action`). — 11.15 E6 · 제로샷(`--node-param prev_action_mode:=clamped` = `feed_clamped_action:=true`), E9 자리
-- [x] `e2e/README.md`: 학습 · 평가 명령을 최종 설정으로(v1.4 · v1.5, `--prev-action-source exec`). — 11.15 "4) 동결 후보 설정"(E6 argv 그대로, E9 = -d v1.6)
-- [ ] MANIFEST: 학습 데이터 행(v1.4 · v1.5) · 후보 ckpt 행(아래 형식). — 11.15: v1.5 · v1.6 행 · E6 ckpt 행(11.12) 있음, **v1.4 행 없음**(Kaggle dataset-07, sha `f3ddcfb6e8d9` — v1.5 행 출처 칸에만). E9 가 후보가 되면 ckpt 행 추가
+- [x] `docs/interfaces/e2d_model.md` 버전 칸: 후보 ckpt 이름 · sha12 · 크기 · 노드 파라미터, 변경 이력 한 줄. — 11.15 E6(상태 합의 · 추론 지연 실측 포함). E6 시드 반복이 후보가 되면 한 줄 더(E9 는 11.15 탈락)
+- [x] `eval/XM_HARNESS.md` §2: 후보별 `FD_CKPT` · `FD_XM_ARGS` 한 줄씩(exec 판 `feed_clamped_action`). — 11.15 E6 · 제로샷(`--node-param prev_action_mode:=clamped` = `feed_clamped_action:=true`), E6 시드 반복 자리(E9 는 탈락)
+- [x] `e2e/README.md`: 학습 · 평가 명령을 최종 설정으로(v1.4 · v1.5, `--prev-action-source exec`). — 11.15 "4) 동결 후보 설정"(E6 argv 그대로, 시드 반복 = + `--seed 1`; v1.6 은 E9 탈락으로 안 씀)
+- [ ] MANIFEST: 학습 데이터 행(v1.4 · v1.5) · 후보 ckpt 행(아래 형식). — 11.15: v1.5 · v1.6 행 · E6 ckpt 행(11.12) 있음, **v1.4 행 없음**(Kaggle dataset-07, sha `f3ddcfb6e8d9` — v1.5 행 출처 칸에만). E6 시드 반복이 후보가 되면 ckpt 행 추가
 - [ ] 레포 커밋 해시를 이 파일 끝에 — 그 뒤 `e2e/` · `ros2_ws/src/fd_xm_infer/` 기능 변경 없음(버그 수정만, 커밋 메시지에 '동결 뒤 수정').
 
 MANIFEST ckpt 행 형식(기존 11.9 A 행과 같게):

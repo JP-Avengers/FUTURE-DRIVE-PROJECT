@@ -77,7 +77,8 @@ python e2e/finetune.py --xm-repo <X-Mobility> -c e2e/configs/finetune_parking_r3
     -p <x_mobility-nav2-semantic_action_path.ckpt> -o data/checkpoints/xm_ft_v1.5_aw30_exec_e6 \
     --prev-action-source exec --gin XMobilityLoss.action_weight=30 --gin NUM_EPOCHS=6 \
     --gin XMobilityIsaacSimDataModule.batch_size=2 --accumulate-grad-batches 4 --gin XMobilityIsaacSimDataModule.num_workers=2 --save-top-k 3
-# E9 = 같은 명령에 -d <xm_v1_6> -o data/checkpoints/xm_ft_v1.6_aw30_exec_e6.
+# 시드 반복 = 같은 명령 + --seed 1 -o data/checkpoints/xm_ft_v1.5_aw30_exec_seed1_e6 (11.15 학습 중).
+# v1.6(-d <xm_v1_6>, E9)은 쓰지 않음 — 새 맵 Nav2 장애물은 좋아졌지만 새 맵 자동 ω MAE 가 나빠져 거르기 탈락, results/xm_ft_v1.6_aw30_exec_e6/judge_11_15.md
 # --prev-action-dropout 0.5 는 쓰지 않음 — 열린 고리는 좋았지만 무작위 배치 폐루프에서 1/12(E6 11/15), results/closed_loop_rand_ev_11_14.md
 ```
 
