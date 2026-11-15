@@ -64,28 +64,41 @@ def wrap(d, L):
     return (d + L / 2) % L - L / 2
 
 
-def analyze_run(path, route):
+def load_scenario(j, path):
+    """회 JSON 의 시나리오 yaml(dict) — 서버 절대 경로면 이 레포의 같은 이름으로. 없으면 None."""
     import yaml
+    yml = str(j.get("scenario_yaml") or j.get("scenario") or "")
+    base = os.path.basename(yml.replace("\\", "/"))
+    if base and not base.endswith(".yaml"):
+        base += ".yaml"
+    cands = [yml, os.path.join(REPO, yml), os.path.join(REPO, "eval", "scenarios", base), os.path.join(REPO, "eval", "scenarios", "rand", base)]
+    yp = next((p for p in cands if p and os.path.isfile(p)), None)
+    if not yp:
+        print(f"[건너뜀] 시나리오 yaml 없음: {yml} ({os.path.basename(path)})", file=sys.stderr)
+        return None
+    return yaml.safe_load(open(yp, encoding="utf-8"))
+
+
+def run_direction(j, path):
+    """xm_route 회 JSON 에는 direction 이 있음. nav2_route.py 는 route(기준선 CSV 경로) · 없으면 파일 이름(<이름>_ccw.json)."""
+    direction = j.get("direction")
+    if direction not in ("cw", "ccw"):
+        direction = "ccw" if ("_ccw" in str(j.get("route", "")) or "_ccw" in os.path.basename(path)) else "cw"
+    return direction
+
+
+def analyze_run(path, route):
     j = json.load(open(path, encoding="utf-8"))
     cols = j.get("track_columns") or ["t_sim", "x", "y", "cte", "clearance"]
     tr = np.array(j.get("track") or [], dtype=float)
     if tr.ndim != 2 or len(tr) < 3:
         return [], j
     c = {k: i for i, k in enumerate(cols)}
-    yml = str(j.get("scenario_yaml") or j.get("scenario") or "")
-    base = os.path.basename(yml.replace("\\", "/"))
-    if base and not base.endswith(".yaml"):
-        base += ".yaml"
-    cands = [yml, os.path.join(REPO, yml), os.path.join(REPO, "eval", "scenarios", base), os.path.join(REPO, "eval", "scenarios", "rand", base)]
-    yp = next((p for p in cands if p and os.path.isfile(p)), None)   # 서버 절대 경로면 이 레포의 같은 이름으로
-    if not yp:
-        print(f"[건너뜀] 시나리오 yaml 없음: {yml} ({os.path.basename(path)})", file=sys.stderr)
+    sc = load_scenario(j, path)
+    if sc is None:
         return [], j
-    sc = yaml.safe_load(open(yp, encoding="utf-8"))
     obs = sc.get("obstacles") or []
-    direction = j.get("direction")   # xm_route 회 JSON 에는 있음. nav2_route.py 는 route(기준선 CSV 경로) · 없으면 파일 이름(<이름>_ccw.json)
-    if direction not in ("cw", "ccw"):
-        direction = "ccw" if ("_ccw" in str(j.get("route", "")) or "_ccw" in os.path.basename(path)) else "cw"
+    direction = run_direction(j, path)
     sign = -1.0 if direction == "ccw" else 1.0
     L = route[2][-1]
     t, x, y = tr[:, c["t_sim"]], tr[:, c["x"]], tr[:, c["y"]]

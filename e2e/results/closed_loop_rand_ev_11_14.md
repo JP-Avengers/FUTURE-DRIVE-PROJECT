@@ -93,8 +93,10 @@ E7 과 같은 설정 · 시드 1(`xm_ft_v1.5_aw30_exec_pad05_seed1_e6`, best sha
 - 속도 명령 = track `v_cmd` 평균(하네스 회만), 실제 속도 = 정답 위치 차분 평균, 둘 다 같은 구간 · 회마다 낸 뒤 중앙값.
 - 최대 이탈 자리 = 최대 cte 표본에서 가장 가까운 장애물까지 진행 방향 거리(+ = 아직 앞).
 - 95 % 구간 = Wilson. Fisher = 양쪽 정확 검정.
+- 11.15: 위 계산을 `eval/closed_loop_diag.py` 로 레포에 옮김 — '묶음 요약' 표 모든 칸 · 늦은 꺾기(E6 중앙 7/23 · 옆 5/34, E7 3/12 · 2/21, Nav2 0/20 · 4/28) · 최소 거리 0.52 대 0.81 m 가 같게 나옴(E6 대 E7 Fisher p = 0.0014).
 
 ```
 python3 eval/analyze_runs.py <묶음>/results.csv --expect-n 12
 python3 eval/obstacle_pass.py <묶음>/runs/*_s1.json -o obstacle_pass.md --csv obstacle_pass.csv
+python3 eval/closed_loop_diag.py "E6=<11.13 E6 묶음>/runs/*_s1.json" "E6=<11.14 E6 대조 묶음>/runs/*_s1.json" "E7=<E7 묶음>/runs/*_s1.json" "Nav2=<Nav2 묶음>/*.json" -o closed_loop_diag.md
 ```
