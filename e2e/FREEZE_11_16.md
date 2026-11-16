@@ -19,12 +19,12 @@
 
 ## 2. 11.16 기능 동결 (코드 · 문서)
 
-- [ ] 노드 `fd_xm_infer` 파라미터 고정 — 위 표의 칸 외에는 기본값. 바꿀 것이 생기면 11.16 전에만.
+- [x] 노드 `fd_xm_infer` 파라미터 고정 — 위 표의 칸 외에는 기본값. 바꿀 것이 생기면 11.16 전에만. — 11.16: 노드 마지막 기능 변경 `72281c6`(11.12 런치 파일 `prev_action_mode` 인자), 그 뒤 변경 없음. 후보 E6 = `prev_action_mode:=clamped` 하나
 - [x] `docs/interfaces/e2d_model.md` 버전 칸: 후보 ckpt 이름 · sha12 · 크기 · 노드 파라미터, 변경 이력 한 줄. — 11.15 E6(상태 합의 · 추론 지연 실측 포함). 11.15 E9 · E6 시드 반복 모두 탈락 → 후보 E6 하나
 - [x] `eval/XM_HARNESS.md` §2: 후보별 `FD_CKPT` · `FD_XM_ARGS` 한 줄씩(exec 판 `feed_clamped_action`). — 11.15 E6 · 제로샷(`--node-param prev_action_mode:=clamped` = `feed_clamped_action:=true`), E9 · E6 시드 반복은 탈락이라 줄 없음
 - [x] `e2e/README.md`: 학습 · 평가 명령을 최종 설정으로(v1.4 · v1.5, `--prev-action-source exec`). — 11.15 "4) 동결 후보 설정"(E6 argv 그대로, 시드 반복 = + `--seed 1`; v1.6 은 E9 탈락으로 안 씀)
 - [x] MANIFEST: 학습 데이터 행(v1.4 · v1.5) · 후보 ckpt 행(아래 형식). — 11.15: v1.5 · v1.6 행 · E6 ckpt 행(11.12) 있음, v1.4 행도 11.15 추가(집 PC 사본으로 sha `f3ddcfb6e8d9` 다시 계산해 일치). 후보는 E6 하나(11.15)
-- [ ] 레포 커밋 해시를 이 파일 끝에 — 그 뒤 `e2e/` · `ros2_ws/src/fd_xm_infer/` 기능 변경 없음(버그 수정만, 커밋 메시지에 '동결 뒤 수정').
+- [x] 레포 커밋 해시를 이 파일 끝에 — 그 뒤 `e2e/` · `ros2_ws/src/fd_xm_infer/` 기능 변경 없음(버그 수정만, 커밋 메시지에 '동결 뒤 수정'). — 11.16 아래
 
 MANIFEST ckpt 행 형식(기존 11.9 A 행과 같게):
 ```
@@ -43,4 +43,4 @@ MANIFEST ckpt 행 형식(기존 11.9 A 행과 같게):
 - [ ] 최종 ckpt sha · `run_meta.json` · MANIFEST 행 · `results/xm_ft_v1.0/`(오프라인 표 · 장애물 진단 · 짧은 폐루프).
 - [ ] 폐루프에서 제로샷보다 나은 후보가 없으면 그것도 결과로 보고(동결 후보에 제로샷 포함, PLAN 11.10).
 
-동결 커밋: ‹›
+동결 커밋: `3bbaad4`(11.16, origin/main) — 이 뒤 `e2e/` · `ros2_ws/src/fd_xm_infer/` · `eval/` 은 버그 수정 · 결과 문서만('동결 뒤 수정'). 마지막 기능 변경: 노드 `72281c6`(11.12) · `eval/closed_loop_diag.py` `b5fe9c4`(11.15) · 학습 · 평가 코드(`e2e/finetune.py` · `xm_exec_input.py` · `configs/` · `eval_offline.py`) `347b40e`(11.11, E6 학습 전).
