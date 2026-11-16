@@ -214,10 +214,22 @@ def add_base_prims(mesh_path, usdc, prims, drop):
         raise SystemExit(f"base_map: 루트 prim 이름이 다름 ({src.defaultPrim} / {dst.defaultPrim}) — name 을 같게")
     for p in prims:
         Sdf.CopySpec(src, root.AppendChild(p), dst, root.AppendChild(p))
-    looks = src.GetPrimAtPath(root.AppendChild("Looks"))
-    for m in (looks.nameChildren if looks else []):
-        if not dst.GetPrimAtPath(root.AppendChild("Looks").AppendChild(m.name)):
-            Sdf.CopySpec(src, m.path, dst, root.AppendChild("Looks").AppendChild(m.name))
+    from pxr import UsdShade
+    sst = Usd.Stage.Open(usdc)
+    files = set()
+    for p in prims:                                             # 옮긴 prim 에 묶인 재질과 그 재질이 쓰는 텍스처만
+        mat = UsdShade.MaterialBindingAPI(sst.GetPrimAtPath(root.AppendChild(p))).GetDirectBinding().GetMaterial()
+        if not mat:
+            continue
+        mp = mat.GetPath()
+        if not dst.GetPrimAtPath(mp):
+            if not dst.GetPrimAtPath(mp.GetParentPath()):
+                Sdf.CreatePrimInLayer(dst, mp.GetParentPath())
+            Sdf.CopySpec(src, mp, dst, mp)
+        for sh in Usd.PrimRange(mat.GetPrim()):
+            f = UsdShade.Shader(sh).GetInput("file") if sh.IsA(UsdShade.Shader) else None
+            if f and f.Get() is not None:
+                files.add(os.path.basename(f.Get().path))
     dst.Save()
     st = Usd.Stage.Open(mesh_path)
     for p in prims:
@@ -229,12 +241,12 @@ def add_base_prims(mesh_path, usdc, prims, drop):
     st.GetRootLayer().Save()
     td = os.path.join(os.path.dirname(usdc), "textures")
     os.makedirs(os.path.join(os.path.dirname(mesh_path), "textures"), exist_ok=True)
-    for f in os.listdir(td) if os.path.isdir(td) else []:
-        if not f.lower().startswith("sky"):
+    for f in files:
+        if os.path.exists(os.path.join(td, f)):
             shutil.copy(os.path.join(td, f), os.path.join(os.path.dirname(mesh_path), "textures", f))
 
 
-def match_base_color(mesh_path, prim, visuals, materials, ground, band, near_m=3.0):
+def match_base_color(mesh_path, prim, visuals, materials, ground, band, near_m=3.0, mode="holes"):
     """기준 맵에서 가져온 바닥의 텍스처 색을 얹은 스캔 바닥 색에 맞춤 — 스캔 바닥의 구멍으로 기준 맵 바닥이 보일 때 이음매가 덜 보이게.
     기준 바닥 중 스캔 바닥이 없는 자리(구멍)의 색 중앙값 → 그 둘레 near_m 안 스캔 바닥 색 중앙값이 되도록 채널마다 한 배율 (이 맵에 복사한 텍스처만 바꿈)."""
     from pxr import Usd, UsdGeom, UsdShade
@@ -261,6 +273,16 @@ def match_base_color(mesh_path, prim, visuals, materials, ground, band, near_m=3
             tex = UsdShade.Shader(sh).GetInput("file").Get().resolvedPath
     if tex is None:
         return None
+    if mode == "overlap":                                       # 두 바닥이 겹치는 자리에서 같은 곳의 색끼리 견줌 (구멍이 작거나 구멍 자리의 기준 색이 어두울 때)
+        d, j = cKDTree(pts).query(bp)
+        ov = (d < 0.1) & (buv >= 0).all(1) & (buv <= 1).all(1)
+        if ov.sum() < 100:
+            return None
+        im = np.asarray(Image.open(tex).convert("RGB")).astype(np.float32) / 255.0
+        src = im[((1 - buv[ov, 1]) * (im.shape[0] - 1)).astype(int), (buv[ov, 0] * (im.shape[1] - 1)).astype(int)]
+        gain = np.median(cols[j[ov]], axis=0) / np.maximum(np.median(src, axis=0), 1e-3)
+        Image.fromarray((np.clip(im * gain, 0, 1) * 255).astype(np.uint8)).save(tex, quality=92)
+        return np.round(gain, 3).tolist()
     hole = cKDTree(pts).query(bp)[0] > 0.3                      # 기준 바닥 정점 중 스캔 바닥이 없는 자리
     if hole.sum() < 100:
         return None
@@ -592,7 +614,8 @@ def main():
         report["base_map"] = dict(prims=bm["prims"], drop_m=bm.get("drop_m", 0.04))
         print(f"      기준 맵에서 가져옴: {' · '.join(bm['prims'])} ({bm.get('drop_m', 0.04) * 100:.0f} cm 내림)")
         if bm.get("match_color"):
-            gain = match_base_color(mesh_path, bm["prims"][0], visuals, materials, ground, cc.get("floor_band_m", 0.03))
+            gain = match_base_color(mesh_path, bm["prims"][0], visuals, materials, ground, cc.get("floor_band_m", 0.03),
+                                    mode="overlap" if bm["match_color"] == "overlap" else "holes")
             report["base_map"]["color_gain"] = gain
             print(f"      기준 바닥 색을 스캔 바닥에 맞춤: 채널 배율 {gain}")
     problems, counts = verify_scene(scene_path, mesh_path)
