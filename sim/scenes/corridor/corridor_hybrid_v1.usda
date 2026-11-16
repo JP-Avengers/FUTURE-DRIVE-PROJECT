@@ -1,0 +1,61 @@
+#usda 1.0
+(
+    customLayerData = {
+        string lights_d = "D 11.16: 천장이 돔 빛을 막아 화면이 검게 나옴(카메라 평균 밝기 0) → Visual0~2 에 primvars:doNotCastShadows 를 줘 돔 빛이 들어오게 함(돔 600 그대로, 평균 밝기 89). 조명 기구를 따로 놓지 않음"
+        string lights = "돔 600 · 해 0 (복도 v0.2 제안본 그대로). 천장이 있어 돔 빛이 안 들어올 수 있음 — 실내 조명은 D 가 정함"
+        string map = "data/usd/corridor_hybrid_v1/ — C 이진우 11.15: 실내 복도 혼합 맵 (리얼센스 복도 맵 v0.2 뼈대 + 휘어 맞춘 폴리캠 겉모습 · 벽 · 천장). 천장 있음"
+        string start_pose = "C 제안 (시험 안 함): 복도 가운데선 (3.0, 0.17) · +x 방향. 바닥 0.000 + 0.022"
+    }
+    defaultPrim = "World"
+    doc = "실내 복도 혼합 맵 v1 루트 제안 — 복도 v0.2 제안본에서 맵 경로만 바꿈. Isaac Sim 에서 열어 보지 못함"
+    metersPerUnit = 1
+    subLayers = [
+        @../proxy/sensors.usda@,
+        @../proxy/ros.usda@,
+        @../proxy/robot.usda@,
+        @../../../data/usd/corridor_hybrid_v1/usd/corridor_scene.usda@,
+        @../proxy/world.usda@
+    ]
+    timeCodesPerSecond = 60
+    upAxis = "Z"
+)
+
+over "World"
+{
+    over "Nova_Carter_ROS"
+    {
+        float xformOp:rotateZ = 0.0
+        double3 xformOp:translate = (3.0, 0.17, 0.022)
+    }
+
+    over "Corridor"
+    {
+        over "Visual0"
+        {
+            bool primvars:doNotCastShadows = 1
+        }
+
+        over "Visual1"
+        {
+            bool primvars:doNotCastShadows = 1
+        }
+
+        over "Visual2"
+        {
+            bool primvars:doNotCastShadows = 1
+        }
+    }
+
+    over "Lights"
+    {
+        over "Dome"
+        {
+            float inputs:intensity = 600
+        }
+
+        over "Sun"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}

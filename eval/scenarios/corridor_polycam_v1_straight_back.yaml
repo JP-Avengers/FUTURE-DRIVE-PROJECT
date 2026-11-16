@@ -1,0 +1,13 @@
+# 실내 복도 corridor_polycam_v1 — 직선 구간 corridor_polycam_v1_straight_back v0 (11.16, D). corridor_v02_straight_back 와 같은 경로 · 출발 · 목표, 씬만 다름(세 맵 비교용 — 평가 시나리오 아님).
+name: corridor_polycam_v1_straight_back
+version: v0
+scene: sim/scenes/corridor/corridor_polycam_v1.usda
+route: eval/routes/corridor_v02_back.csv
+direction: cw
+start: {s: 0.0}
+goal: {s: 38.0, radius_m: 1.0}
+commands: [straight]
+obstacles: []
+deviation_limit_m: 2.0
+stall_limit_s: 10
+timeout_s: 200

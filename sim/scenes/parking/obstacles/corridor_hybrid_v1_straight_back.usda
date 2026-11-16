@@ -1,0 +1,26 @@
+#usda 1.0
+(
+    customLayerData = {
+        string generated_by = "sim/make_obstacles.py"
+        string obstacles_json = "[]"
+        string scenario = "eval/scenarios/corridor_hybrid_v1_straight_back.yaml"
+        string start_json = '{"x": 43.0, "y": 0.17, "z": 0.022, "yaw_deg": 180.0, "s": 0.0}'
+    }
+    doc = "시나리오 장애물 — corridor_hybrid_v1_straight_back (eval/scenarios/corridor_hybrid_v1_straight_back.yaml). FD_LAYERS 로 씬 위에 얹음"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def "World"
+{
+    def Xform "Obstacles"
+    {
+    }
+
+    over "Nova_Carter_ROS"
+    {
+        custom float xformOp:rotateZ = 180
+        custom double3 xformOp:translate = (43, 0.17, 0.022)
+    }
+}
+
