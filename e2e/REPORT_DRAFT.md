@@ -610,8 +610,9 @@ D 가 60회와 같은 하네스(`eval/xm_batch.sh` · `eval/xm_route.py`, 판정
 - **E6 11/15 대 E7 1/12**(Fisher p = 0.001; 같은 날 같은 12회만 10/12 대 1/12, p = 0.0006). E6 통과율 95 % 구간 0.48–0.89, Nav2 0.76–1.00.
 - 실패는 거의 다 한도를 아슬아슬하게 넘은 것이다(E7 이탈 9회 2.00–2.04 m, E6 3회 2.01–2.02 m). 지나간 장애물의 회피 폭(나란할 때 옆 거리 중앙값)은 E6 1.33–1.41 · E7 1.40–1.45 · Nav2 1.34–1.39 m 로 비슷하고, Nav2 는 폭이 고르다(최대 1.64 m).
 - E7 은 장애물 사이에서 기준선을 덜 따라가고(장애물 앞 10 m ~ 뒤 6 m 밖 평균 이탈 0.26 대 E6 0.11 m) 빠르다(속도 명령 중앙값 0.69 대 0.58 m/s, Nav2 실제 0.69). 개루프에서는 모든 판의 속도 치우침이 ±0.006 m/s 라 이 차는 폐루프의 직전 명령 되먹임에서만 생긴다(한계 15).
-- E6 의 남은 약점은 중앙 장애물 앞의 늦은 결정이다 — 꺾기 시작이 2 m 안인 중앙 장애물 7/23(Nav2 0/20), 그때 최소 거리 중앙값 0.52 m(제때 0.81 m). E6 의 충돌 1회가 이 경우다. 개루프 장애물 진단의 '피할 쪽을 정하는 순간' 약점(E.6.3)과 같은 자리다.
+- E6 의 남은 약점은 중앙 장애물 앞의 늦은 결정이다 — 꺾기 시작이 2 m 안인 중앙 장애물 7/23(Nav2 0/20), 그때 최소 거리 중앙값 0.52 m(제때 0.81 m). E6 의 충돌 1회도 늦은 꺾기다(옆 장애물, 1.32 m 앞에서 꺾기 시작). 개루프 장애물 진단의 '피할 쪽을 정하는 순간' 약점(E.6.3)과 같은 자리다.
 - 같은 조건을 다시 돌리면 결과가 갈린다(E6 대조 3회 중 2회가 통과 → 실패, 한 회는 s 51 m 까지 궤적 차 0.2 m 안이다가 콘 앞에서 갈림). 60회의 `seed` 는 같은 조건이 아니라 반복 번호로 읽는다(D 11.14).
+- **E6 시계 실패 4회 중 3회는 같은 자리다(11.16)** — 시계 41–51 이중 오른쪽 코너 출구 뒤 2.1–4.1 m 의 장애물(무작위 배치의 s 53–58 자리). 코너 출구 뒤 4.5 m 안 장애물을 시계에서 5번 만나 3번 실패(늦은 꺾기 1 · 넓게 돌아 이탈 한도 2), 반시계에서는 7번 만나 모두 통과했다(Fisher p = 0.045, 결과를 보고 고른 묶음이라 참고). 같은 자리 Nav2 는 5/5 통과, 회피를 장애물 앞 6.7 m(코너 안)에서 시작했다. 원인은 확인하지 않았고, 고정 60회 배치에는 이 이중 코너 뒤 장애물이 없다 [E6 `closed_loop_cw_11_16/`].
 
 ### E.6.5 폐루프 60회 결과
 
@@ -781,7 +782,7 @@ python3 eval/analyze_runs.py data/eval/<묶음>/results.csv --out data/eval/<묶
 - [E2] 11.6 Kaggle 파인튜닝 출력 `xm_ft_kaggle_e10/`(저장소 미커밋) — `run_meta.json`(설정 · 키 대조 · 스텝 시간 · 메모리 · 내장 test 지표), `curves.md` · `curves.png`(에폭별 검증), `report_tables.md`(표 E-14 · E-15 · MANIFEST 행 초안), `eval_test/`(`eval_offline.py` test 출력), `weak/weak_segments.md`(약한 구간), best ckpt `epoch=8-step=10719.ckpt`
 - [E3] 11.6–7 Kaggle 2차 run 출력(저장소 미커밋) `xm_ft_v0.1_aw30_e10/` · `xm_ft_v0.2_e10/`(`run_meta.json` · `gin_operative.txt` · `csv/metrics.csv` · `eval_test/`, v1.1 test 제로샷 `eval_zeroshot_test/`)과 11.7 정리 `e2e/results/xm_ft_v0.1_aw30/` · `e2e/results/xm_ft_v0.2/` · `e2e/results/compare_11_7.md`, 같은 test 재평가 Kaggle `fd-xm-eval` 출력 · `e2e/results/reeval_v1.1_11_7/`
 - [E5] 11.11–16 집 PC 실행 명령 입력판 run E4–E10 판정(`e2e/results/xm_ft_v1.4_aw30_exec_e10/` · `xm_ft_v1.4_aw30_exec_pad05_e10/` · `xm_ft_v1.5_aw30_exec_e6/` · `xm_ft_v1.5_aw30_exec_pad05_e6/judge_11_13.md` · `xm_ft_v1.6_aw30_exec_pad05_e6/` · `xm_ft_v1.6_aw30_exec_e6/judge_11_15.md` · `xm_ft_v1.5_aw30_exec_seed1_e6/judge_11_15.md` · `xm_ft_v1.5_aw30_e6/judge_11_16.md`, 기준선 `v15_baseline_11_11.md`)
-- [E6] 폐루프 사전 시험 정리(D 전달 6 · 7 의 회 JSON · results.csv 로): `e2e/results/xm_ft_v1.5_aw30_exec_e6/closed_loop_11_12.md` · `e2e/results/closed_loop_rand_ev_11_14.md`, 판정 질문 답 `eval/XM_HARNESS.md` §7
+- [E6] 폐루프 사전 시험 정리(D 전달 6 · 7 의 회 JSON · results.csv 로): `e2e/results/xm_ft_v1.5_aw30_exec_e6/closed_loop_11_12.md` · `e2e/results/closed_loop_rand_ev_11_14.md` · `e2e/results/closed_loop_cw_11_16/`(시계 실패 자리), 판정 질문 답 `eval/XM_HARNESS.md` §7
 - [E4] 11.7–9 3차 이후 run · 진단 정리(`e2e/results/`, 저장소 커밋 — ckpt · frames.csv 는 미커밋): `xm_ft_v0.1_seed1/` · `seed_noise_11_8.md`(시드 바닥), `xm_ft_v0.1_p3/`, `xm_ft_v0.1_aw30_p3/`(A — 두 test 교차 평가 · 에폭 평균), `p3_ccw_loss_11_9.md`, `teacher_id_11_7.md`(교사 구분 검사), `tf_eval_11_9/`(교사 강제 입력 평가), `data_xm_v1_3.md`(B 데이터), `reeval_v1.1_11_7/*_v1.0test_7.md` · `*_v1.1test_6.md`
 
 **외부**
