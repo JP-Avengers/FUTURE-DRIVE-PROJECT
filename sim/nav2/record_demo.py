@@ -65,7 +65,8 @@ TOPCAM = "/Probe/topcam"
 TCX, TCY, TCH, THALF = -17.5, -9.0, 100.0, 22.5   # 위에서 본 카메라: 중심 · 높이 · 가로 반폭(m) — r3 루프 둘레 45 × 32 m
 TOPW, TOPH = 1280, 910
 LOGSTEP, FPS, DT = 2 * SPEED, 30, 1 / 60          # 자세 기록 간격(60 Hz 스텝) — 3배속이면 0.1 s 한 장을 30 fps 로
-ENV = ("source /opt/ros/jazzy/setup.bash && export ROS_DOMAIN_ID=43 RMW_IMPLEMENTATION=rmw_fastrtps_cpp "
+# 도메인은 record_demo.sh 가 내보낸 ROS_DOMAIN_ID 를 그대로 씀(씬과 같은 값, 기본 43) — 다른 작업 폴더에서 FD_DOMAIN 을 바꿔 돌릴 때 하위 프로세스만 43 에 남지 않게(11.16)
+ENV = (f"source /opt/ros/jazzy/setup.bash && export ROS_DOMAIN_ID={os.environ.get('ROS_DOMAIN_ID', '43')} RMW_IMPLEMENTATION=rmw_fastrtps_cpp "
        "ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST PYTHONUNBUFFERED=1 RCUTILS_COLORIZED_OUTPUT=0")
 SUB_ENV = {"HOME": HOME, "PATH": "/usr/bin:/bin"}   # Isaac 파이썬 환경 변수를 하위 프로세스(시스템 파이썬)에 넘기지 않음
 REG = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"

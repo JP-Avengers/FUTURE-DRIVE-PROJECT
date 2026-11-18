@@ -10,9 +10,12 @@
 # /teacher/cmd_vel · /route_command · /teacher/status 를 냄, 녹화는 sim/record_teacher.sh(운전자 nav2, QC 포함). 저장 FD_TEACHER_DIR
 # (기본 data/teacher/nav2_v1)/<시각>_nav2_<방향>/ 에 teacher/(다리 · nav2_route 로그 · 요약 · 시나리오)와 meta.yaml teacher 칸.
 # 준비 실패로 다시 띄운 회차의 녹화는 지움. FD_NOISE = 다리 조향 잡음 비율(기본 0 = 끔).
-cd ~/Capstone_Design_1
+# 작업 폴더 · 도메인 · tmux 세션 이름은 CD1 · FD_DOMAIN · FD_SIM_SESSION · FD_REC_SESSION 으로 바꿀 수 있음(기본값은 예전 그대로).
+# 다른 작업 폴더(git worktree)에서 돌릴 때 본 작업의 fdsim · fdrec 세션과 도메인 43 을 건드리지 않게 하려는 것(11.16).
+export CD1=${CD1:-$HOME/Capstone_Design_1}; cd $CD1
 source /opt/ros/jazzy/setup.bash
-export ROS_DOMAIN_ID=43 RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+DOM=${FD_DOMAIN:-43}; SIMS=${FD_SIM_SESSION:-fdsim}; RECS=${FD_REC_SESSION:-fdrec}
+export ROS_DOMAIN_ID=$DOM RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 D=${FD_OUT:-logs/nav2/scenario}; mkdir -p $D
 REC=${FD_RECORD:-0}; TDIR=${FD_TEACHER_DIR:-$PWD/data/teacher/nav2_v1}
 NAVARG=(); [ "$REC" = 1 ] && NAVARG=(cmd_vel_out:=nav2/cmd_vel)
@@ -24,7 +27,7 @@ export FD_NAV2_LOC=${FD_NAV2_LOC:-amcl}
 SCENE=${FD_SCENE:-sim/scenes/parking/parking_v0.8_r3.usda}; NAVMAP=${FD_NAV2_MAP:-$PWD/data/nav2/parking_v0.8_r3/map.yaml}
 ITEMS=("$@"); [ ${#ITEMS[@]} -eq 0 ] && ITEMS=(eval/scenarios/parking_r3_straight_*.yaml eval/scenarios/parking_r3_curve_*.yaml)
 start_scene() {   # $1 레이어 · $2 로그 이름 · $3 launch 시작 자세 인자
-  tmux new-session -d -s fdsim "cd ~/Capstone_Design_1 && FD_LAYERS=$1 FD_LIDAR=1 FD_DOMAIN=43 FD_SCENE=$SCENE sim/run_proxy.sh headless"
+  tmux new-session -d -s $SIMS "cd $CD1 && CD1=$CD1 FD_LAYERS=$1 FD_LIDAR=1 FD_DOMAIN=$DOM FD_SCENE=$SCENE sim/run_proxy.sh headless"
   sleep 5
   for i in $(seq 1 40); do sleep 3; L=$(ls -t logs/run_proxy/headless_*.log | head -1); grep -q "PROXY_TIMELINE playing" "$L" 2>/dev/null && break; done
   setsid ros2 launch sim/nav2/nav2.launch.py map:=$NAVMAP localization:=${FD_NAV2_LOC:-amcl} $3 ${FD_NAV2_ARGS:-} "${NAVARG[@]}" > $D/launch_$2.log 2>&1 &
@@ -39,16 +42,16 @@ rec_start() {   # $1 다리가 따를 기준선 · $2 방향 · $3 이름 · $4 
     --summary $D/teacher_$3.json > $D/teacher_$3.log 2>&1 &
   BP=$!
   sleep 3
-  tmux new-session -d -s fdrec "cd ~/Capstone_Design_1 && FD_DOMAIN=43 FD_SCENE=$SCENE FD_TEACHER_DIR=$TDIR sim/record_teacher.sh nav2 $2 $3 > $D/rec_$3.log 2>&1"
-  for i in $(seq 1 90); do grep -q "Recording\.\.\." $D/rec_$3.log 2>/dev/null && break; tmux has-session -t "=fdrec" 2>/dev/null || break; sleep 0.5; done
+  tmux new-session -d -s $RECS "cd $CD1 && CD1=$CD1 FD_DOMAIN=$DOM FD_SCENE=$SCENE FD_TEACHER_DIR=$TDIR sim/record_teacher.sh nav2 $2 $3 > $D/rec_$3.log 2>&1"
+  for i in $(seq 1 90); do grep -q "Recording\.\.\." $D/rec_$3.log 2>/dev/null && break; tmux has-session -t "=$RECS" 2>/dev/null || break; sleep 0.5; done
   RO=$(sed -n 's/^REC_START \([^ ]*\) .*/\1/p' $D/rec_$3.log | head -1)
   grep -q "Recording\.\.\." $D/rec_$3.log 2>/dev/null || { echo "  녹화가 안 뜸: $(tail -2 $D/rec_$3.log | tr '\n' ' ')"; return 1; }
   sleep 3   # 녹화기가 카메라 · odom 을 구독할 시간
 }
 rec_stop() {   # $1 nav2_route 코드 · $2 이름 · $3 기준선 · $4 방향 — 녹화를 닫고(QC) 다리를 끔. 준비 실패(3 · 124)면 녹화를 지움
   sleep 2
-  tmux send-keys -t "=fdrec:" C-c
-  for i in $(seq 1 600); do tmux has-session -t "=fdrec" 2>/dev/null || break; sleep 1; done
+  tmux send-keys -t "=$RECS:" C-c
+  for i in $(seq 1 600); do tmux has-session -t "=$RECS" 2>/dev/null || break; sleep 1; done
   kill -TERM $BP 2>/dev/null; wait $BP 2>/dev/null
   [ -n "$RO" ] || return
   if [ $1 -eq 3 ] || [ $1 -eq 124 ]; then rm -rf "$RO"; echo "  녹화 지움(준비 실패)"; return; fi
@@ -71,7 +74,7 @@ rec_stop() {   # $1 nav2_route 코드 · $2 이름 · $3 기준선 · $4 방향 
 }
 stop_scene() {   # lifecycle_manager 가 INT · TERM 을 무시하고 남아 다음 Nav2 와 이름이 겹친 일이 있어(10.14) 마지막에 KILL
   kill -INT -$LP 2>/dev/null; sleep 8; kill -TERM -$LP 2>/dev/null; sleep 2; kill -KILL -$LP 2>/dev/null
-  tmux send-keys -t "=fdsim:" C-c; sleep 12; tmux kill-session -t "=fdsim" 2>/dev/null
+  tmux send-keys -t "=$SIMS:" C-c; sleep 12; tmux kill-session -t "=$SIMS" 2>/dev/null
   fastdds shm clean > /dev/null 2>&1
 }
 for it in "${ITEMS[@]}"; do

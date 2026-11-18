@@ -26,7 +26,8 @@
 export CD1=${CD1:-$HOME/Capstone_Design_1}
 cd $CD1
 source /opt/ros/jazzy/setup.bash
-export ROS_DOMAIN_ID=43 RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST   # scenario_batch.sh:15
+DOM=${FD_DOMAIN:-43}; SIMS=${FD_SIM_SESSION:-fdsim}   # 다른 작업 폴더(git worktree)에서 돌릴 때 본 작업의 세션 · 도메인과 안 겹치게(11.16, 기본값은 예전 그대로)
+export ROS_DOMAIN_ID=$DOM RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST   # scenario_batch.sh:15
 [ -n "$FD_CKPT" ] || { echo "FD_CKPT(파인튜닝 .ckpt) 가 필요"; exit 2; }
 [ -f "$FD_CKPT" ] || { echo "ckpt 없음: $FD_CKPT"; exit 2; }
 # 노드 python 사전 확인 — 씬을 띄우기 전에. 모자라면 항목마다 노드 기동 실패(코드 3) → 씬 재시작 ×3 만 하고 결과 행이 없음.
@@ -52,12 +53,12 @@ SHA=$(sha256sum "$FD_CKPT" | cut -c1-12)   # e2d_model.md 버전 칸 · MANIFEST
 echo "XM_BATCH_START rev=$REV method=$METHOD ckpt=$FD_CKPT sha=$SHA node_python=$NODE_PY seeds=[$SEEDS] out=$D csv=$CSV lidar=$LIDAR ccw_start=$CCW 항목 ${#ITEMS[@]}"
 case $REV in *-dirty) echo "  주의: 작업 트리가 더러움 — 결과 CSV repo_rev 에 -dirty 가 붙음(eval/README.md: 60회는 커밋 하나로)";; esac
 start_scene() {   # $1 레이어(콜론 구분) · $2 씬 — scenario_batch.sh:21-24 에서 Nav2 를 뺀 것. 실패면 1
-  tmux new-session -d -s fdsim "cd $CD1 && FD_LAYERS=$1 FD_LIDAR=$LIDAR FD_DOMAIN=43 FD_SCENE=$2 sim/run_proxy.sh headless"
+  tmux new-session -d -s $SIMS "cd $CD1 && CD1=$CD1 FD_LAYERS=$1 FD_LIDAR=$LIDAR FD_DOMAIN=$DOM FD_SCENE=$2 sim/run_proxy.sh headless"
   # 준비 = 카메라 영상이 실제로 옴(sim/auto_batch.sh:28-35 · sim/dagger_batch.sh 와 같음, D 11.10 지적). 예전처럼 최신 headless 로그의
   # "PROXY_TIMELINE playing" 을 보면 직전 씬 로그가 그 줄을 이미 담고 있어 새 씬이 뜨기 전에 통과함(녹화기가 /clock 을 못 받음)
   for i in $(seq 1 60); do
     timeout 5 ros2 topic echo --once /front_camera/image_raw --no-arr > /dev/null 2>&1 && { sleep 5; return 0; }
-    tmux has-session -t "=fdsim" 2>/dev/null || break
+    tmux has-session -t "=$SIMS" 2>/dev/null || break
     sleep 5
   done
   echo "  씬이 안 뜸(카메라 영상 없음)"; return 1
@@ -68,7 +69,7 @@ kill_node() {   # $1 pid 파일 — xm_route.py 가 timeout 으로 죽어 노드
   rm -f "$1"; echo "  남은 노드 pid $NP 끔"
 }
 stop_scene() {   # scenario_batch.sh:69-70
-  tmux send-keys -t "=fdsim:" C-c; sleep 12; tmux kill-session -t "=fdsim" 2>/dev/null
+  tmux send-keys -t "=$SIMS:" C-c; sleep 12; tmux kill-session -t "=$SIMS" 2>/dev/null
   fastdds shm clean > /dev/null 2>&1
 }
 for it in "${ITEMS[@]}"; do
@@ -99,7 +100,7 @@ for it in "${ITEMS[@]}"; do
       if ! start_scene $LAYERS $SCENE; then stop_scene; continue; fi   # 준비 실패와 같게 다시 띄움(CSV 행 없음)
       if [ "${FD_DAGGER:-0}" = 1 ]; then   # 라벨 교사 + 녹화를 모델보다 먼저(auto_teacher 는 /cmd_vel 발행자가 있으면 거부)
         ROUTE_CSV=$(sed -n 's/^route: *\([^ #]*\).*/\1/p' $f)
-        tmux new-session -d -s fddag "cd $CD1 && FD_DOMAIN=43 FD_SCENE=$SCENE FD_TEACHER_DIR=${FD_DAGGER_DIR:-data/teacher/dagger_v1} sim/auto_teacher.sh csv:$ROUTE_CSV ${dir:-cw} 1 ${tag}_dagger -- --label-only > $D/dagger_$name.log 2>&1"
+        tmux new-session -d -s fddag "cd $CD1 && CD1=$CD1 FD_DOMAIN=$DOM FD_SCENE=$SCENE FD_TEACHER_DIR=${FD_DAGGER_DIR:-data/teacher/dagger_v1} sim/auto_teacher.sh csv:$ROUTE_CSV ${dir:-cw} 1 ${tag}_dagger -- --label-only > $D/dagger_$name.log 2>&1"
         for i in $(seq 1 90); do grep -q "^AUTO_REC" $D/dagger_$name.log 2>/dev/null && break; sleep 1; done
         grep -q "^AUTO_REC" $D/dagger_$name.log 2>/dev/null && echo "  DAgger $(grep '^AUTO_REC' $D/dagger_$name.log)"           || echo "  DAgger 녹화가 안 뜸 — $D/dagger_$name.log 확인(모델 회는 그대로 돌림)"
       fi
