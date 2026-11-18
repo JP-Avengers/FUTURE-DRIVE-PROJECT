@@ -33,7 +33,7 @@ from sensor_msgs.msg import LaserScan
 from tf2_msgs.msg import TFMessage
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--route", default="eval/routes/parking_r3_cw.csv")
+ap.add_argument("--route", default=None, help="기준선 CSV(점 순서 = 진행 방향). 안 주면 시나리오의 route, 시나리오도 없으면 eval/routes/parking_r3_cw.csv")
 ap.add_argument("--spacing", type=float, default=4.0)
 ap.add_argument("--out")
 ap.add_argument("--initial-pose", action="store_true", help="AMCL 초기 자세를 기준선 출발점으로 다시 보냄(씬을 다시 띄우지 않고 이어 돌 때). 평소엔 nav2.launch.py 의 초기 자세(x0 · y0 · yaw0_deg)로 충분")
@@ -47,7 +47,7 @@ if a.scenario:
     import yaml
     SC = yaml.safe_load(open(a.scenario))
 SEGMENT = "s" in (SC.get("goal") or {})          # 구간 시나리오 — 시나리오의 route 를 그대로 따름
-ROUTE = SC["route"] if SEGMENT else a.route
+ROUTE = SC["route"] if SEGMENT else (a.route or SC.get("route") or "eval/routes/parking_r3_cw.csv")   # 바퀴: --route → 시나리오 route → 예전 기본값(11.17 — 그 전엔 --route 가 없으면 시나리오와 상관없이 주차장 r3 시계 기준선)
 R = np.array([(float(r["x"]), float(r["y"])) for r in csv.DictReader(open(ROUTE)) if r.get("run", "0") == "0"])
 seg = np.diff(R, axis=0)
 s = np.concatenate([[0], np.cumsum(np.hypot(seg[:, 0], seg[:, 1]))])

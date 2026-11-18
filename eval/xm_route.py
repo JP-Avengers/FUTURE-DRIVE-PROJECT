@@ -185,8 +185,8 @@ class Ctx:
         if dirs and direction not in dirs:
             raise SystemExit(f"{scenario}: 방향 {direction} 이 yaml {dirs} 에 없음")
         self.direction = direction
-        # 기준선 — 구간이면 시나리오 route, 바퀴면 방향별 CSV(nav2_route.py:50 · scenario_batch.sh:79)
-        self.route = SC["route"] if self.segment else (route or f"eval/routes/parking_r3_{direction}.csv")
+        import scenario_site   # 기준선 — 구간이면 시나리오 route, 바퀴면 방향별 CSV(nav2_route.py:50). 방향별 파일은 시나리오 route 에서 찾음(eval/scenario_site.py, 11.17 — 그 전엔 parking_r3_<방향>.csv 고정)
+        self.route = SC["route"] if self.segment else (route or scenario_site.route_for(SC, direction))
         self.R, self.seg, self.s, self.L = load_route(self.route)
         self.OBS = build_obstacles(SC)                                             # nav2_route.py:73-89
         if self.segment:                                                           # nav2_route.py:199-205 (i_goal 만)
@@ -840,7 +840,7 @@ def parse_args(argv=None):
     ap = argparse.ArgumentParser(description="X-Mobility 폐루프 평가 한 회 — sim/nav2/nav2_route.py 와 같은 판정 (eval/XM_HARNESS.md)")
     ap.add_argument("--scenario", required=True, help="eval/scenarios/<이름>.yaml")
     ap.add_argument("--direction", choices=["cw", "ccw"], help="바퀴 시나리오는 필수(구간은 yaml direction)")
-    ap.add_argument("--route", help="바퀴의 기준선 CSV(기본 eval/routes/parking_r3_<방향>.csv = scenario_batch.sh:79)")
+    ap.add_argument("--route", help="바퀴의 기준선 CSV(기본: 시나리오 route 의 그 방향 파일 — eval/scenario_site.py, scenario_batch.sh 와 같음)")
     ap.add_argument("--method", default="xmobility_ft", help=f"결과 CSV method — 제안 {METHODS}")
     ap.add_argument("--ckpt", help="파인튜닝 .ckpt (노드 ckpt 파라미터)")
     ap.add_argument("--model-version", help="결과 CSV model_version(기본: ckpt 경로의 xm_ft_v<주>.<부> 등)")

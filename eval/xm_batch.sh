@@ -8,7 +8,7 @@
 #   FD_CKPT(필수) · FD_METHOD(xmobility_ft | xmobility_zeroshot) · FD_MODEL_VERSION(비면 ckpt 경로에서 xm_ft_v0.1[_aw30 …]) · FD_SEEDS("1" — 항목마다 시드 목록, 반복 번호)
 #   FD_NODE_PYTHON(노드 python, 기본 ~/xmobility_test/venv/bin/python — D 11.10 노드 시험에서 시스템 Jazzy rclpy 와 같이 import 됨. ml_env 엔 gin 없음)
 #   FD_ANALYZE_PYTHON(끝의 analyze_runs.py 를 돌릴 python, 기본 노드 python — 시스템 python3 엔 pandas 가 없음) · XM_REPO(노드와 같은 기본 ~/xmobility_test/X-Mobility)
-#   FD_OUT(data/eval/xm_<월일_시분>) · FD_CSV($FD_OUT/results.csv) · FD_SCENE(비면 시나리오 yaml 의 scene — scenario_batch.sh 는 r3 고정)
+#   FD_OUT(data/eval/xm_<월일_시분>) · FD_CSV($FD_OUT/results.csv) · FD_SCENE(비면 시나리오 yaml 의 scene — scenario_batch.sh 도 11.17 부터 같음)
 #   FD_LIDAR(1 — scenario_batch.sh:22 와 같게 켬, RTF 를 Nav2 회와 맞추려고. 모델은 LiDAR 를 안 씀) · FD_XM_CCW_START(scene | align — 아래)
 #   FD_XM_ARGS(xm_route.py 에 더 넘길 인자, 예 "--intervene off --node-param device:=cuda")
 #   FD_DAGGER(0 | 1, 11.10 E) — 1 이면 회마다 씬을 띄운 뒤 라벨 교사(sim/teacher.py --label-only, /cmd_vel 안 냄)와 녹화
@@ -17,7 +17,7 @@
 #     녹화 = FD_DAGGER_DIR(기본 data/teacher/dagger_v1)/<묶음>, 메모 = <시나리오>_<방향>_dagger. 내보내기는
 #     sim/export_xmobility.py <묶음> <출력> --scenario r3_dagger --split train --exec-cmd(실행 명령 = 모델 명령).
 #     장애물 없는 바퀴(eval/scenarios/parking_r3_lap.yaml:cw|ccw)에서만 — 장애물 장면의 자동 교사 라벨은 '장애물로 직진'이라 틀림.
-# 반시계 바퀴: 씬은 시계 방향(−96°)을 보고 뜸 — Nav2 회와 같은 조건(scene, 기본). align 이면 로봇 방향을 parking_r3_ccw.yaml 의 start(84°)로
+# 반시계 바퀴: 씬은 시계 방향(−96°)을 보고 뜸 — Nav2 회와 같은 조건(scene, 기본). align 이면 로봇 방향을 반시계 기준선 yaml 의 start(주차장 r3 은 84°)로
 # 덮는 레이어를 하나 더 얹음(Nav2 회와 조건이 달라짐 — XM_HARNESS.md 질문 1).
 # 결과: $FD_OUT/runs/<이름>_s<시드>[_a<시도>].json(+ .node.log · .xm_infer.csv · .meta.json) · route_*.log · layers/ · results.csv, 끝에 XM_BATCH_DONE.
 # 준비 실패(xm_route 코드 3 = 정답 위치 · /cmd_vel 발행자 · 출발 자세 · 노드 기동 · 시뮬 멈춤)나 벽시계 15분 초과(124)면 다시 띄움(최대 3번,
@@ -77,7 +77,7 @@ for it in "${ITEMS[@]}"; do
   n=$(basename $f .yaml); tag=$n${dir:+_$dir}
   # 레이어는 레포 밖($D/layers)에 — sim/scenes/parking/obstacles/ 에 다시 쓰면 작업 트리가 더러워짐(MANIFEST.md:40 "19개 -dirty 는 … start_json 재생성뿐")
   LAYER=$D/layers/$n.usda
-  OUT=$(envs/isaacsim_env/bin/python sim/make_obstacles.py $f $LAYER 2>&1)                   # scenario_batch.sh:75
+  OUT=$(envs/isaacsim_env/bin/python sim/make_obstacles.py $f $LAYER ${FD_SCENE:+--scene $FD_SCENE} 2>&1)   # scenario_batch.sh 와 같음 — FD_SCENE 이면 바닥 메쉬도 그 씬 것(11.17)
   echo "$OUT" | grep -E "START|SAVED" | sed "s/^/  /"
   [ -f "$LAYER" ] || { echo "  레이어를 못 만듦 — 건너뜀: $(echo "$OUT" | tail -2 | tr '\n' ' ')"; continue; }
   SCENE=${FD_SCENE:-$(sed -n 's/^scene: *\([^ ]*\).*/\1/p' $f)}
@@ -87,9 +87,11 @@ for it in "${ITEMS[@]}"; do
   POSE=$(echo "$OUT" | sed -nE 's/^START .*\(([-0-9.]+), ([-0-9.]+), [-0-9.]+\) [^-0-9]*([-0-9.]+).*/\1 \2 \3/p')
   [ -n "$POSE" ] && ARGS+=(--start-pose $POSE)
   if [ "$CCW" = align ] && [ "$dir" = ccw ] && [ -z "$POSE" ]; then
-    YAW=$(python3 -c "import sys, yaml; print(float(yaml.safe_load(open(sys.argv[1]))['start']['yaw_deg']))" eval/routes/parking_r3_ccw.yaml)
+    # 반시계 기준선 yaml 의 start — 시나리오 route 에서 찾음(eval/scenario_site.py, 11.17. 예전엔 eval/routes/parking_r3_ccw.yaml 고정)
+    RY=$(python3 eval/scenario_site.py $f route_yaml --direction ccw); YAW=$(python3 eval/scenario_site.py $f start_yaw --direction ccw)
+    [ -n "$YAW" ] || { echo "  반시계 출발 방향을 못 읽어 건너뜀: ${RY:-기준선 yaml 을 못 찾음}"; continue; }
     ALIGN=$D/layers/${n}_ccw_align.usda
-    printf '#usda 1.0\n(\n    doc = "eval/xm_batch.sh FD_XM_CCW_START=align — 반시계 바퀴 출발 방향(eval/routes/parking_r3_ccw.yaml start)"\n)\n\nover "World"\n{\n    over "Nova_Carter_ROS"\n    {\n        float xformOp:rotateZ = %s\n    }\n}\n' "$YAW" > $ALIGN
+    printf '#usda 1.0\n(\n    doc = "eval/xm_batch.sh FD_XM_CCW_START=align — 반시계 바퀴 출발 방향(%s start)"\n)\n\nover "World"\n{\n    over "Nova_Carter_ROS"\n    {\n        float xformOp:rotateZ = %s\n    }\n}\n' "$RY" "$YAW" > $ALIGN
     LAYERS=$LAYER:$ALIGN; ARGS+=(--start-yaw-deg $YAW)
     echo "  반시계 출발 방향 $YAW° 레이어 $ALIGN"
   fi
