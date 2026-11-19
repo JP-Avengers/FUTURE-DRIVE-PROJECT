@@ -6,14 +6,14 @@
  (3) 전역 맞춤: 90° 단위 회전 4가지 × 이동을 기준 맵 벽 격자와의 겹침으로 탐색
  (4) 따라가기: 키프레임 순서대로 기준 벽 거리 지도에 이동만 미세 탐색(요는 나침반 값 고정). 벽 방향(앞뒤)으로는 벌점. 벽이 안 맞으면 넓게 다시 탐색
  출력: exports/<run>L/ (건물 좌표 자세·keyframes 링크), <out>/<run>_localize.{json,png}
-사용: in_localize_ceil.py <run> <ref_run_m> <out_dir> [--raw in2] [--hmax 2.6] [--hc 2.87] [--ex <explore_npz · gyro_npz 폴더>] [--free 2.0 (통로 밖 벌점 가중, 0=끔)]"""
+사용: in_localize_ceil.py <run> <ref_run_m> <out_dir> [--raw in2] [--hmax 2.6] [--hc 2.87] [--ex <explore_npz · gyro_npz 폴더>] [--free 2.0 (통로 밖 벌점 가중, 0=끔)] [--tag 2 (exports/<run>L2, <run>L2_localize.* 로 저장 — 기존 결과를 덮지 않음)]"""
 import sys, re, json, os, sqlite3, struct, numpy as np, cv2
 from pathlib import Path
 from scipy import ndimage
 from scipy.spatial.transform import Rotation as Rot
 a = sys.argv; run, refrun, O = a[1], a[2], Path(a[3]); O.mkdir(parents=True, exist_ok=True)
 opt = lambda k, d: a[a.index(k) + 1] if k in a else d
-RAW = opt('--raw', refrun.rstrip('m')); HMAX = float(opt('--hmax', 2.6)); CELL = 0.03; E = Path.home() / 'b_slam/exports'; K = E / run / 'keyframes'
+RAW = opt('--raw', refrun.rstrip('m')); TAG = opt('--tag', ''); NM = f'{run}L{TAG}' if TAG else run; HMAX = float(opt('--hmax', 2.6)); CELL = 0.03; E = Path.home() / 'b_slam/exports'; K = E / run / 'keyframes'
 def calib(Kd, i, pre='kf_'): return [float(x) for x in re.search(r'camera_matrix:.*?data: \[([^\]]+)\]', (Kd / f'{pre}calib/{i}.yaml').read_text(), re.S).group(1).replace('\n', ' ').split(',')]
 def pose_T(r): T = np.eye(4); T[:3, :3] = Rot.from_quat(r[4:8]).as_matrix(); T[:3, 3] = r[1:4]; return T
 tl = np.loadtxt(E / RAW / 'traj_optimized_poses.txt', comments='#', ndmin=2); tc = np.loadtxt(E / RAW / 'traj_camera_id_camera_poses.txt', comments='#', ndmin=2)
@@ -168,12 +168,12 @@ for P_, col in ((ro, (170, 170, 170)), (allp, (0, 0, 255))):
 qd = np.c_[((pf[:, 0] - X0[0]) / 0.05), sz[1] - 1 - ((pf[:, 1] - X0[1]) / 0.05)].astype(np.int32); cv2.polylines(img, [qd.reshape(-1, 1, 2)], False, (0, 160, 0), 1)
 for k_ in range(0, N, 25): cv2.putText(img, str(int(stamps[k_] - stamps[0])), tuple(qd[k_] + 3), 0, 0.35, (0, 120, 0), 1)
 for xg in np.arange(np.ceil(X0[0] / 5) * 5, X1[0], 5): cv2.putText(img, f'{xg:.0f}', (int((xg - X0[0]) / 0.05), 12), 0, 0.4, (0, 120, 255), 1)
-cv2.imwrite(str(O / f'{run}_localize.png'), img)
+cv2.imwrite(str(O / f'{NM}_localize.png'), img)
 # 내보내기(자료 있는 키프레임만)
-F = E / f'{run}L'; F.mkdir(exist_ok=True)
+F = E / f'{run}L{TAG}'; F.mkdir(exist_ok=True)
 if not (F / 'keyframes').exists(): os.symlink(K, F / 'keyframes')
 Rf = Rot.from_euler('z', yawf[:, None]).as_matrix() @ R1; hh = np.where(has)[0]
 np.savetxt(F / 'traj_camera_id_camera_poses.txt', np.c_[stamps[hh], pf[hh], hs[hh], Rot.from_matrix(Rf[hh]).as_quat(), ids[hh]], fmt=['%.6f'] * 8 + ['%d'], header='timestamp x y z qx qy qz qw id (건물 좌표, 바닥 z=0, 기준 맵에 맞춤)')
 TLOi = np.linalg.inv(TLO); TF = np.tile(np.eye(4), (N, 1, 1)); TF[:, :3, :3] = Rf; TF[:, :2, 3] = pf; TF[:, 2, 3] = hs; TLf = TF @ TLOi
 np.savetxt(F / 'traj_optimized_poses.txt', np.c_[stamps[hh], TLf[hh, :3, 3], Rot.from_matrix(TLf[hh, :3, :3]).as_quat()], fmt='%.6f', header='timestamp x y z qx qy qz qw (camera_link, 건물 좌표)')
-np.savez(O / f'{run}_localize.npz', ids=ids, has=has, pos=pf, yaw=yawf, h=hs, cj=cjs, frac=fracs, psi=psi_s); json.dump(rep, open(O / f'{run}_localize.json', 'w'), indent=1); print('→', F)
+np.savez(O / f'{NM}_localize.npz', ids=ids, has=has, pos=pf, yaw=yawf, h=hs, cj=cjs, frac=fracs, psi=psi_s); json.dump(rep, open(O / f'{NM}_localize.json', 'w'), indent=1); print('→', F)

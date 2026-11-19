@@ -13,7 +13,8 @@ if O.exists(): raise SystemExit(f'이미 있음: {O}')
 (O / 'qa').mkdir(parents=True); cal = set(); summ = []
 def put_set(r, kdir, traj, qmin=0.0):
     K = E / r / 'keyframes'; cid = np.loadtxt(E / r / 'traj_camera_id_camera_poses.txt', comments='#', ndmin=2); cid = cid[np.argsort(cid[:, 0])]
-    f = E / 'indoor' / f'{r[:-1]}_localize.npz'
+    f = E / 'indoor' / f'{r}_localize.npz'
+    f = f if f.exists() else E / 'indoor' / f'{r[:-1]}_localize.npz'   # <run>L2 처럼 이름표 붙은 결과는 전체 이름으로
     if qmin > 0 and f.exists(): z = np.load(f); fr = {int(i): float(q) for i, q in zip(z['ids'], z['frac'])}; cid = cid[[fr.get(int(i), 0) >= qmin for i in cid[:, 8]]]
     for s in ('rgb', 'depth', 'calib'): (kdir / s).mkdir(parents=True)
     for r_ in cid:

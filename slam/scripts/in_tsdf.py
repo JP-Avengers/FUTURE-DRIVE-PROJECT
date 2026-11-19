@@ -9,7 +9,8 @@ runs = [x for i, x in enumerate(a[2:], 2) if not x.startswith('--') and not a[i 
 vol = o3d.pipelines.integration.ScalableTSDFVolume(voxel_length=VOX, sdf_trunc=4 * VOX, color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
 for spec in runs:
     run, qmin = (spec.split(':') + ['0'])[:2]; qmin = float(qmin); K = E / run / 'keyframes'; cid = np.loadtxt(E / run / 'traj_camera_id_camera_poses.txt', comments='#', ndmin=2); frac = {}
-    f = E / 'indoor' / f'{run[:-1]}_localize.npz'
+    f = E / 'indoor' / f'{run}_localize.npz'
+    f = f if f.exists() else E / 'indoor' / f'{run[:-1]}_localize.npz'   # <run>L2 처럼 이름표 붙은 결과는 전체 이름으로
     if qmin > 0 and f.exists(): z = np.load(f); frac = {int(i): float(q) for i, q in zip(z['ids'], z['frac'])}
     n = 0
     for r in cid:
