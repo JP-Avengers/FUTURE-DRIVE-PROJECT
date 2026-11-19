@@ -2,6 +2,7 @@
 """기준선 · 출발점 생성 — 찍은 점(또는 촬영 궤적)을 잇는 일반 경로 (11.18, D). 시스템 python3(PyYAML · numpy)로:
 
     python3 eval/routes/make_route.py eval/routes/<이름>_route.yaml [--check-only] [--scenario] [--force]
+    (sim/add_site.py 가 부를 때: --root <폴더> 로 출력을 그 폴더 아래 eval/routes · eval/scenarios 에, --nav2-map <지도> 로 아직 제자리에 없는 지도를)
 
 eval/routes/make_refline.py 는 볼록한 섬 둘레만 만든다. 이 도구는 열린 경로(직선 · 꺾인 길)와 닫힌 경로(오목해도 됨)를 만든다.
 입력 <이름>_route.yaml:
@@ -296,10 +297,12 @@ def write_yaml(path, name, tag, cfg, src, sha, rule, csv_name, step, L, pts, yaw
             f.write("  []\n")
 
 
-def write_scenarios(cfg, name, outs, closed, L, force):
+def write_scenarios(cfg, name, outs, closed, L, force, root=None):
     """확인용 시나리오 — 형식은 eval/scenarios/corridor_v02_straight_fwd.yaml(구간) · parking_r3_lap.yaml(한 바퀴)."""
     sc = cfg.get("scenario") or {}
-    d = os.path.join(REPO, "eval", "scenarios")
+    root = root or REPO
+    d = os.path.join(root, "eval", "scenarios")
+    os.makedirs(d, exist_ok=True)
     made = []
     if closed:
         first = next(o for o in outs if o["tag"] == "cw")   # 한 바퀴 시나리오의 route 는 시계 방향 파일(반시계는 이름 끝을 바꿔 찾음 — eval/scenario_site.py)
@@ -312,7 +315,7 @@ def write_scenarios(cfg, name, outs, closed, L, force):
             print(f"  시나리오 그대로 둠(이미 있음, --force 로 덮어씀): eval/scenarios/{sname}.yaml")
             continue
         margin = float(sc.get("margin_m", 2.0))
-        route = os.path.relpath(o["csv"], REPO).replace(os.sep, "/")
+        route = os.path.relpath(o["csv"], root).replace(os.sep, "/")
         with open(p, "w") as f:
             f.write(f"# {cfg.get('title', name)} — {'한 바퀴' if closed else '구간'} {sname} v0 (eval/routes/make_route.py --scenario). 새 경로 확인용 — 평가 시나리오 아님.\n")
             f.write(f"name: {sname}\nversion: v0\nscene: {cfg['scene']}\nroute: {route}\n")
@@ -338,6 +341,8 @@ def main():
     ap.add_argument("--check-only", action="store_true", help="파일을 쓰지 않고 길이 · 출발 자세 · 여유만 찍음")
     ap.add_argument("--scenario", action="store_true", help="확인용 시나리오 yaml 도 씀(eval/scenarios/)")
     ap.add_argument("--force", action="store_true", help="--scenario 가 이미 있는 시나리오를 덮어씀")
+    ap.add_argument("--root", help="출력을 입력 파일 옆 · 레포가 아니라 이 폴더 아래 같은 자리(eval/routes · eval/scenarios)에 씀")
+    ap.add_argument("--nav2-map", help="여유를 잴 지도 파일(map.yaml)을 이것으로 엶 — 출력에 적는 지도 이름은 그대로")
     a = ap.parse_args()
     raw = open(a.config, "rb").read()
     cfg = yaml.safe_load(raw)
@@ -376,13 +381,17 @@ def main():
     sets = [(t0, pts, math.degrees(yaw0), True), (t1, rev, yaw_rev, False)]
 
     map_path = cfg.get("nav2_map") or (os.path.join("data/nav2", os.path.splitext(os.path.basename(cfg.get("scene", "")))[0], "map.yaml") if cfg.get("scene") else None)
-    nav = NavMap(rel(map_path)) if map_path and os.path.exists(rel(map_path)) else None
+    map_file = a.nav2_map or (rel(map_path) if map_path else None)
+    nav = NavMap(map_file) if map_file and os.path.exists(map_file) else None
     cl = cfg.get("clearance") or {}
     warn, fail = float(cl.get("warn_m", 0.66)), float(cl.get("fail_m", 0.25))
     clr = check_clearance(nav, pts, L, warn, fail, closed) if nav else None
 
     sha = hashlib.sha256(raw).hexdigest()[:12]
-    base = os.path.join(os.path.dirname(os.path.abspath(a.config)), name)
+    out_dir = os.path.join(a.root, "eval", "routes") if a.root else os.path.dirname(os.path.abspath(a.config))
+    if a.root and not a.check_only:
+        os.makedirs(out_dir, exist_ok=True)
+    base = os.path.join(out_dir, name)
     print(f"{name}: {'닫힌' if closed else '열린'} 경로 · 길이 {L:.2f} m · 점 {len(pts)} · 간격 {L / n:.4f} m · 입력 점 {len(src_pts)}"
           + (f" · 반경을 줄인 모서리 {shrunk}" if shrunk else ""))
     outs = []
@@ -419,7 +428,7 @@ def main():
     else:
         print(f"  지도 위 여유: 재지 않음 — 지도 없음({map_path or 'nav2_map · scene 이 없음'})")
     if a.scenario and not a.check_only:
-        write_scenarios(cfg, name, outs, closed, L, a.force)
+        write_scenarios(cfg, name, outs, closed, L, a.force, a.root)
     print({"ok": "ROUTE_OK", "warn": "ROUTE_WARN", "fail": "ROUTE_FAIL"}[level])
     return 3 if level == "fail" else 0
 
