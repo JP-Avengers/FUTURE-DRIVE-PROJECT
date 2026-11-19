@@ -49,7 +49,7 @@ for name, fit in (('rigid4', fit4), ('rigid6', fit6)):
         for x0 in bins[:-1]:
             k = (xs >= x0) & (xs < x0 + 5)
             if k.any(): rows.append(dict(x0=float(x0), n=int(k.sum()), dx_cm=float(np.median(d[k, 0]) * 100), dy_cm=float(np.median(d[k, 1]) * 100), dz_cm=float(np.median(d[k, 2]) * 100),
-                                         dxy_cm=float(np.median(np.linalg.norm(d[k, :2], axis=1)) * 100), dyaw_deg=float(np.median(Rot.from_matrix(np.transpose(Rb[k], (0, 2, 1)) @ R @ Ra[k]).as_euler('ZYX', degrees=True)[:, 0]))))
+                                         dxy_cm=float(np.median(np.linalg.norm(d[k, :2], axis=1)) * 100), dyaw_deg=float(np.median(Rot.from_matrix(R @ Ra[k] @ np.transpose(Rb[k], (0, 2, 1))).as_euler('ZYX', degrees=True)[:, 0]))))
         out[vn] = dict(yaw_pitch_roll_deg=eul.tolist(), t=t.tolist(), inliers=int(m.sum()), n=len(m), pos_resid_med_cm=float(np.median(np.linalg.norm(d, axis=1)) * 100),
                        pos_resid_max_cm=float(np.linalg.norm(d, axis=1).max() * 100), xy_resid_med_cm=float(np.median(np.linalg.norm(d[:, :2], axis=1)) * 100), bins=rows)
         print(f'{vn}: 요·피치·롤 {np.round(eul, 2)}°, 이상치 빼고 {m.sum()}/{len(m)}장, 위치 차(in1rL 대비) 중앙 {out[vn]["pos_resid_med_cm"]:.1f} cm · 최대 {out[vn]["pos_resid_max_cm"]:.0f} cm (수평 중앙 {out[vn]["xy_resid_med_cm"]:.1f} cm)')
