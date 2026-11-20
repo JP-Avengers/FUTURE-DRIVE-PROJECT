@@ -110,6 +110,7 @@ zones:
   far_tris: 0
   ground_cell_m: 0.25
   ground_margin_m: 0.5
+  ground_plane: false                  # 충돌 바닥 판을 따로 안 깜 — single_floor 가 이미 충돌 바닥을 깔아서, 켜면 2 mm 아래에 한 장 더 겹침 (실외 틀과 같게, 11.20). single_floor 를 끄는 장소는 true 로
   backdrop_height_m: 0                 # 배경 벽 안 만듦 (실제 벽이 있음)
   boundary_height_m: 2.0               # 안 보이는 경계벽 (충돌만 — 로봇이 지도 밖으로 못 나감)
 
