@@ -67,7 +67,9 @@ def s_input(ctx):
 def s_convert(ctx):
     """기존 파이프라인으로 메쉬 · 충돌 · USD 를 만든다 (GLB: glb_to_usd.py · 맵 폴더: check_input.py + build_usd.py)."""
     py, log, out = sys.executable, ctx.path("log.txt"), os.path.dirname(ctx["config"])
-    if ctx["kind"] == "map_folder":
+    if ctx.get("resume") and os.path.exists(os.path.join(out, "report.json")):
+        rc = 0                                                  # --resume: 이미 만든 빌드를 그대로 씀 (진단 · 묶음만 다시)
+    elif ctx["kind"] == "map_folder":
         if _call([py, os.path.join(PIPE, "check_input.py"), "--config", ctx["config"]], log):
             ci = json.load(open(os.path.join(out, "check_input.json"), encoding="utf-8")) if os.path.exists(os.path.join(out, "check_input.json")) else {}
             return Result(FAIL, "입력 점검에서 오류", metrics=dict(check_input=ci.get("summary", ci)), messages=["자세한 내용: build/check_input.json · log.txt"])
@@ -140,6 +142,8 @@ def s_diagnose(ctx):
         msg = f"충돌 바닥이 두 겹인 자리 {lay['double_within_3cm']}곳 ({lay['double_pct']}%, 간격 중앙 {lay['double_gap_mm_median']} mm) — 물리 엔진이 멈출 수 있음. 예: {np.round(where[:3], 2).tolist()}"
         if ctx.get("corrected"):
             r.fail(msg + " — 보정 뒤에도 남음")
+        elif ctx.get("diagnose_only"):
+            r.fail(msg)
         else:
             ctx.setdefault("needs", {})["double_floor"] = True
             r.warn(msg + " → 보정 단계에서 고침")
@@ -160,7 +164,38 @@ def s_diagnose(ctx):
             r.warn(f"보이는 바닥과 충돌 바닥의 높이 차가 5 cm 를 넘는 곳이 있음 (5~95%: {m['visible_minus_collision_cm']['p5']} ~ {m['visible_minus_collision_cm']['p95']} cm)")
         if (~ok).mean() > 0.10:
             r.warn(f"빈 바닥의 {m['visible_floor_missing_pct']}% 에 보이는 바닥이 없음 (받침 바닥으로 메워짐)")
+        from scipy import ndimage                              # 낮은 턱: 보이는 바닥이 충돌 바닥보다 3~12 cm 높은 자리 — 충돌에서는 평평하게 지나감
+        n2, c2 = ctx["nav2"], ctx["nav2"]["cell"]
+        ix = np.floor((xy[:, 0] - n2["origin"][0]) / c2).astype(int)
+        iy = n2["shape"][0] - 1 - np.floor((xy[:, 1] - n2["origin"][1]) / c2).astype(int)
+        bump = np.zeros(n2["shape"], bool)
+        hi = ok & (dz > 0.03) & (dz < 0.12)
+        bump[iy[hi], ix[hi]] = True
+        lab, nb = ndimage.label(ndimage.binary_dilation(bump, iterations=2))   # 표본이 4칸마다라 이웃끼리 잇기
+        runs = []
+        for sl in ndimage.find_objects(lab):
+            L = float(np.hypot(sl[0].stop - sl[0].start, sl[1].stop - sl[1].start) * c2)
+            if L >= 0.6:
+                cy, cx = (sl[0].start + sl[0].stop) / 2, (sl[1].start + sl[1].stop) / 2
+                runs.append((round(L, 1), round(float(n2["origin"][0] + cx * c2), 1), round(float(n2["origin"][1] + (n2["shape"][0] - cy) * c2), 1)))
+        runs.sort(reverse=True)
+        m["low_bumps"] = dict(samples_over_3cm_pct=round(100 * float(hi.sum()) / max(int(ok.sum()), 1), 2), runs_over_0p6m=len(runs), longest=runs[:5])
+        if runs:
+            r.warn(f"보이는 바닥이 3~12 cm 솟은 자리가 0.6 m 넘게 이어진 곳 {len(runs)}군데 (가장 긴 것 {runs[0][0]} m, 위치 ({runs[0][1]}, {runs[0][2]})) — 문턱 · 턱일 수 있음. "
+                   "충돌 바닥은 평평해서 시뮬에서는 그냥 지나감. 실제 턱이면 시뮬 결과가 실제보다 좋게 나옴")
+    from .checks import obstacle_match                         # 보이는 물체 ↔ 충돌 물체 (라이다가 보는 것과 Nav2 지도가 같은가)
+    om = obstacle_match(ctx["usd_mesh"], ground, ctx["nav2"], ctx["nav2_free"])
+    m["obstacle_match"] = om
+    if om["visible_cells"] > 200 and om["collision_cells"] > 200:
+        # 문턱은 시험 세트 8개와 D 의 주행 결과로 잡은 잠정값: 반시계 주행이 실패한 주차장 v0.9 만 31.5 / 15.3%, 나머지는 73~100 / 99.7~100%
+        if om["collision_in_visible_pct"] < 90 or om["visible_in_collision_pct"] < 60:
+            r.warn(f"보이는 물체와 충돌 물체가 어긋남 — 보이는 칸 중 충돌이 있는 곳 {om['visible_in_collision_pct']}% · 충돌 칸 중 보이는 것이 있는 곳 {om['collision_in_visible_pct']}% (10 cm 안, 기준 60% · 90%). "
+                   "라이다는 보이는 형상을 보고 지도는 충돌로 만들어 위치 추정이 흔들릴 수 있음")
     p = ctx["profile"]
+    if "has_ceiling" not in p and os.path.exists(vp):          # 맵 폴더 입력: 만든 메쉬에서 천장을 알아냄
+        from .checks import ceiling_over_floor
+        p["ceiling_over_floor_pct"] = ceiling_over_floor(vp, ground, ctx["nav2"], ctx["nav2_free"])
+        p["has_ceiling"] = p["ceiling_over_floor_pct"] > 30
     m["has_ceiling"] = bool(p.get("has_ceiling", False))
     if m["has_ceiling"]:
         r.messages.append("천장이 있음 — 씬 루트에 그림자 설정을 넣음 (안 넣으면 Isaac Sim 화면 밝기 0)")
@@ -314,6 +349,15 @@ def s_report(ctx):
         L += [f"| 천장 | {'있음 → 그림자 설정 넣음' if m.get('has_ceiling') else '없음'} | — |"]
     if ctx.get("bundle"):
         L += ["", "## 묶음", "", f"- 위치: `bundle/` — `usd/` · `nav2/` · `scene_root.usda` · `start_pose.json` · `route.csv`", "- Isaac Sim 에서 열어 본 것이 아님. 주행 검증은 서버에서."]
+    L += ["", "## 이 맵이 가정한 것과 바꾼 것", "",
+          "- **바닥은 평평하다고 가정함.** 스캔 바닥의 굴곡(대부분 측정 잡음)을 그대로 쓰지 않고 충돌 바닥을 한 장으로 깔았음. 실제로 울퉁불퉁한 바닥 · 계단은 대상이 아님",
+          "- **바닥 위 5 cm 아래의 것은 충돌에서 뺌** (두 겹 바닥 보정을 했을 때). 낮은 문턱 · 턱이 있어도 시뮬에서는 걸리지 않음",
+          "- 스캔 범위의 테두리에 보이지 않는 경계벽을 세움 (실제로는 없는 벽)",
+          "- 스캔 바닥의 구멍은 한 가지 색 받침 바닥으로 메움",
+          "- **판정의 뜻:** '올릴 수 있음' = 이 맵 때문에 시뮬레이터가 멈추거나 화면이 깨지지는 않는다는 것. 맵이 실제 공간과 같다는 뜻이 아님"]
+    lb = ((ctx.get("diagnose_after") or (dg or {}).get("metrics") or {}).get("low_bumps"))
+    if lb:
+        L += [f"- 보이는 바닥이 3~12 cm 솟은 자리: 빈 바닥 표본의 {lb['samples_over_3cm_pct']}% · 0.6 m 넘게 이어진 곳 {lb['runs_over_0p6m']}군데" + (f" (길이 m · 위치: {lb['longest']})" if lb["longest"] else "")]
     L += ["", "## 주의사항", "", "- 움직이는 물체(사람 · 차)는 스캔한 순간의 모습으로 굳어 있음", "- 유리 · 거울 · 광택 면은 형상이 틀릴 수 있음", "- 맵의 절대 크기는 줄자 실측과 대조하지 않았음", "- 넓은 실외는 대상이 아님 (스캔이 수십 cm 틀어짐)", ""]
     open(ctx.path("report.md"), "w", encoding="utf-8", newline="\n").write("\n".join(L))
     json.dump(dict(name=ctx.get("name"), verdict=worst, stages=res), open(ctx.path("report.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1, default=str)
