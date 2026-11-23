@@ -142,6 +142,48 @@ def _free_xy(ctx, clearance, step=1):
     return xy, dist[iy, ix]
 
 
+def _defects(ctx, ground, xy, where, lay, ok, hi, top=30):
+    """진단에 걸린 자리를 '결함 후보' 목록으로 — 어디에(씬 좌표 · 입력 원본 좌표) · 얼마나 크게 · 무슨 근거로. 화면에서 그 자리를 짚어 보이기 위한 것.
+    <out>/defects_before.json (보정 전) · defects_after.json (보정 뒤 다시 진단) 으로 남김. → 종류별 개수"""
+    from .checks import clusters
+    n2 = ctx["nav2"]
+    a1 = 4 * n2["cell"] ** 2                                    # 표본 하나가 대표하는 넓이 (빈 칸 4개마다 하나)
+    D = []
+    for c in clusters(np.asarray(where, float).reshape(-1, 2), n2):
+        D.append(dict(type="double_floor", title="충돌 바닥 두 겹", severity="fail", fixable=True, **c,
+                      basis=f"이 자리의 수직 광선 {c['samples']}개가 맨 위 충돌 면 아래 3 cm 안에서 면을 하나 더 만남 (전체 간격 중앙 {lay.get('double_gap_mm_median')} mm). 겹친 충돌 면은 물리 엔진을 멈추게 할 수 있음",
+                      action="충돌 메쉬에서 바닥 바로 위의 낮은 조각을 지움 (보이는 형상은 그대로)"))
+    if ok is not None:
+        for c in clusters(xy[~ok], n2):
+            if c["samples"] * a1 >= 0.25:
+                D.append(dict(type="no_visible_floor", title="보이는 바닥 없음 (재촬영 후보)", severity="warn", fixable=False, **c,
+                              basis=f"빈 바닥 표본 {c['samples']}개(약 {c['samples'] * a1:.1f} m²)에서 보이는 바닥 면을 찾지 못함. 충돌 바닥은 받침 바닥으로 메워져 로봇은 지나가지만 카메라에는 구멍으로 보임",
+                              action="고치지 않음 — 촬영 때 가려졌거나 찍히지 않은 자리. 다시 찍을 후보"))
+        for c in clusters(xy[hi], n2):
+            if c["extent_m"] >= 0.6:
+                D.append(dict(type="low_bump", title="낮은 턱 의심", severity="warn", fixable=False, **c,
+                              basis=f"보이는 바닥이 충돌 바닥보다 3~12 cm 높은 자리가 {c['extent_m']} m 이어짐 (표본 {c['samples']}개). 충돌 바닥은 평평해서 시뮬에서는 그냥 지나감",
+                              action="고치지 않음 — 스캔만으로는 실제 턱인지 측정 잡음인지 가릴 수 없음. 현장 확인 후보"))
+    D.sort(key=lambda d: (d["severity"] != "fail", -d["samples"]))
+    D = D[:top]
+    tp = os.path.join(ctx["build"], "transform.json")
+    T = np.array(json.load(open(tp, encoding="utf-8"))["T_input_to_scene"]) if os.path.exists(tp) else np.eye(4)
+    Ti = np.linalg.inv(T)
+    for k, d in enumerate(D):
+        x, y = d.pop("center")
+        z = float(ground.height(np.array([[x, y]]))[0])
+        d["id"] = f"D{k + 1}"
+        d["center_scene"] = [round(x, 3), round(y, 3), round(z, 3)]
+        d["center_input"] = np.round(Ti @ [x, y, z, 1.0], 4)[:3].tolist()
+    phase = "after" if ctx.get("corrected") else "before"
+    json.dump(dict(phase=phase, T_input_to_scene=T.tolist(), up_input=np.round(Ti[:3, 2], 5).tolist(), floor_point_input=np.round(Ti[:3, 3], 4).tolist(), defects=D),
+              open(ctx.path(f"defects_{phase}.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    cnt = {}
+    for d in D:
+        cnt[d["type"]] = cnt.get(d["type"], 0) + 1
+    return cnt
+
+
 def s_diagnose(ctx):
     """정적 진단 (논문 3.1 의 생각): 로봇이 지날 수 있는 바닥 전체에서 충돌 바닥 층수 · 보이는 바닥과 충돌 바닥의 높이 차 · 천장(조명)."""
     sys.path.insert(0, TOOLS)
@@ -170,6 +212,7 @@ def s_diagnose(ctx):
     if lay["under_pct"] > 1.0:
         r.warn(f"바닥 3~30 cm 아래에 면이 있는 자리 {lay['under_3_to_30cm']}곳 ({lay['under_pct']}%)")
     vp = os.path.join(ctx["build"], "visual.ply")               # 보이는 바닥 ↔ 충돌 바닥
+    ok = hi = None
     if os.path.exists(vp):
         vis = o3d.io.read_triangle_mesh(vp)
         sc = o3d.t.geometry.RaycastingScene()
@@ -219,6 +262,7 @@ def s_diagnose(ctx):
     m["has_ceiling"] = bool(p.get("has_ceiling", False))
     if m["has_ceiling"]:
         r.messages.append("천장이 있음 — 씬 루트에 그림자 설정을 넣음 (안 넣으면 Isaac Sim 화면 밝기 0)")
+    m["defects"] = _defects(ctx, ground, xy, where, lay, ok, hi)
     r.summary = f"빈 바닥 표본 {lay['samples']:,} · 바닥 한 겹 {lay['single_pct']}% · 두 겹 {lay['double_within_3cm']}" + (f" · 보이는 바닥 없음 {m['visible_floor_missing_pct']}%" if "visible_floor_missing_pct" in m else "")
     return r
 
@@ -229,14 +273,18 @@ def s_correct(ctx):
     needs = ctx.get("needs") or {}
     if not needs:
         return Result(SKIP, "진단에 걸린 항목이 없어 보정하지 않음")
-    if ctx["kind"] != "glb":
-        return Result(FAIL, "이 입력 종류의 자동 보정은 아직 없음", messages=[f"걸린 항목: {', '.join(needs)}"])
     before = next(d for d in ctx["results"] if d["stage"] == "diagnose")["metrics"]
     cfg2 = os.path.join(os.path.dirname(ctx["config"]), "auto_config_corrected.yaml")
-    lines = [f"# scan2sim 보정: 진단에 걸린 항목({', '.join(needs)})을 고친 설정", f"base: {os.path.basename(ctx['config'])}",
-             "collision:", "  low_h_m: 0.05", "  min_cluster_tris_after: 100", ""]
+    glb = ctx["kind"] == "glb"
+    lines = [f"# scan2sim 보정: 진단에 걸린 항목({', '.join(needs)})을 고친 설정", f"base: {os.path.basename(ctx['config'])}"]
+    if glb:
+        lines += ["collision:", "  low_h_m: 0.05", "  min_cluster_tris_after: 100", ""]
+        how = "충돌 메쉬에서 바닥 위 5 cm 아래의 것을 지움 (보이는 메쉬는 그대로)"
+    else:                                                       # 맵 폴더 · 아이폰 원본: 바닥 한 장은 이미 깔려 있고, 걸리는 것은 그 위에 남은 낮은 조각 (틀의 기본 5 cm · 3 cm 를 넘긴 것)
+        lines += ["single_floor:", "  collision_low_h_m: 0.10", "  collision_flat_h_m: 0.06", ""]
+        how = "충돌 메쉬에서 바닥 위 10 cm 안의 낮은 조각과 6 cm 안의 수평 면을 지움 (보이는 메쉬는 그대로)"
     open(cfg2, "w", encoding="utf-8", newline=chr(10)).write(chr(10).join(lines))
-    ctx["config"], ctx["corrected"] = cfg2, True
+    ctx["config"], ctx["corrected"], ctx["resume"] = cfg2, True, False   # 보정은 반드시 다시 만듦 (--resume 이어도)
     for nm, fn in (("convert", s_convert), ("nav2", s_nav2)):
         r = fn(ctx)
         if r.status == FAIL:
@@ -245,7 +293,7 @@ def s_correct(ctx):
     after = r.metrics
     ctx["diagnose_before"], ctx["diagnose_after"] = before, after
     out = Result(r.status, f"두 겹 바닥 {before.get('floor_double')} → {after.get('floor_double')} · 바닥 한 겹 {before.get('floor_single_pct')} → {after.get('floor_single_pct')}%",
-                 metrics=dict(fixed=list(needs), before=before, after=after), messages=["충돌 메쉬에서 바닥 위 5 cm 아래의 것을 지움 (보이는 메쉬는 그대로)"] + r.messages)
+                 metrics=dict(fixed=list(needs), before=before, after=after), messages=[how] + r.messages)
     return out
 
 

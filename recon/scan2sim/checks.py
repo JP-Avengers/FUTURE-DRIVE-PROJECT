@@ -23,6 +23,28 @@ def free_xy(nav2, free, clearance, step=1):
     return xy, dist[iy, ix]
 
 
+def clusters(xy, nav2, join_cells=2):
+    """표본점 xy 를 지도 격자에서 가까운 것끼리 묶음 (join_cells 칸 안이면 한 덩어리). → [dict(center=[x, y], radius_m, extent_m, samples)] 큰 것부터"""
+    from scipy import ndimage
+    if len(xy) == 0:
+        return []
+    H, W = nav2["shape"]
+    c, (ox, oy) = nav2["cell"], nav2["origin"]
+    ix = np.clip(np.floor((xy[:, 0] - ox) / c).astype(int), 0, W - 1)
+    iy = np.clip(H - 1 - np.floor((xy[:, 1] - oy) / c).astype(int), 0, H - 1)
+    g = np.zeros((H, W), bool)
+    g[iy, ix] = True
+    lab, _ = ndimage.label(ndimage.binary_dilation(g, iterations=join_cells), structure=np.ones((3, 3)))
+    of = lab[iy, ix]
+    out = []
+    for k in np.unique(of):
+        p = xy[of == k]
+        cen = p.mean(0)
+        out.append(dict(center=np.round(cen, 3).tolist(), radius_m=round(float(np.linalg.norm(p - cen, axis=1).max() + 2 * c), 2),
+                        extent_m=round(float(np.linalg.norm(np.ptp(p, axis=0)) + c), 2), samples=int(len(p))))
+    return sorted(out, key=lambda d: -d["samples"])
+
+
 def obstacle_match(usd_mesh, ground, nav2, free, h_lo=0.12, h_hi=1.0, tol_m=0.10, near_m=1.5):
     """보이는 물체와 충돌 물체가 같은 자리에 있는가 — 라이다는 보이는 형상을 보고 Nav2 지도는 충돌 형상으로 만들기 때문에, 둘이 다르면 위치 추정이 흔들린다.
     바닥 위 h_lo~h_hi 높이의 면을 지도 격자에 찍어 (보이는 prim 전체 / Collision), 로봇이 다니는 빈 바닥에서 near_m 안의 칸만 견줌.

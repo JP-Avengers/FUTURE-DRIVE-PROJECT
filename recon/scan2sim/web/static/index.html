@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>scan2sim — 실내 스캔맵 주행 적합성 진단</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --ink: #1c2330; --sub: #5d6778; --line: #dfe3ea; --accent: #2457d6; --accent-ink: #ffffff;
+    --pass: #1f8a4c; --warn: #b26a00; --fail: #c62f3a; --skip: #8a93a3; --view: #e9ecf1; --chip: #eef1f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12151b; --panel: #1b2029; --ink: #e8ebf1; --sub: #9aa4b5; --line: #2c3341; --accent: #6f98ff; --accent-ink: #0d1220;
+      --pass: #4cc481; --warn: #e3a23c; --fail: #f0717a; --skip: #7c8698; --view: #0d1016; --chip: #252b37; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 14px/1.5 "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; }
+  .app { display: grid; grid-template-columns: 380px 1fr; height: 100vh; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 18px 18px 28px; }
+  h1 { font-size: 17px; margin: 0 0 2px; letter-spacing: -0.2px; }
+  .lede { color: var(--sub); font-size: 12.5px; margin: 0 0 16px; }
+  h2 { font-size: 12px; font-weight: 700; color: var(--sub); letter-spacing: 0.4px; margin: 22px 0 8px; }
+  .drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 14px; text-align: center; color: var(--sub); cursor: pointer; background: var(--bg); }
+  .drop.over { border-color: var(--accent); color: var(--accent); }
+  .drop b { color: var(--ink); display: block; word-break: break-all; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; width: 100%; margin-top: 10px; padding: 10px; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  .bar { height: 6px; background: var(--chip); border-radius: 3px; overflow: hidden; margin-top: 10px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+  .note { color: var(--sub); font-size: 12.5px; margin-top: 6px; }
+  ol.steps { list-style: none; margin: 0; padding: 0; }
+  ol.steps > li { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); align-items: start; }
+  ol.steps > li:last-child { border-bottom: 0; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; background: var(--line); }
+  .pass .dot { background: var(--pass); } .warn .dot { background: var(--warn); } .fail .dot { background: var(--fail); } .skip .dot { background: var(--skip); }
+  .running .dot { background: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+  .steps .sum { color: var(--sub); font-size: 12.5px; }
+  .steps .sec { color: var(--sub); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .steps ul { margin: 4px 0 0; padding-left: 16px; color: var(--sub); font-size: 12.5px; }
+  .verdict { border-radius: 10px; padding: 12px 14px; font-weight: 700; margin-top: 4px; border: 1px solid var(--line); }
+  .verdict.pass { color: var(--pass); } .verdict.warn { color: var(--warn); } .verdict.fail { color: var(--fail); }
+  .verdict small { display: block; font-weight: 400; color: var(--sub); margin-top: 2px; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+  .seg button { border: 0; border-radius: 0; }
+  .seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+  table.cmp { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 10px; }
+  table.cmp td, table.cmp th { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
+  table.cmp td:first-child, table.cmp th:first-child { text-align: left; }
+  table.cmp th { color: var(--sub); font-weight: 600; }
+  .defect { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+  .defect:hover { border-color: var(--accent); }
+  .defect.sel { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .defect .top { display: flex; gap: 8px; align-items: center; font-weight: 700; }
+  .tag { font-size: 11px; font-weight: 700; border-radius: 4px; padding: 1px 6px; color: #fff; }
+  .tag.fail { background: var(--fail); } .tag.warn { background: var(--warn); }
+  .defect .meta { color: var(--sub); font-size: 12px; margin-top: 2px; }
+  .defect .more { display: none; font-size: 12.5px; margin-top: 8px; color: var(--ink); }
+  .defect.sel .more { display: block; }
+  .defect .more p { margin: 0 0 6px; }
+  .defect .more b { color: var(--sub); font-weight: 600; }
+  .empty { color: var(--sub); font-size: 12.5px; padding: 8px 0; }
+  .dl { display: grid; gap: 8px; }
+  .dl a { text-decoration: none; text-align: center; border: 1px solid var(--line); border-radius: 8px; padding: 9px; color: var(--ink); }
+  .dl a.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  main { position: relative; background: var(--view); min-width: 0; }
+  #view { position: absolute; inset: 0; }
+  #view canvas { display: block; }
+  .hud { position: absolute; left: 14px; top: 14px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .hud label { font-size: 12.5px; color: var(--sub); display: flex; gap: 6px; align-items: center; }
+  .hud input[type=range] { width: 140px; }
+  .hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--sub); text-align: center; padding: 24px; pointer-events: none; }
+  .hint div { max-width: 420px; }
+  .mapbox { position: absolute; right: 14px; bottom: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; display: none; }
+  .mapbox img { display: block; max-width: 220px; max-height: 220px; image-rendering: pixelated; }
+  .mapbox span { font-size: 11px; color: var(--sub); }
+  input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); margin-bottom: 8px; }
+  @media (max-width: 700px) { .app { grid-template-columns: 1fr; grid-template-rows: auto 60vh; height: auto; } aside { border-right: 0; border-bottom: 1px solid var(--line); } main { height: 60vh; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>scan2sim</h1>
+    <p class="lede">실내 스캔을 올리면 주행에 쓸 수 있는지 진단하고, 고칠 수 있는 것은 고쳐서 Isaac Sim 용 USD 맵으로 내보냄.</p>
+
+    <h2>1. 파일 선택</h2>
+    <input type="text" id="code" placeholder="접속 코드" hidden>
+    <div class="drop" id="drop">
+      <span id="dropText">여기를 눌러 파일을 고르거나 끌어다 놓기<br>아이폰 LiDAR 원본 zip (Stray Scanner) · GLB</span>
+    </div>
+    <input type="file" id="file" accept=".zip,.glb" hidden>
+    <button class="primary" id="go" disabled>진단 시작</button>
+    <div class="bar" id="bar" hidden><i></i></div>
+    <div class="note" id="note"></div>
+
+    <div id="progress" hidden>
+      <h2>2. 진행</h2>
+      <ol class="steps" id="steps"></ol>
+    </div>
+
+    <div id="result" hidden>
+      <h2>3. 판정</h2>
+      <div class="verdict" id="verdict"></div>
+
+      <h2>4. 결함 후보</h2>
+      <div class="seg" id="seg" hidden><button data-p="before" class="on">보정 전</button><button data-p="after">보정 뒤</button></div>
+      <table class="cmp" id="cmp" hidden></table>
+      <div id="defects"></div>
+
+      <h2>5. 내보내기</h2>
+      <div class="dl">
+        <a class="primary" id="dlBundle" href="#">USD 맵 묶음 내려받기 (.zip)</a>
+        <a id="dlReport" href="#">진단 보고서 내려받기 (.md)</a>
+      </div>
+      <p class="note">판정은 정적 진단 결과임. Isaac Sim 주행 검증은 묶음을 GPU PC 에 올려 따로 해야 함.</p>
+    </div>
+  </aside>
+
+  <main>
+    <div id="view"></div>
+    <div class="hint" id="hint"><div>파일을 올리고 진단이 끝나면 여기에 3D 지도가 뜸.<br>끌기 = 돌리기 · 휠 = 확대 · 오른쪽 끌기 = 옮기기</div></div>
+    <div class="hud" id="hud" hidden>
+      <label>위쪽 자르기 <input type="range" id="clip" min="0" max="100" value="100"> <span id="clipV"></span></label>
+      <button id="fit">전체 보기</button>
+      <button id="topv">위에서 보기</button>
+    </div>
+    <div class="mapbox" id="mapbox"><img id="mapimg" alt="Nav2 지도"><br><span>Nav2 지도 (흰색 = 빈 바닥)</span></div>
+  </main>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const $ = (id) => document.getElementById(id);
+const CHUNK = 8 * 1024 * 1024;
+const MARK = { pass: "통과", warn: "주의", fail: "실패", skip: "건너뜀", running: "진행 중", pending: "" };
+let file = null, jobId = null, job = null, phase = "before", selected = null;
+
+// ── 서버 ─────────────────────────────────────────────────────────────
+const headers = () => ($("code").value ? { "X-Code": $("code").value } : {});
+async function api(path, opt = {}) {
+  const r = await fetch(path, { ...opt, headers: { ...headers(), ...(opt.headers || {}) } });
+  if (r.status === 401) { $("code").hidden = false; throw new Error("접속 코드를 넣어야 함"); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `서버 오류 ${r.status}`);
+  return j;
+}
+const withCode = (u) => ($("code").value ? `${u}${u.includes("?") ? "&" : "?"}code=${encodeURIComponent($("code").value)}` : u);
+
+// ── 파일 고르기 · 올리기 ─────────────────────────────────────────────
+function pick(f) {
+  if (!f) return;
+  if (!/\.(zip|glb)$/i.test(f.name)) { $("note").textContent = "zip 또는 glb 파일만 받음"; return; }
+  file = f;
+  $("dropText").innerHTML = `<b></b>${(f.size / 1048576).toFixed(1)} MB`;
+  $("dropText").querySelector("b").textContent = f.name;
+  $("go").disabled = false;
+  $("note").textContent = "";
+}
+$("drop").onclick = () => $("file").click();
+$("file").onchange = (e) => pick(e.target.files[0]);
+$("drop").ondragover = (e) => { e.preventDefault(); $("drop").classList.add("over"); };
+$("drop").ondragleave = () => $("drop").classList.remove("over");
+$("drop").ondrop = (e) => { e.preventDefault(); $("drop").classList.remove("over"); pick(e.dataTransfer.files[0]); };
+
+$("go").onclick = async () => {
+  $("go").disabled = true; $("bar").hidden = false; $("result").hidden = true; $("progress").hidden = true;
+  clearScene();
+  try {
+    const { id } = await api("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: file.name, size: file.size }) });
+    jobId = id;
+    for (let off = 0; off < file.size; off += CHUNK) {              // 큰 파일은 조각으로 나눠 보냄
+      await api(`/api/jobs/${id}/chunk?offset=${off}`, { method: "PUT", body: file.slice(off, off + CHUNK) });
+      const p = Math.min(1, (off + CHUNK) / file.size);
+      $("bar").firstElementChild.style.width = `${100 * p}%`;
+      $("note").textContent = `올리는 중 ${(100 * p).toFixed(0)}%`;
+    }
+    await api(`/api/jobs/${id}/start`, { method: "POST" });
+    history.replaceState(null, "", `#${id}`);
+    $("note").textContent = `작업 번호 ${id}`;
+    poll();
+  } catch (e) { $("note").textContent = `실패: ${e.message}`; $("go").disabled = false; }
+};
+
+// ── 진행 상태 ────────────────────────────────────────────────────────
+async function poll() {
+  try { job = await api(`/api/jobs/${jobId}`); } catch (e) { $("note").textContent = e.message; return; }
+  $("progress").hidden = false; $("bar").hidden = true;
+  renderSteps();
+  if (job.status === "queued") $("note").textContent = `작업 번호 ${jobId} · 앞에 ${job.queue_ahead}건 기다리는 중`;
+  if (job.status === "running") $("note").textContent = `작업 번호 ${jobId} · 처리 중 (${Math.round(Date.now() / 1000 - job.started)}초)`;
+  if (job.status === "done" || job.status === "failed") { finish(); return; }
+  setTimeout(poll, 1500);
+}
+function renderSteps() {
+  const ol = $("steps"); ol.replaceChildren();
+  for (const s of job.stages || []) {
+    const li = document.createElement("li"); li.className = s.status;
+    const d = document.createElement("span"); d.className = "dot";
+    const mid = document.createElement("div");
+    const t = document.createElement("div"); t.textContent = `${s.label}${MARK[s.status] ? " — " + MARK[s.status] : ""}`;
+    mid.append(t);
+    if (s.summary) { const u = document.createElement("div"); u.className = "sum"; u.textContent = s.summary; mid.append(u); }
+    if (s.messages && s.messages.length && s.status !== "pass") {
+      const ul = document.createElement("ul");
+      for (const m of s.messages.slice(0, 4)) { const x = document.createElement("li"); x.textContent = m; ul.append(x); }
+      mid.append(ul);
+    }
+    const sec = document.createElement("span"); sec.className = "sec"; sec.textContent = s.seconds != null ? `${s.seconds}s` : "";
+    li.append(d, mid, sec); ol.append(li);
+  }
+}
+
+// ── 결과 ─────────────────────────────────────────────────────────────
+function finish() {
+  $("go").disabled = false; $("result").hidden = false;
+  $("note").textContent = `작업 번호 ${jobId} · ${job.status === "done" ? "끝남" : "실패"} (${Math.round(job.finished - job.started)}초)`;
+  const v = job.verdict || "fail", el = $("verdict");
+  el.className = `verdict ${v}`;
+  el.textContent = { pass: "시뮬레이션에 올릴 수 있음", warn: "올릴 수 있으나 주의 항목이 있음", fail: "쓸 수 없음 — 실패한 단계를 볼 것" }[v] || v;
+  const sm = document.createElement("small"); sm.textContent = "정적 진단 기준 (주행 검증 전)"; el.append(sm);
+  const hasAfter = !!job.defects_after;
+  $("seg").hidden = !hasAfter;
+  phase = "before"; setSeg();
+  renderCompare();
+  $("dlBundle").style.display = job.has_bundle ? "" : "none";
+  $("dlBundle").href = withCode(`/api/jobs/${jobId}/bundle.zip`);
+  $("dlReport").href = withCode(`/api/jobs/${jobId}/report.md?dl=1`);
+  loadScene();
+  renderDefects();
+}
+function setSeg() { for (const b of $("seg").children) b.classList.toggle("on", b.dataset.p === phase); }
+for (const b of $("seg").children) b.onclick = () => { phase = b.dataset.p; selected = null; setSeg(); renderDefects(); };
+
+function renderCompare() {
+  const t = $("cmp"), b = job.metrics && job.metrics.before, a = job.metrics && job.metrics.after;
+  t.hidden = !b || b.samples == null; if (t.hidden) return;
+  const rows = [["빈 바닥 표본", "samples", ""], ["바닥 한 겹", "floor_single_pct", "%"], ["두 겹 바닥", "floor_double", "곳"], ["보이는 바닥 없음", "visible_floor_missing_pct", "%"]];
+  t.replaceChildren();
+  const tr = (cells, tag = "td") => { const r = document.createElement("tr"); for (const c of cells) { const x = document.createElement(tag); x.textContent = c; r.append(x); } t.append(r); };
+  tr(a ? ["항목", "보정 전", "보정 뒤"] : ["항목", "값"], "th");
+  const f = (m, k, u) => (m && m[k] != null ? `${Number(m[k]).toLocaleString()}${u}` : "—");
+  for (const [n, k, u] of rows) tr(a ? [n, f(b, k, u), f(a, k, u)] : [n, f(b, k, u)]);
+}
+
+function currentDefects() { const d = phase === "after" ? job.defects_after : job.defects_before; return (d && d.defects) || []; }
+function renderDefects() {
+  const box = $("defects"); box.replaceChildren();
+  const list = currentDefects();
+  if (!list.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = phase === "after" ? "보정 뒤 남은 결함 후보가 없음" : "결함 후보가 없음"; box.append(e); }
+  for (const d of list) {
+    const el = document.createElement("div"); el.className = "defect" + (selected === d.id ? " sel" : "");
+    const top = document.createElement("div"); top.className = "top";
+    const tag = document.createElement("span"); tag.className = `tag ${d.severity}`; tag.textContent = d.severity === "fail" ? "결함" : "주의";
+    const ti = document.createElement("span"); ti.textContent = `${d.id} · ${d.title}`;
+    top.append(tag, ti);
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.textContent = `위치 (${d.center_scene[0].toFixed(1)}, ${d.center_scene[1].toFixed(1)}) m · 범위 약 ${d.extent_m} m · ${d.fixable ? "자동 보정 대상" : "보정 안 함"}`;
+    const more = document.createElement("div"); more.className = "more";
+    for (const [k, v] of [["판정 근거", d.basis], ["처리", d.action]]) { const p = document.createElement("p"); const b = document.createElement("b"); b.textContent = k + " "; p.append(b, v); more.append(p); }
+    el.append(top, meta, more);
+    el.onclick = () => { selected = d.id; renderDefects(); focusDefect(d); };
+    box.append(el);
+  }
+  drawMarkers();
+}
+
+// ── 3D 화면 (서버가 만든 결과 메쉬: 화면 (x, y, z) = 씬 (x, z, −y), 바닥 y = 0) ──────────────
+const view = $("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.localClippingEnabled = true;
+view.append(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 2000);
+camera.position.set(6, 8, 6);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x59606e, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(3, 5, 2); scene.add(sun);
+const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1000);
+const markers = new THREE.Group(); scene.add(markers);
+let model = null, bounds = null;
+const toView = (p) => new THREE.Vector3(p[0], p[2], -p[1]);
+
+function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h); camera.aspect = w / Math.max(h, 1); camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(view); resize();
+function bg() { renderer.setClearColor(getComputedStyle(document.documentElement).getPropertyValue("--view").trim() || "#e9ecf1"); }
+bg(); matchMedia("(prefers-color-scheme: dark)").addEventListener("change", bg);
+(function loop() { requestAnimationFrame(loop); controls.update(); const t = performance.now() / 400; for (const m of markers.children) if (m.userData.sel) m.children[0].material.opacity = 0.35 + 0.25 * Math.sin(t); renderer.render(scene, camera); })();
+
+function clearScene() { if (model) { scene.remove(model); model = null; } markers.clear(); $("hud").hidden = true; $("mapbox").style.display = "none"; $("hint").style.display = ""; }
+function loadScene() {
+  new GLTFLoader().load(withCode(`/api/jobs/${jobId}/preview.glb`), (g) => {
+    model = g.scene;
+    model.traverse((o) => { if (o.isMesh) { if (o.geometry.attributes.color) o.material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, clippingPlanes: [clipPlane] });
+      else { o.geometry.computeVertexNormals(); o.material = new THREE.MeshLambertMaterial({ color: 0xc4cad6, side: THREE.DoubleSide, clippingPlanes: [clipPlane] }); } } });
+    scene.add(model);
+    bounds = new THREE.Box3().setFromObject(model);
+    $("hint").style.display = "none"; $("hud").hidden = false;
+    const hasCeil = job.stages.some((s) => s.name === "diagnose" && (s.messages || []).some((m) => m.includes("천장이 있음")));
+    $("clip").value = hasCeil ? 55 : 100; setClip();      // 천장이 있으면 안이 보이게 위쪽을 잘라 둠
+    fit(true); drawMarkers();
+  }, undefined, () => { $("hint").firstElementChild.textContent = "3D 지도를 불러오지 못함 (빌드가 실패했을 수 있음)"; });
+  const img = $("mapimg"); img.onload = () => ($("mapbox").style.display = "block"); img.src = withCode(`/api/jobs/${jobId}/map.png`);
+}
+function setClip() {
+  if (!bounds) return;
+  const h = Math.max(0.3, (bounds.max.y * $("clip").value) / 100);
+  clipPlane.constant = $("clip").value >= 100 ? 1000 : h;
+  $("clipV").textContent = $("clip").value >= 100 ? "안 자름" : `${h.toFixed(1)} m 위`;
+}
+$("clip").oninput = setClip;
+function fit(top) {
+  if (!bounds) return;
+  const c = bounds.getCenter(new THREE.Vector3()), s = bounds.getSize(new THREE.Vector3());
+  const r = (Math.max(s.x, s.z) * 0.6) / (Math.tan((camera.fov * Math.PI) / 360) * Math.min(1, camera.aspect));   // 전체가 화면에 들어오는 거리
+  controls.target.set(c.x, 0, c.z);
+  camera.position.set(c.x + (top ? 0.001 : r * 0.55), r * (top ? 1 : 0.75), c.z + (top ? 0.001 : r * 0.55));
+}
+$("fit").onclick = () => fit(false);
+$("topv").onclick = () => fit(true);
+
+function drawMarkers() {
+  markers.clear();
+  if (!model || !job) return;
+  for (const d of currentDefects()) {
+    const col = d.severity === "fail" ? 0xe5323e : 0xe39a1c, sel = selected === d.id, r = Math.max(d.radius_m, 0.25);
+    const g = new THREE.Group(); g.userData = { id: d.id, sel };
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(r, r, sel ? 0.5 : 0.06, 40), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: sel ? 0.5 : 0.15, depthTest: false }));
+    disc.position.y = sel ? 0.25 : 0.03;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, sel ? 0.05 : 0.025, 8, 48), new THREE.MeshBasicMaterial({ color: col, depthTest: false }));
+    ring.rotation.x = Math.PI / 2; ring.position.y = 0.04;
+    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, sel ? 2.2 : 1.0, 8), new THREE.MeshBasicMaterial({ color: col, depthTest: false }));
+    pin.position.y = (sel ? 2.2 : 1.0) / 2;
+    g.add(disc, ring, pin); g.renderOrder = 10;
+    g.position.copy(toView(d.center_scene));
+    markers.add(g);
+  }
+}
+function focusDefect(d) {
+  const p = toView(d.center_scene), r = Math.max(d.radius_m, 1.5);
+  controls.target.copy(p);
+  camera.position.set(p.x + r * 1.6, Math.max(2.5, r * 2.6), p.z + r * 1.6);
+}
+
+// 주소에 작업 번호가 있으면 그 결과를 다시 엶
+function openFromHash() { if (/^#[0-9a-f]{12}$/.test(location.hash) && location.hash.slice(1) !== jobId) { jobId = location.hash.slice(1); clearScene(); poll(); } }
+addEventListener("hashchange", openFromHash);
+api("/api/info").catch(() => {}).finally(openFromHash);
+</script>
+</body>
+</html>
