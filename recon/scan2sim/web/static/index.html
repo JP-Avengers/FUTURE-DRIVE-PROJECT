@@ -302,7 +302,8 @@ function clearScene() { if (model) { scene.remove(model); model = null; } marker
 function loadScene() {
   new GLTFLoader().load(withCode(`/api/jobs/${jobId}/preview.glb`), (g) => {
     model = g.scene;
-    model.traverse((o) => { if (o.isMesh) { if (o.geometry.attributes.color) o.material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, clippingPlanes: [clipPlane] });
+    model.traverse((o) => { if (o.isMesh) { if (o.material && o.material.map) o.material = new THREE.MeshBasicMaterial({ map: o.material.map, side: THREE.DoubleSide, clippingPlanes: [clipPlane] });
+      else if (o.geometry.attributes.color) o.material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, clippingPlanes: [clipPlane] });
       else { o.geometry.computeVertexNormals(); o.material = new THREE.MeshLambertMaterial({ color: 0xc4cad6, side: THREE.DoubleSide, clippingPlanes: [clipPlane] }); } } });
     scene.add(model);
     bounds = new THREE.Box3().setFromObject(model);

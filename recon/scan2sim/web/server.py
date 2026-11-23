@@ -195,23 +195,55 @@ def status(jid):
 
 @app.get("/api/jobs/<jid>/preview.glb")
 def preview(jid):
-    """보이는 메쉬(build/visual.ply, 씬 좌표 Z 위)를 화면용 GLB 로. 화면은 Y 가 위라서 돌려 둠 — 화면 (x, y, z) = 씬 (x, z, −y). 30만 삼각형까지 줄임."""
+    """보이는 형상을 화면용 GLB 로 — USD 의 보이는 prim 을 그대로 옮김 (사진 텍스처 · 정점 색 포함, 충돌 · 경계벽은 뺌).
+    USD 가 없으면 build/visual.ply (색 없음). 화면은 Y 가 위라서 돌려 둠 — 화면 (x, y, z) = 씬 (x, z, −y)."""
     job(jid)
     out = jdir(jid, "out")
-    dst, src = os.path.join(out, "preview.glb"), os.path.join(out, "build", "visual.ply")
+    dst = os.path.join(out, "preview.glb")
+    usd = sorted(glob.glob(os.path.join(out, "build", "usd", "*_mesh.usdc")))
+    src = usd[0] if usd else os.path.join(out, "build", "visual.ply")
     if not os.path.exists(src):
         abort(404)
     if not os.path.exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src):
         import numpy as np
-        import open3d as o3d
         import trimesh
-        m = o3d.io.read_triangle_mesh(src)
-        if len(m.triangles) > 300_000:
-            m = m.simplify_quadric_decimation(300_000)
-        v = np.asarray(m.vertices)
-        col = (np.asarray(m.vertex_colors) * 255).astype(np.uint8) if m.has_vertex_colors() else None
-        tm = trimesh.Trimesh(np.c_[v[:, 0], v[:, 2], -v[:, 1]], np.asarray(m.triangles), vertex_colors=col, process=False)
-        tm.export(dst)
+        sc = trimesh.Scene()
+        if usd:
+            from PIL import Image
+            from pxr import Usd, UsdGeom, UsdPhysics, UsdShade
+            st = Usd.Stage.Open(src)
+            for p in st.Traverse():
+                if not p.IsA(UsdGeom.Mesh) or p.HasAPI(UsdPhysics.CollisionAPI) or UsdGeom.Imageable(p).ComputeVisibility() == "invisible":
+                    continue
+                m = UsdGeom.Mesh(p)
+                v = np.array(m.GetPointsAttr().Get(), float)
+                f = np.array(m.GetFaceVertexIndicesAttr().Get()).reshape(-1, 3)
+                if len(f) == 0:
+                    continue
+                pv, tex = UsdGeom.PrimvarsAPI(p), None
+                mat = UsdShade.MaterialBindingAPI(p).ComputeBoundMaterial()[0]
+                if mat:
+                    for c in Usd.PrimRange(mat.GetPrim()):
+                        inp = UsdShade.Shader(c).GetInput("file") if c.IsA(UsdShade.Shader) else None
+                        if inp and inp.Get():
+                            tp = os.path.normpath(os.path.join(os.path.dirname(src), inp.Get().path))
+                            tex = tp if os.path.exists(tp) else None
+                uv, dc = pv.GetPrimvar("st"), pv.GetPrimvar("displayColor")
+                if tex and uv and uv.GetInterpolation() == "vertex":
+                    vis = trimesh.visual.TextureVisuals(uv=np.array(uv.Get(), float), material=trimesh.visual.material.PBRMaterial(baseColorTexture=Image.open(tex), metallicFactor=0.0, roughnessFactor=1.0))
+                elif dc and dc.GetInterpolation() == "vertex" and len(dc.Get() or []) == len(v):
+                    vis = trimesh.visual.ColorVisuals(vertex_colors=(np.clip(np.array(dc.Get(), float), 0, 1) * 255).astype(np.uint8))   # displayColor 는 선형 값 — glTF 정점 색도 선형
+                else:
+                    vis = None
+                sc.add_geometry(trimesh.Trimesh(np.c_[v[:, 0], v[:, 2], -v[:, 1]], f, visual=vis, process=False), geom_name=p.GetName())
+        else:
+            import open3d as o3d
+            m = o3d.io.read_triangle_mesh(src)
+            v = np.asarray(m.vertices)
+            sc.add_geometry(trimesh.Trimesh(np.c_[v[:, 0], v[:, 2], -v[:, 1]], np.asarray(m.triangles), process=False), geom_name="Visual")
+        tmp = dst + ".tmp"
+        open(tmp, "wb").write(sc.export(file_type="glb"))
+        os.replace(tmp, dst)
     return send_file(dst, mimetype="model/gltf-binary", max_age=0)
 
 
