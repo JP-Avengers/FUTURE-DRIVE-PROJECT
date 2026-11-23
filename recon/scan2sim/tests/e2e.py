@@ -150,6 +150,9 @@ def check_job(j, C):
     ds = db.get("defects")
     ok = isinstance(ds, list) and all(not [k for k in DEFECT_KEYS if k not in d] for d in ds) and all(k in db for k in ("phase", "T_input_to_scene"))
     C.add("결함 목록 필드", ok, f"보정 전 {len(ds or [])}곳 · 보정 뒤 {len((j.get('defects_after') or {}).get('defects') or []) if j.get('defects_after') else '없음'}")
+    failed = [s for s in j.get("stages", []) if s.get("status") == "fail"]
+    if not C.allow_fail:                                          # 서버는 report.md 만 있으면 done 으로 둠 — 엔진 단계의 실패는 따로 봄
+        C.add("엔진 단계에 실패 없음", not failed, " / ".join(f"{s['name']}: {s.get('summary')} {s.get('messages', [])[:2]}" for s in failed))
     return ds or []
 
 
@@ -192,8 +195,10 @@ def main():
     ap.add_argument("--timeout", type=int, default=1200)
     ap.add_argument("--json", help="결과를 이 파일에")
     ap.add_argument("--keep", action="store_true", help="새로 띄운 서버의 작업 폴더를 지우지 않음")
+    ap.add_argument("--allow-fail", action="store_true", help="엔진 단계가 실패해도 시험 실패로 보지 않음 (일부러 나쁘게 찍은 촬영본처럼 실패가 맞는 입력)")
     a = ap.parse_args()
     C, srv, tmp = Checks(), None, None
+    C.allow_fail = a.allow_fail
     t0 = time.time()
     print(f"e2e: {a.input}", flush=True)
     if a.server:
