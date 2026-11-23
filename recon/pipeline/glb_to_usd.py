@@ -94,10 +94,25 @@ def find_floor(mesh, c):
     k = k + int(np.argmax(h[k:k + 5]))                          # 그 근처 봉우리
     z0 = 0.5 * (e[k] + e[k + 1])
     sel = up & (np.abs(cen[:, 2] - z0) < 0.05)
-    pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(cen[sel]))
-    (a, b, cc, d), inl = pc.segment_plane(0.02, 3, 1000)
-    n = np.array([a, b, cc]) * np.sign(cc)
-    d = d * np.sign(cc)
+    # 바닥 평면: 넓이 가중 최소제곱을 되풀이 (2 cm 넘게 벗어난 면은 빼고 다시). 무작위 표본(RANSAC)을 쓰지 않음 —
+    # 실행마다 평면이 1 cm 안팎 달라져 진단 수치 · 결함 수가 흔들렸고, Open3D 의 RANSAC 은 씨앗을 줘도 스레드 때문에 같지 않았음 (11.23)
+    P, wgt = cen[sel], area[sel]
+    c0 = np.average(P, axis=0, weights=wgt)
+    Q = P - c0
+    keep = np.ones(len(Q), bool)
+    coef = np.zeros(3)
+    for _ in range(8):
+        A = np.c_[Q[keep, 0], Q[keep, 1], np.ones(int(keep.sum()))] * np.sqrt(wgt[keep])[:, None]
+        coef = np.linalg.lstsq(A, Q[keep, 2] * np.sqrt(wgt[keep]), rcond=None)[0]
+        res = np.abs(Q[:, 2] - (coef[0] * Q[:, 0] + coef[1] * Q[:, 1] + coef[2])) / np.sqrt(1 + coef[0] ** 2 + coef[1] ** 2)
+        new = res < 0.02
+        if new.sum() < 3 or np.array_equal(new, keep):
+            break
+        keep = new
+    n = np.array([-coef[0], -coef[1], 1.0])
+    n /= np.linalg.norm(n)
+    d = -float(n @ (c0 + [0, 0, coef[2]]))                      # n·p + d = 0
+    inl = np.nonzero(keep)[0]
     ax = np.cross(n, [0, 0, 1.0])
     s, co = np.linalg.norm(ax), n[2]
     R = np.eye(3)
