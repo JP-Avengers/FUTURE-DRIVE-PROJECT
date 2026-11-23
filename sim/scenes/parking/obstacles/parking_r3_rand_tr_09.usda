@@ -1,0 +1,123 @@
+#usda 1.0
+(
+    customLayerData = {
+        string generated_by = "sim/make_obstacles.py"
+        string obstacles_json = '[{"name": "box_0", "type": "box", "x": -2.81, "y": -13.956, "z_floor": 0.017, "yaw_deg": -49.98, "size": [0.48, 0.63, 0.84], "s": 6.41, "lateral": -0.39}, {"name": "box_1", "type": "box", "x": -23.387, "y": -17.316, "z_floor": 0.136, "yaw_deg": 168.47, "size": [0.68, 0.58, 0.89], "s": 32.57, "lateral": 0.69}, {"name": "box_2", "type": "box", "x": -33.191, "y": -4.738, "z_floor": 0.012, "yaw_deg": 54.49, "size": [0.41, 0.61, 0.66], "s": 53.92, "lateral": -0.04}, {"name": "cone_3", "type": "cone", "x": -9.657, "y": -3.416, "z_floor": -0.069, "yaw_deg": -12.98, "size": [0.43, 0.78], "s": 79.95, "lateral": -0.3}]'
+        string scenario = "eval/scenarios/rand/parking_r3_rand_tr_09.yaml"
+        string start_json = "null"
+    }
+    doc = "시나리오 장애물 — parking_r3_rand_tr_09 (eval/scenarios/rand/parking_r3_rand_tr_09.yaml). FD_LAYERS 로 씬 위에 얹음"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def "World"
+{
+    def Xform "Obstacles"
+    {
+        def Cube "box_0" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsCollisionAPI"]
+        )
+        {
+            rel material:binding = </World/Obstacles/box_0_mat>
+            color3f[] primvars:displayColor = [(0.29, 0.32, 0.3)]
+            double size = 1
+            float3 xformOp:rotateXYZ = (0, 0, -49.98495)
+            float3 xformOp:scale = (0.48, 0.63, 0.84)
+            double3 xformOp:translate = (-2.8098262322851086, -13.95603176597011, 0.4367413721400335)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+        }
+
+        def Material "box_0_mat"
+        {
+            token outputs:surface.connect = </World/Obstacles/box_0_mat/shader.outputs:surface>
+
+            def Shader "shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.29, 0.32, 0.3)
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+
+        def Cube "box_1" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsCollisionAPI"]
+        )
+        {
+            rel material:binding = </World/Obstacles/box_1_mat>
+            color3f[] primvars:displayColor = [(0.15, 0.34, 0.22)]
+            double size = 1
+            float3 xformOp:rotateXYZ = (0, 0, 168.474)
+            float3 xformOp:scale = (0.68, 0.58, 0.89)
+            double3 xformOp:translate = (-23.387331763396023, -17.31569925479698, 0.5805070851065615)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+        }
+
+        def Material "box_1_mat"
+        {
+            token outputs:surface.connect = </World/Obstacles/box_1_mat/shader.outputs:surface>
+
+            def Shader "shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.15, 0.34, 0.22)
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+
+        def Cube "box_2" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsCollisionAPI"]
+        )
+        {
+            rel material:binding = </World/Obstacles/box_2_mat>
+            color3f[] primvars:displayColor = [(0.36, 0.38, 0.35)]
+            double size = 1
+            float3 xformOp:rotateXYZ = (0, 0, 54.49091)
+            float3 xformOp:scale = (0.41, 0.61, 0.66)
+            double3 xformOp:translate = (-33.19076781417971, -4.738386035324187, 0.34201163796463674)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+        }
+
+        def Material "box_2_mat"
+        {
+            token outputs:surface.connect = </World/Obstacles/box_2_mat/shader.outputs:surface>
+
+            def Shader "shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.36, 0.38, 0.35)
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+
+        def Cone "cone_3" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsCollisionAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.78
+            rel material:binding = </World/Obstacles/cone_3_mat>
+            color3f[] primvars:displayColor = [(0.94, 0.38, 0.02)]
+            double radius = 0.215
+            double3 xformOp:translate = (-9.656949986820734, -3.415977621382835, 0.32058182016559844)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Material "cone_3_mat"
+        {
+            token outputs:surface.connect = </World/Obstacles/cone_3_mat/shader.outputs:surface>
+
+            def Shader "shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.94, 0.38, 0.02)
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+    }
+}
+

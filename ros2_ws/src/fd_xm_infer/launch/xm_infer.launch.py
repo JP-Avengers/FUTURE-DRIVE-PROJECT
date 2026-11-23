@@ -49,6 +49,7 @@ ARGS = [
     ('route_timeout_s', '1.0', '경로 · 위치 끊김 판정(s)', False),
     ('publish_path', 'true', '~/path · ~/route 디버그 토픽', False),
     ('path_scale', '1.0', 'p3 계열 ckpt(경로 라벨 ×1/3)면 0.3333 — ~/path 만 /scale, 명령은 무관', False),
+    ('prev_action_mode', 'own', '이전 명령 입력 own · zero · clamped — 실행 명령 입력 학습판(--prev-action-source exec)은 clamped', True),
     ('log_csv', '', 'tick 마다 한 줄 CSV(+ .meta.json). 빈칸 = 끔', True),
     ('report_every', '25', 'N tick 마다 지연 P50/P95 로그', False),
     ('allow_other_cmd_publishers', 'false', '/cmd_vel 발행자 1개 규칙 무시(시험용)', False),

@@ -1,0 +1,17 @@
+# 실내 복도 — 혼합 맵 (11.13 미팅의 세 맵 중 혼합): 리얼센스 복도 맵 v0.2 를 뼈대(좌표 · 벽 위치 · 바닥)로, 폴리캠을 휘어 맞춰 겉모습 · 벽 · 천장으로 얹음.
+# 폴리캠 단독 맵(corridor_polycam.yaml)에 없는 것만 적음.
+base: corridor_polycam.yaml
+
+out: ~/jinwoo/out/pipeline/hybrid_in_v1
+
+orient:
+  warp_file: corridor_hybrid_warp.npz  # 놓은 폴리캠 → 복도 맵 v0.2: 벽 단면을 구간별(10 → 5 m 칸)로 맞춘 수평 변위장 (최대 0.24 m). 높이는 그대로 (둘 다 바닥 z 0)
+
+collision:
+  floor_fill: false                    # 받침 바닥 대신 리얼센스의 사진 바닥이 틈을 채움
+
+base_map:
+  usd: ~/jinwoo/out/pipeline/corridor_v02/usd/corridor_mesh.usdc
+  prims: [Floor]                       # 리얼센스 복도 맵의 사진 바닥. 벽 · 스캔 물체는 안 가져옴 — 폴리캠 것이 천장까지 있음
+  drop_m: 0.06                         # 폴리캠 바닥이 몇 cm 출렁여서 3 cm 로는 군데군데 뚫고 올라옴
+  match_color: overlap                 # 두 바닥이 겹치는 자리의 색으로 배율을 구함 (구멍 자리만 보면 어두운 가장자리가 섞여 과하게 밝아짐)

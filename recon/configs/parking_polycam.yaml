@@ -1,0 +1,31 @@
+# 실외 주차장 — 폴리캠 단독 맵 (11.13 미팅의 세 맵 중 B). 폴리캠 GLB 하나만으로 만들고, 같은 경로로 달릴 수 있게 맵 좌표에 놓기만 함 (수평 회전 + 이동, 축척 1 · 기울기 보정 없음).
+# 폴리캠의 크기 · 수평 · 틀어짐(가장자리 30~80 cm)은 고치지 않음 — 그게 이 맵의 비교 대상. 리얼센스 맵에 맞춘 보정은 혼합 맵에서.
+base: templates/polycam_glb.yaml
+
+name: parking
+out: ~/jinwoo/out/pipeline/polycam_out_v3
+
+input:
+  root: ~/jinwoo/data/polycam_out
+  mesh: polycam_out.glb
+
+orient:
+  align_file: parking_polycam_align.json   # 주차선으로 v0.9 맵 좌표에 맞춘 변환 (수평 회전 + 이동 + 높이 이동). 바닥 찾기 · 원점 옮기기는 건너뜀
+
+collision:
+  ground: scan                         # 실외: 바닥이 평평하지 않음 → 폴리캠 바닥으로 높이 지도를 만들어 그 위에 바닥 한 장
+  ground_cell_m: 0.5
+  ground_band_m: 0.2
+  ground_sigma_cells: 1.0
+  floor_band_m: 0.08                   # 폴리캠 바닥은 다듬은 높이 지도에서 몇 cm 출렁임
+  low_h_m: 0.10                        # 바닥에서 10 cm 아래의 것은 충돌에서 뺌 (스캔 바닥 조각 · 주차 턱)
+  min_cluster_tris_after: 100
+  tris: 150000
+  floor_fill_depth_m: 0.05
+  floor_margin_m: 0.0                  # 스캔 범위 밖으로 넓히지 않음
+  boundary_height_m: 2.0
+
+clean:
+  float_h_m: 0.3                       # 가장 낮은 점이 바닥 위 0.3 m 보다 높은 덩어리 = 떠 있는 조각 → 지움
+  float_max_tris: 20000
+  redact_file: parking_polycam_redact.json   # 차 10대의 번호판 13곳: 텍스처에서 한 가지 색으로 덮음 (옆면 렌더에서 자리를 읽음)

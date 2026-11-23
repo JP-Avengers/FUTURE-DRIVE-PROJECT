@@ -71,6 +71,15 @@ python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobility \
 CUDA_VISIBLE_DEVICES=1 python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobility \
     -c e2e/configs/finetune_parking_r3.gin -d data/teacher/xm_v1 \
     -p <x_mobility-nav2-semantic_action_path.ckpt> -o data/checkpoints/xm_ft_v0.1
+
+# 4) 동결 후보 설정(11.15) — E6 = v1.5 · aw30 · 실행 명령 입력(exec) · 6 에폭 · 직전 명령 드롭아웃 없음 (집 PC RTX 5060 Ti 1장 7.6 h)
+python e2e/finetune.py --xm-repo <X-Mobility> -c e2e/configs/finetune_parking_r3.gin -d <xm_v1_5> \
+    -p <x_mobility-nav2-semantic_action_path.ckpt> -o data/checkpoints/xm_ft_v1.5_aw30_exec_e6 \
+    --prev-action-source exec --gin XMobilityLoss.action_weight=30 --gin NUM_EPOCHS=6 \
+    --gin XMobilityIsaacSimDataModule.batch_size=2 --accumulate-grad-batches 4 --gin XMobilityIsaacSimDataModule.num_workers=2 --save-top-k 3
+# 시드 반복 = 같은 명령 + --seed 1 -o data/checkpoints/xm_ft_v1.5_aw30_exec_seed1_e6 (11.15, 시드 바닥용 — 후보 아님, results/xm_ft_v1.5_aw30_exec_seed1_e6/judge_11_15.md).
+# v1.6(-d <xm_v1_6>, E9)은 쓰지 않음 — 새 맵 Nav2 장애물은 좋아졌지만 새 맵 자동 ω MAE 가 나빠져 거르기 탈락, results/xm_ft_v1.6_aw30_exec_e6/judge_11_15.md
+# --prev-action-dropout 0.5 는 쓰지 않음 — 열린 고리는 좋았지만 무작위 배치 폐루프에서 1/12(E6 11/15), results/closed_loop_rand_ev_11_14.md
 ```
 
 - 설정 덧붙이기: `--gin "NUM_EPOCHS=3"` · `--gin "finetune.freeze_prefixes=['model.observation_encoder.image_encoder.']"`(DINOv2 고정).
@@ -88,6 +97,8 @@ CUDA_VISIBLE_DEVICES=1 python e2e/finetune.py --xm-repo ~/xmobility_test/X-Mobil
 python e2e/eval_offline.py --xm-repo ~/xmobility_test/X-Mobility -c e2e/configs/finetune_parking_r3.gin \
     -d data/teacher/xm_v1 -p data/checkpoints/xm_ft_v0.1/checkpoints/<best>.ckpt -o logs/xm_eval_v0.1
 # 비교용: 같은 명령에 -p <사전학습 ckpt> → 제로샷. --teacher-forcing 은 직전 명령을 교사 값으로(학습 때 조건)
+# 실행 명령 입력판(exec)을 노드(prev_action_mode:=clamped)와 같은 조건으로 보려면 --prev-action-mode clamped
+# 열린 고리 지표는 거르기용 — 직전 명령 입력 방식이 다른 모델끼리의 순위는 폐루프로(11.15, results/closed_loop_rand_ev_11_14.md)
 # 서버 사전 점검(약 1분): 위 명령에 --max-files 1 → ckpt 로드 · 출력 유한 · run_meta 의 frames_per_s(T4 17.6 ≫ 노드 5 Hz) 확인
 ```
 → `frames.csv`(프레임별) · `summary.json`(묶음별 지표) · `run_meta.json`. xm_v1 test 는 경로 지시에 좌회전이 없음(val/test 분할 문제, `resplit_xm.py` 참고).
@@ -97,14 +108,14 @@ python e2e/eval_offline.py --xm-repo ~/xmobility_test/X-Mobility -c e2e/configs/
 - `check_xm_dataset.py` — 실제 xm_v1(47,572장) 오류 0 · 경고 0(로컬 · Kaggle 둘 다).
 - `finetune.py` — Kaggle T4 × 2 에서 짧은 시험 통과: 사전학습 ckpt 키 넣은 297 · missing 0 · unexpected 61(모두 예상분) · lr 1e-5, 학습 20스텝 + 검증. 본 학습 10에폭 3회 완료(v0.1 · v0.2 · v0.1_aw30, 결과 `results/`), 11.7 경로 축척 run(v0.1_p3) 진행.
 - `eval_offline.py` — 제로샷 test 4,753프레임 완료(T4 1장 19.6 프레임/초).
-- `fd_xm_infer` — 입력 전처리(영상 · 경로 20점 · 상한)가 export · eval_offline 과 비트 단위로 같음(ROS 없이 대조 — `python -m pytest ros2_ws/src/fd_xm_infer/test -q`, 6개 통과 11.9). **ROS 위에서는 아직 안 돌림.**
+- `fd_xm_infer` — 입력 전처리(영상 · 경로 20점 · 상한)가 export · eval_offline 과 비트 단위로 같음(ROS 없이 대조 — `python -m pytest ros2_ws/src/fd_xm_infer/test -q`, 6개 통과 11.9). ~~ROS 위에서는 아직 안 돌림~~ → 11.10 D 노드 시험부터 ROS 위에서 돌림: 11.12–14 폐루프 37회(E6 고정 중앙 장애물 8 · 무작위 배치 15, E7 무작위 12 · 씬 출발 반시계 2), 추론 전체 P50 26 ms · P95 27 ms(RTX A5000, `docs/interfaces/e2d_model.md`).
 
 ### GPU 메모리별 배치
 
 | GPU | 설정 | 실측 |
 | --- | --- | --- |
 | T4 15 GB | `--gin XMobilityIsaacSimDataModule.batch_size=2 --accumulate-grad-batches 2` | 배치 4 는 첫 스텝 OOM, 배치 2 최대 10.4 GB · 0.60 s/스텝 · 에폭 약 28분(2장) |
-| RTX 5060 Ti 16 GB(1장, `setup_windows.ps1`) | `-BatchSize 2 -Accum 4`(실효 8) | 11.8 측정 예정 — 시험 `run_meta.json` 의 `peak_gpu_mem_gb` · `step_time_s` 를 여기에 |
+| RTX 5060 Ti 16 GB(1장, `setup_windows.ps1`) | `-BatchSize 2 -Accum 4`(실효 8) | E6(11.12, v1.5): 최대 10.4 GB · 0.30 s/스텝(데이터 로딩 포함 중앙값) · 에폭 14,037 스텝 ≈ 70 분 + 검증 — 6 에폭 7.6 h. v1.6 은 에폭 약 80 분 |
 | 24 GB 이상 | 기본(배치 4) | 안 재봄 — 2) 짧은 시험의 `peak_gpu_mem_gb` 로 확인 |
 
 실효 배치(배치 × 누적 × GPU 수)를 같게 두면 lr 그대로 써도 됩니다. `run_meta.json` 에 `batch_size` · `accumulate_grad_batches` · `effective_batch` 가 남습니다.

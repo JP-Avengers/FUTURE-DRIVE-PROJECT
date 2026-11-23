@@ -170,6 +170,10 @@ def bake(sets, floor, ground, occ, c, out_dir):
     sel = {s[0]: _frames_near(tex, s[2], c["max_dist_m"]) for s in sets}
     st = dict(region=region, cell_m=c["cell_m"], texels=[tex.nx, tex.ny], photometric={})
 
+    smd = c.get("set_max_dist_m") or {}                         # 묶음마다 거리 제한 (자세 오차가 큰 보조 촬영은 가까이서 본 것만 — v0.9 손 촬영)
+
+    def c_set(n):
+        return dict(c, max_dist_m=min(c["max_dist_m"], smd[n])) if n in smd else c
     corr = {s[0]: (np.ones((len(s[2]), 3)), np.zeros((3, 3)), np.zeros(3)) for s in sets}
     step = max(1, int(round(0.1 / c["cell_m"])))
     by_name = {s[0]: s for s in sets}
@@ -182,7 +186,7 @@ def bake(sets, floor, ground, occ, c, out_dir):
             _, fr, poses, lift, excl = by_name[n]
             off[n] = n_tot
             for f in sel[n]:
-                r = _project(tex, fr, f, poses[f], _zbuffer(occ, fr, poses[f]), lift, c, step=step)
+                r = _project(tex, fr, f, poses[f], _zbuffer(occ, fr, poses[f]), lift, c_set(n), step=step)
                 if r is None:
                     continue
                 iy, ix, col, gsd, feat, _ = r
@@ -207,7 +211,7 @@ def bake(sets, floor, ground, occ, c, out_dir):
         gains, beta, Fm = corr[n]
         filled_before = np.isfinite(best_g[..., 0])
         for f in sel[n]:
-            r = _project(tex, fr, f, poses[f], _zbuffer(occ, fr, poses[f]), lift, c)
+            r = _project(tex, fr, f, poses[f], _zbuffer(occ, fr, poses[f]), lift, c_set(n))
             if r is None:
                 continue
             iy, ix, col, gsd, feat, feather = r
@@ -327,6 +331,7 @@ def finish(out_dir, floor, c, root):
 
     # 바닥 구역 (B ground_zones: grid[ix, iy], 1 아스팔트 · 2 풀 · 3 붉은 보도) · 실제 바닥 메쉬가 깔린 곳
     fs = c.get("fill_stalls") or {}
+    stall_det = stall_orig = None
     zones_path = os.path.join(root, fs["zones"]) if fs.get("zones") else None
     if zones_path and os.path.exists(zones_path):
         z = np.load(zones_path)
@@ -341,6 +346,47 @@ def finish(out_dir, floor, c, root):
     fp5 = np.zeros((int(np.ceil((y1 - y0) / g5)) + 1, int(np.ceil((x1 - x0) / g5)) + 1), bool)
     fp5[np.clip(((fv[:, 1] - y0) / g5).astype(int), 0, fp5.shape[0] - 1), np.clip(((fv[:, 0] - x0) / g5).astype(int), 0, fp5.shape[1] - 1)] = True
     on_floor = ndimage.binary_closing(fp5, iterations=2)[((ys - y0) / g5).astype(int)[:, None], ((xs - x0) / g5).astype(int)[None, :]]
+
+    # (2b) 묶음 사이 색 맞추기 (v0.9, 11.12): 다른 날 · 다른 카메라 묶음(손 촬영 · 지붕)은 색조 · 밝기가 달라 그 묶음이 칠한 구역(가운데 섬 · 외곽)만
+    #      얼룩덜룩함 → 묶음마다 아스팔트 같은 텍셀의 중앙 색을 주 묶음의 것에 맞춤 (채널별 배율 하나씩 — 무늬는 그대로)
+    fl0 = c.get("flatten") or {}
+    set_names = [str(v) for v in meta["sets"]] if "sets" in meta.files else []
+    match_st = {}
+
+    def _asph_med(mask):
+        sub = img[::4, ::4][mask[::4, ::4]]
+        if len(sub) < 2000:
+            return None
+        l_ = sub @ LUMA
+        m_ = float(np.median(l_))
+        sel = (l_ > 0.5 * m_) & (l_ < 1.4 * m_) & ((sub.max(-1) - sub.min(-1)) < 0.25)
+        return np.median(sub[sel], axis=0) if sel.sum() > 1000 else None
+    t0_ = _asph_med((src == 0) & on_floor) if (fl0.get("match_sets") or fl0.get("detint_shadow")) and set_names else None
+    if fl0.get("match_sets") and set_names:
+        for n_ in fl0["match_sets"]:
+            if n_ in set_names and t0_ is not None:
+                mk = (src == set_names.index(n_)) & on_floor
+                tm = _asph_med(mk)
+                if tm is not None:
+                    gch = np.clip(t0_ / np.maximum(tm, 1e-3), 0.6, 1.7).astype(np.float32)
+                    img[mk] = np.clip(img[mk] * gch, 0, 1)
+                    match_st[n_] = [round(float(v), 3) for v in gch]
+    if fl0.get("detint_shadow") and t0_ is not None:   # 그늘진 바닥의 푸른 기 빼기: 하늘빛만 받은 그늘은 파랗게 찍힘 (서쪽 · 남서쪽 가장자리) —
+        lum_ = img @ LUMA                               # 푸르고(B − R) 어두운 무채색 계열 텍셀은 밝기만 두고 색조를 아스팔트 색으로 → 아래 색 통일이 밝기를 맞춤
+        gl_ = float(t0_ @ LUMA)
+        mk = on_floor & ((img[..., 2] - img[..., 0]) > fl0["detint_shadow"]) & (lum_ < 0.95 * gl_) & ((img.max(-1) - img.min(-1)) < 0.3)
+        img[mk] = (lum_[mk][:, None] / gl_) * t0_[None, :].astype(np.float32)
+        match_st["detint_m2"] = round(float(mk.sum()) * cell * cell, 1)
+        del lum_, mk
+    # 색 통일을 넓게 적용할 곳: 색 품질이 낮은 묶음이 칠한 텍셀 + 가운데 섬 (B 구역이 섬 쪽을 '풀 · 기타'로 넣어 통일에서 빠졌음)
+    weak_idx = [set_names.index(n_) for n_ in fl0.get("weak_sets", []) if n_ in set_names]
+    weak_c = coarse(np.isin(src, weak_idx), np.any) if weak_idx else np.zeros((Hc, Wc), bool)
+    forced_c = np.zeros((Hc, Wc), bool)
+    hmap = ((c.get("fill_stalls") or {}).get("holes") or {}).get("conf_map")
+    if fl0.get("force_island") and hmap and os.path.exists(os.path.join(root, hmap)):
+        from mesh_utils import conf_holes, resample_mask
+        ch_, clo_, cc_ = conf_holes(os.path.join(root, hmap), ((c.get("fill_stalls") or {}).get("holes") or {}).get("measured_conf", (1, 2, 3)))
+        forced_c = ndimage.binary_dilation(resample_mask(ch_, clo_, cc_, xs[k // 2::k][:Wc], ys[k // 2::k][:Hc]).T, iterations=int(1.0 / (k * cell)))
 
     # (3) 넓은 밝기 차이 (촬영 때 그림자·햇빛): 아스팔트 10 cm 칸 밝기의 넓은 흐름만 전체 중앙값 쪽으로, 아스팔트에만
     lum = img @ LUMA
@@ -357,9 +403,10 @@ def finish(out_dir, floor, c, root):
         # 대상 = 바닥 위 회색 계열(채도 낮음) · 페인트보다 어두운 칸 (B 구역은 색으로 나눈 대략값이라 햇빛에 밝게 찍힌 아스팔트를
         # '기타'로 넣어 그 자리만 그대로 남았음 — 10.30). 풀 · 붉은 보도 둘레는 뺌
         med3 = coarse(img, np.median)
-        floor_c = coarse(on_floor, np.all) & ~coarse(other, np.any)
+        floor_c = coarse(on_floor, np.all) & (~coarse(other, np.any) | forced_c)
         sat_c = med3.max(-1) - med3.min(-1)
-        asph_c = floor_c & (sat_c < 0.08) & (med > gl * fl.get("low", 0.35)) & (med < gl * fl.get("high", 1.6))
+        sat_lim = np.where(weak_c | forced_c, fl.get("sat_max_weak", 0.14), 0.08)      # 색이 덜 믿을 만한 곳은 조금 더 색이 낀 칸도 아스팔트로 봄
+        asph_c = floor_c & (sat_c < sat_lim) & (med > gl * fl.get("low", 0.35)) & (med < gl * fl.get("high", 1.6))
         target = np.median(med3[asph_c & a_c], axis=0)
         soft = np.clip(ndimage.gaussian_filter(asph_c.astype(np.float32), 2) * 1.5, 0, 1)
         rc = np.ones((Hc, Wc, 3), np.float32)
@@ -382,6 +429,20 @@ def finish(out_dir, floor, c, root):
         lum = img @ LUMA
         med = coarse(lum, np.median)
     st = dict(flatten_ratio_p5_p95=np.percentile(ratio[::k, ::k], [5, 95]).round(3).tolist())
+    if match_st:
+        st["set_color_gain"] = match_st
+    sm_idx = [set_names.index(n_) for n_ in fl0.get("smooth_sets", []) if n_ in set_names]
+    if sm_idx and fl0.get("smooth_m"):   # 흐릿하게 찍힌 묶음(지붕 카메라)의 자잘한 얼룩: 그 묶음이 칠한 텍셀만 넓게 흐림 (페인트 · 색 있는 바닥은 그대로)
+        sg = fl0["smooth_m"] / cell
+        mk = np.isin(src, sm_idx) & on_floor & (lum < 1.3 * gl) & ((img.max(-1) - img.min(-1)) < fl0.get("sat_max_weak", 0.14))
+        wsum = ndimage.gaussian_filter(mk.astype(np.float32), sg)
+        for ch in range(3):
+            blur = ndimage.gaussian_filter(np.where(mk, img[..., ch], 0).astype(np.float32), sg) / np.maximum(wsum, 1e-3)
+            img[..., ch] = np.where(mk & (wsum > 0.05), blur, img[..., ch])
+        del wsum, blur
+        lum = img @ LUMA
+        med = coarse(lum, np.median)
+        st["smoothed_m2"] = round(float(mk.sum()) * cell * cell, 1)
 
     # (3b) 사진이 안 닿은 곳(바닥 정점 색) 다듬기: 정점 색은 5 cm 격자로 각지고, 사진 범위 경계는 키프레임 화각 모서리라
     #      계단처럼 끊겨 보임 (D 10.30 영상, 섬 가장자리) → 안쪽은 3 cm 흐리고 경계 둘레 seam_m 은 넓게 섞음
@@ -436,13 +497,33 @@ def finish(out_dir, floor, c, root):
             hole = ndimage.binary_fill_holes(ndimage.binary_closing(fp5, iterations=2)) & ~ndimage.binary_closing(fp5, iterations=2)
             lab, nlab = ndimage.label(hole)
             big = np.isin(lab, 1 + np.nonzero(ndimage.sum(hole, lab, range(1, nlab + 1)) * g5 * g5 >= fh.get("min_area_m2", 4.0))[0])
-            ring = ndimage.binary_dilation(big, iterations=int(fh.get("margin_m", 3.0) / g5))
+            seen_hole = np.zeros_like(big)
+            if fh.get("conf_map"):   # 보조 촬영이 바닥을 채운 섬 (v0.9): 구멍으로는 안 잡힘 → B conf 로. 찍힌 바닥(주차선)은 남기고 못 쓸 곳만 채움
+                from mesh_utils import conf_holes, resample_mask
+                ch, clo, ccell = conf_holes(os.path.join(root, fh["conf_map"]), fh.get("measured_conf", (1, 2, 3)), fh.get("min_area_m2", 4.0))
+                seen_hole = resample_mask(ch, clo, ccell, x0 + (np.arange(fp5.shape[1]) + 0.5) * g5, y0 + (np.arange(fp5.shape[0]) + 0.5) * g5).T & ~big
+            ring = ndimage.binary_dilation(big | seen_hole, iterations=int(fh.get("margin_m", 3.0) / g5))
             ring_t = ring[((ys - y0) / g5).astype(int)[:, None], ((xs - x0) / g5).astype(int)[None, :]]
             hole_t = big[((ys - y0) / g5).astype(int)[:, None], ((xs - x0) / g5).astype(int)[None, :]]
             bad = hole_t | (ring_t & ((src < 0) | dark))               # 구멍 + 둘레의 안 찍히거나 어둡게 찍힌 바닥 (지붕 카메라 · 그림자)
+            if seen_hole.any():                                        # 섬 안: 색이 낀 밝은 얼룩(하늘 비침 · 노출 과다)도 채움 — 흰 주차선(무채색)은 아래에서 남김
+                sh_t = seen_hole[((ys - y0) / g5).astype(int)[:, None], ((xs - x0) / g5).astype(int)[None, :]]
+                blown = sh_t & (lum > fh.get("blown_lum", 1.3) * local) & (sat >= fh.get("blown_sat", 0.15))
+                bad |= ndimage.binary_dilation(blown, iterations=int(0.05 / cell))
+                st["holes_seen_m2"] = round(float(sh_t.sum()) * cell * cell, 1)
+                st["holes_blown_m2"] = round(float(blown.sum()) * cell * cell, 1)
             fill |= bad & ~rect & ~ndimage.binary_dilation(paint, iterations=3)
             st["holes_filled_m2"] = round(float(bad.sum()) * cell * cell, 1)
         img, n_patch = _fill_asphalt(img, fill, src, gsd, asphalt, local, lum, asph_c, coarse, up, smooth_valid, k, cell, fs)
+        if c.get("stalls"):   # 주차칸 다듬기 (pipeline/stalls.py, v0.9): 차 자리 · 구멍을 채운 뒤의 그림에서 주차선을 찾아, 구불거리는 원래 선을 지우고(여기)
+            import stalls     # 반듯한 선은 맨 끝에 다시 그림. 채우기 전 그림에서 찾으면 안 찍힌 곳 · 차 그림자의 밝은 얼룩이 선으로 잡힘 (11.11)
+            stall_det = stalls.detect(img, on_floor, xs, ys, c["stalls"])
+            st["stalls"] = stall_det["stats"]
+            er = stall_det["erase"] & on_floor
+            stall_orig = (np.clip(img, 0, 1) * 255).astype(np.uint8)   # 지우기 전 그림 — 실제로 찍힌 선의 화소를 반듯한 자리로 옮길 때 씀 (stalls.draw style photo)
+            if er.any():
+                img, _ = _fill_asphalt(img, er, src, gsd, asphalt, local, img @ LUMA, asph_c, coarse, up, smooth_valid, k, cell, fs)
+                fill = fill | er
         _save(fill.astype(np.float32)[::4, ::4], os.path.join(out_dir, "fill_mask_4cm.png"))
         st.update(cars=len(cars), filled_m2=round(float(fill.sum()) * cell * cell, 1),
                   filled_in_cars_m2=round(float((fill & rect).sum()) * cell * cell, 1), patches=n_patch)
@@ -467,6 +548,11 @@ def finish(out_dir, floor, c, root):
         img = np.clip(img * (1 + add * D)[..., None], 0, 1)
         st["detail"] = dict(before_rel_std_p50=round(float(np.median(cur_rel[::50, ::50][mask[::50, ::50] > 0.5])) * 100, 2),
                             added_rel_std_p50=round(float(np.median(add[::50, ::50][mask[::50, ::50] > 0.5])) * 100, 2))
+    if stall_det is not None:
+        import stalls
+        st["stalls"]["drawn_m2"] = round(stalls.draw(img, stall_det, xs, ys, on_floor, c["stalls"], orig=stall_orig), 1)
+        st["stalls"]["photo_strip"] = stall_det["stats"].get("photo_strip")
+        stalls.save(os.path.join(out_dir, "stalls.json"), stall_det)
     path = os.path.join(out_dir, "floor_color.jpg")
     _save(img, path, quality=c.get("jpeg_quality", 92))
     return path, st
@@ -557,7 +643,7 @@ def run(cfg, out, floor, occ_mesh, ground, sets):
                max_rms=c.get("photometric_max_rms"), gain_range=c.get("gain_range"),
                sets=[(s[0], len(s[2]), round(float(s[3]), 4), s[4]) for s in sets],
                floor=hashlib.sha1(np.asarray(floor.vertices, np.float32).tobytes()).hexdigest()[:12])
-    for kk in ("consensus", "require_depth", "depth_tol_m", "depth_tol_per_m"):
+    for kk in ("consensus", "require_depth", "depth_tol_m", "depth_tol_per_m", "set_max_dist_m"):
         if c.get(kk):
             key[kk] = c[kk]
     if c.get("specular"):                                       # 켰을 때만 키에 (끈 판의 기존 굽기 결과는 그대로 다시 씀)

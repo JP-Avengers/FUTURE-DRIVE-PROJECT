@@ -1,0 +1,42 @@
+#usda 1.0
+(
+    customLayerData = {
+        string lights = "돔 600 (하늘 레이어 없음) · 해 0. v0.9 의 sky.usda 를 같이 쓰려면 그 줄을 넣고 880"
+        string map = "data/usd/parking_polycam_v1/ — C 이진우 11.15: 폴리캠 단독 맵 (11.13 미팅의 세 맵 중 폴리캠). 폴리캠 GLB 하나로 만들고 맵 좌표에 놓기만 함 (회전 + 이동, 축척 · 기울기 보정 없음). 가장자리 30~80 cm 틀어짐은 그대로"
+        string start_pose = "기준선 eval/routes/parking_r3_cw.yaml 출발점 그대로 (x · y · 방향). 높이만 이 맵 바닥 0.211 + 0.022 = 0.233"
+    }
+    defaultPrim = "World"
+    doc = "주차장 폴리캠 단독 맵 v1 루트 제안 — v0.9 루트에서 맵 경로 · 로봇 시작 높이 · 조명만 바꿈. Isaac Sim 에서 열어 보지 못함"
+    metersPerUnit = 1
+    subLayers = [
+        @../proxy/sensors.usda@,
+        @../proxy/ros.usda@,
+        @../proxy/robot.usda@,
+        @../../../data/usd/parking_polycam_v1/usd/parking_scene.usda@,
+        @../proxy/world.usda@
+    ]
+    timeCodesPerSecond = 60
+    upAxis = "Z"
+)
+
+over "World"
+{
+    over "Nova_Carter_ROS"
+    {
+        float xformOp:rotateZ = -96.0
+        double3 xformOp:translate = (-1.756, -7.621, 0.233)
+    }
+
+    over "Lights"
+    {
+        over "Dome"
+        {
+            float inputs:intensity = 600
+        }
+
+        over "Sun"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}

@@ -95,6 +95,11 @@ def parse_args():
                          "정답(batch['action'])은 그대로, 평가 · 노드(observe_step)는 영향 없음. 기본 0 = 끔")
     ap.add_argument("--prev-action-noise", type=float, default=0.0,
                     help="학습 때 직전 명령 입력의 v · ω 채널에 더할 가우스 잡음 표준편차(m/s · rad/s). 기본 0 = 끔")
+    ap.add_argument("--prev-action-source", choices=["teacher", "exec"], default="teacher",
+                    help="학습 때 RSSM 의 직전 명령 입력으로 무엇을 쓸지. teacher(기본) = 교사 명령(driving_command, 지금까지와 같음) · "
+                         "exec = 실제로 실행된 명령(exec_command 열 — sim/export_xmobility.py --exec-cmd, 잡음 녹화 · DAgger 에서 교사와 다름). "
+                         "정답은 둘 다 교사 명령, 검증 · 평가 · 노드는 그대로. exec 는 모든 split 파일에 exec_command 열이 있어야 함(없으면 멈춤), "
+                         "NaN 프레임은 교사 명령으로. --prev-action-dropout · noise 와 같이 쓰면 exec 위에 흐림")
     ap.add_argument("--seed", type=int, default=None, help="pl.seed_everything(workers=True). 기본 None = 안 정함. 같은 설정 2회 차이(분산)를 잴 때 0 · 1")
     ap.add_argument("--wandb", choices=["offline", "online", "disabled"], default="offline")
     ap.add_argument("--wandb-entity", default=None)
@@ -150,6 +155,56 @@ def main():
     finally:
         os.chdir(cwd)
     epochs, precision, freeze = finetune()
+
+    exec_stats = None
+    if a.prev_action_source == "exec":
+        # 1) 데이터 점검: 모든 split 파일에 exec_command 열 — X-Mobility 로더는 정해진 열만 읽으므로(isaac_sim_dataset.py REQUIRED_COLUMNS)
+        #    그 목록에 더하면 모든 파일에 있어야 함. train 에서 실행 ≠ 교사 비율도 잼(0 이면 이 옵션은 효과 없음).
+        import glob as _glob
+        import numpy as _np
+        import pandas as _pd
+        import pyarrow.parquet as _pq
+        files = sorted(_glob.glob(os.path.join(data, "*", "*", "*.pqt")))
+        lack = [f for f in files if "exec_command" not in _pq.read_schema(f).names]
+        if not files or lack:
+            sys.exit(f"--prev-action-source exec: exec_command 열이 없는 파일 {len(lack)}/{len(files)} — "
+                     f"sim/export_xmobility.py --exec-cmd 로 변환한 데이터만 됨. 예: {lack[:3]}")
+        n = n_nan = n_diff = 0
+        for f in files:
+            if os.sep + "train" + os.sep not in f.replace("/", os.sep):
+                continue
+            d = _pd.read_parquet(f, columns=["driving_command", "exec_command"])
+            ex = _np.stack(d.exec_command.to_numpy()).astype(_np.float64)
+            dc = _np.stack(d.driving_command.to_numpy()).astype(_np.float64)
+            nan = _np.isnan(ex).any(1)
+            n += len(d); n_nan += int(nan.sum())
+            n_diff += int((_np.abs(ex[~nan, 5] - dc[~nan, 5]) > 0.02).sum())
+        exec_stats = dict(train_rows=n, nan_rows=n_nan, exec_ne_teacher_rows=n_diff,
+                          exec_ne_teacher_frac=round(n_diff / max(n, 1), 4))
+        print(f"[직전 명령 입력] 실행 명령(exec_command) — train {n}행 중 실행 ≠ 교사(|Δω|>0.02) {n_diff}행 "
+              f"({100 * n_diff / max(n, 1):.1f} %) · NaN {n_nan}행(교사 명령으로)")
+        # 2) 로더: 열 목록에 exec_command, 원소에 exec_action(NaN 이면 교사 명령) — 하위 클래스는 별도 모듈(Windows spawn 작업자용)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import xm_exec_input
+        xm_exec_input.install()
+        # 3) 모델: 학습 모드에서만 RSSM 에 넘기는 batch['action'] 을 exec_action 으로 바꾼 사본을 씀. 손실은 trainer.shared_step 이
+        #    원래 batch(교사 명령)로 계산(trainer.py:66-67), 인코더 · 정책은 action 을 안 읽음(encoders.py · action_policy.py).
+        from model.x_mobility.x_mobility import XMobility as _XM
+        _orig_xm_forward = _XM.forward
+        _seen = {"n": 0}
+
+        def _xm_forward(self, batch):
+            if self.training:
+                if "exec_action" not in batch:
+                    raise RuntimeError("--prev-action-source exec 인데 batch 에 exec_action 없음 — 로더 하위 클래스가 안 쓰임")
+                if _seen["n"] < 3:   # 처음 3 배치: 실제로 실행 명령이 들어가는지(교사와 다른 칸 수) 로그
+                    dif = (batch["exec_action"][..., 5] - batch["action"][..., 5]).abs() > 0.02
+                    print(f"[직전 명령 입력 확인] 학습 배치 {_seen['n']}: 실행 ≠ 교사 {int(dif.sum())}/{dif.numel()} 칸", flush=True)
+                    _seen["n"] += 1
+                batch = {**batch, "action": batch["exec_action"]}
+            return _orig_xm_forward(self, batch)
+
+        _XM.forward = _xm_forward
 
     if a.prev_action_dropout > 0 or a.prev_action_noise > 0:
         # RSSM.forward 는 action[:, t-1] 을 입력으로 받고(X-Mobility rssm.py:152), 손실은 batch['action'] 을 따로 정답으로 읽음
@@ -210,7 +265,8 @@ def main():
                 dataset=data, checkpoint=ckpt, checkpoint_sha12=sha12(ckpt) if ckpt else None, keys=keys,
                 epochs=epochs, precision=precision, freeze_prefixes=list(freeze), ddp_backend=a.ddp_backend, monitor=a.monitor,
                 trainable_params=n_train, seed=a.seed, prev_action_dropout=a.prev_action_dropout,
-                prev_action_noise=a.prev_action_noise, torch=torch.__version__, lightning=pl.__version__)
+                prev_action_noise=a.prev_action_noise, prev_action_source=a.prev_action_source, exec_stats=exec_stats,
+                torch=torch.__version__, lightning=pl.__version__)
     rank0 = os.environ.get("LOCAL_RANK", "0") == "0"   # DDP 는 이 스크립트를 GPU 수만큼 다시 띄움
     if rank0:
         with open(os.path.join(out, "run_meta.json"), "w", encoding="utf-8") as f:

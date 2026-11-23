@@ -144,6 +144,53 @@ def test_clamp_cmd():
     assert core.clamp_cmd(0.3, float('inf')) == (0.0, 0.0, False)
 
 
+def test_prev_action_feed_modes():
+    """노드 prev_action_mode — own = 예측 그대로 · zero = 0 · clamped = v(0칸) · ω(5칸)만 상한으로(나머지 4칸 그대로).
+    늘 float32 6칸 새 배열, 넘겨받은 action 은 안 바뀜."""
+    for dt in (np.float32, np.float64):
+        a = np.array([1.2, 0.1, -2.0, 3.0, 0.4, -0.9], dt)                 # v > 0.8 · ω < -0.7 · 다른 칸도 범위 밖
+        keep = a.copy()
+        want = {'own': a.astype(np.float32), 'zero': np.zeros(6, np.float32),
+                'clamped': np.array([0.8, 0.1, -2.0, 3.0, 0.4, -0.7], np.float32)}
+        for mode, ref in want.items():
+            got = core.prev_action_feed(a, mode)
+            assert got.dtype == np.float32 and got.shape == (core.ACTION_SIZE,), (dt, mode, got.dtype, got.shape)
+            assert np.array_equal(got, ref), (dt, mode, got)
+            assert got is not a and not np.shares_memory(got, a), (dt, mode)
+            got[:] = 99.0                                                    # 돌려준 배열을 고쳐도 action 은 그대로
+            assert np.array_equal(a, keep), (dt, mode, a)
+    assert np.array_equal(core.prev_action_feed(a), core.prev_action_feed(a, 'own'))   # 기본 own
+    lst = [-0.3, 0.0, 0.0, 0.0, 0.0, 2.5]                                    # list · v < 0 · ω > 0.7
+    assert np.array_equal(core.prev_action_feed(lst, 'clamped'), np.array([0.0, 0, 0, 0, 0, 0.7], np.float32))
+    assert lst == [-0.3, 0.0, 0.0, 0.0, 0.0, 2.5]
+    inr = np.array([0.5, 1, 2, 3, 4, -0.3], np.float32)                      # 상한 안이면 own 과 같음
+    assert np.array_equal(core.prev_action_feed(inr, 'clamped'), inr)
+    got = core.prev_action_feed(np.array([0.6, 0, 0, 0, 0, -0.5], np.float32), 'clamped', 0.1, 0.4, 0.2)
+    assert np.array_equal(got, np.array([0.4, 0, 0, 0, 0, -0.2], np.float32)), got   # 노드 v_min · v_max · w_max
+    for bad in ('teacher', 'Own', '', None):
+        try:
+            core.prev_action_feed(a, bad)
+        except ValueError:
+            continue
+        raise AssertionError(f'{bad!r} 를 받아 줌')
+
+
+def test_prev_action_feed_same_as_old_tick():
+    """own · clamped = 예전 node.py _tick 의 fed 식(feed_clamped_action false · true)과 비트 단위 같음 — 범위 밖 값 포함."""
+    rng = np.random.default_rng(4)
+    for _ in range(2000):
+        action = (rng.normal(size=6) * rng.choice([0.1, 1.0, 10.0])).astype(np.float32)
+        v, w, finite = core.clamp_cmd(action[core.V_IDX], action[core.W_IDX])
+        assert finite
+        for feed_clamped, mode in ((False, 'own'), (True, 'clamped')):
+            fed = action.copy()                                              # 6799185 의 node.py:676-679
+            if feed_clamped:
+                fed[core.V_IDX], fed[core.W_IDX] = v, w
+            ref = fed.astype(np.float32)
+            got = core.prev_action_feed(action, mode)
+            assert got.tobytes() == ref.tobytes(), (mode, action, got, ref)
+
+
 if __name__ == '__main__':
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith('test_') and callable(v)]
     failed = 0

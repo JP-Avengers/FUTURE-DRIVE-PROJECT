@@ -6,7 +6,7 @@
 # (준비 실패 DEMO_ABORT 나 판정 실패면 다시 — 최대 3번, 시도마다 route_try<n>.log 를 남김. FD_DEMO_NEED_PASS=0 이면 판정 실패도 그대로)
 # → 3) replay: 기록한 자세로 다시 놓으며 렌더 · 합성 → 4) imageio-ffmpeg 정적 바이너리로 H.264 1080p · 720p(서버에 ffmpeg 명령이 없음).
 # FD_DEMO_SKIP_DRIVE=1 = 주행 없이 다시 렌더만(앞 기록 재사용). 결과: FD_DEMO_DIR(기본 logs/nav2/demo)/<이름>_<방향>.mp4 · _1080p · _720p · _logs/ · _drive.log · _replay.log
-CD1=$HOME/Capstone_Design_1; cd $CD1
+CD1=${CD1:-$HOME/Capstone_Design_1}; cd $CD1   # 다른 작업 폴더에서 돌릴 때는 CD1 · FD_DOMAIN 으로(11.16, 기본값은 예전 그대로)
 SC=${1:-}; DIR=${2:-cw}
 [ -f "$SC" ] || { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 N=$(basename $SC .yaml); OUT=${3:-$CD1/${FD_DEMO_DIR:-logs/nav2/demo}/${N}_${DIR}.mp4}
@@ -19,7 +19,7 @@ echo "$LOUT" | grep -E "START|SAVED" | sed "s/^/  /"
 POSE=$(echo "$LOUT" | sed -nE 's/^START .*\(([-0-9.]+), ([-0-9.]+), [-0-9.]+\) [^-0-9]*([-0-9.]+).*/x0:=\1 y0:=\2 yaw0_deg:=\3/p')
 set +u
 source /opt/ros/jazzy/setup.bash
-export ROS_DOMAIN_ID=43 RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+export ROS_DOMAIN_ID=${FD_DOMAIN:-43} RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 export OMNI_KIT_ACCEPT_EULA=YES PYTHONUNBUFFERED=1 FD_SCENARIO=$SC FD_DIR=$DIR FD_LAYER=$LAYER FD_POSE="$POSE"
 LD=${OUT%.mp4}_logs; mkdir -p $LD
 # FD_DEMO_SKIP_DRIVE=1 이면 주행은 건너뛰고(앞서 남긴 _logs 의 기록으로) 다시 렌더만

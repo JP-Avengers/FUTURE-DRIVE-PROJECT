@@ -23,7 +23,7 @@ from scipy import ndimage
 from scipy.spatial import cKDTree
 
 import config
-from mesh_utils import Footprint
+from mesh_utils import Footprint, Ground, _interp_xy
 from usd_utils import verify_scene, write_scene
 
 Y_UP_TO_Z_UP = np.array([[1, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], float)   # (x, y, z) → (x, −z, y)
@@ -114,12 +114,253 @@ def find_floor(mesh, c):
                    floor_plane_inlier_pct=round(100 * len(inl) / max(1, sel.sum()), 1))
 
 
-def floor_color(visuals, materials, band):
+def drop_floating(parts, ground, c):
+    """땅에 닿지 않고 떠 있는 조각(이어진 덩어리의 가장 낮은 점이 바닥 위 float_h_m 보다 높음)을 부분마다 지움. → (새 parts, 지운 삼각형 수)"""
+    allm = merged(parts)
+    allm.remove_duplicated_vertices()                         # 부분(텍스처 장) 사이 이음매를 이어 붙임 — 삼각형 순서는 그대로
+    v, t = np.asarray(allm.vertices), np.asarray(allm.triangles)
+    lab, cnt, _ = allm.cluster_connected_triangles()
+    lab, cnt = np.asarray(lab), np.asarray(cnt)
+    rel = v[:, 2] - (ground.height(v[:, :2]) if ground is not None else 0.0)
+    low = np.full(len(cnt), np.inf)
+    np.minimum.at(low, lab, rel[t].min(1))
+    drop = ((low > c.get("float_h_m", 0.3)) & (cnt < c.get("float_max_tris", 20000)))[lab]
+    out, k = [], 0
+    for name, m, uv, img in parts:
+        n = len(m.triangles)
+        keep = ~drop[k:k + n]
+        k += n
+        if keep.all():
+            out.append((name, m, uv, img))
+            continue
+        tri = np.asarray(m.triangles)[keep]
+        used, inv = np.unique(tri, return_inverse=True)
+        mm = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(np.asarray(m.vertices)[used]), o3d.utility.Vector3iVector(inv.reshape(-1, 3)))
+        if m.has_vertex_colors():
+            mm.vertex_colors = o3d.utility.Vector3dVector(np.asarray(m.vertex_colors)[used])
+        mm.compute_vertex_normals()
+        if len(tri):
+            out.append((name, mm, None if uv is None else uv[used], img))
+    return out, int(drop.sum())
+
+
+def redact(parts, path):
+    """가릴 상자(씬 좌표) 안의 삼각형이 쓰는 텍스처 자리를 한 가지 색(그 자리 중앙값)으로 덮음 — 차 번호판 등. 형상은 그대로.
+    파일: {"boxes": [{"center": [x,y,z], "right": [..], "fwd": [..], "half": [가로, 세로(z), 깊이]}]} → (새 parts, 덮은 화소 수)"""
+    from PIL import ImageDraw
+    boxes = json.load(open(path, encoding="utf-8"))["boxes"]
+    out, npx = [], 0
+    for name, m, uv, img in parts:
+        if uv is None:
+            out.append((name, m, uv, img))
+            continue
+        v, t = np.asarray(m.vertices), np.asarray(m.triangles)
+        arr = None
+        for b in boxes:
+            d = v - np.array(b["center"])
+            inside = (np.abs(d @ np.array(b["right"])) < b["half"][0]) & (np.abs(d[:, 2]) < b["half"][1]) & (np.abs(d @ np.array(b["fwd"])) < b["half"][2])
+            tri = t[inside[t].any(1)]
+            if len(tri) == 0:
+                continue
+            if arr is None:
+                arr = np.asarray(img.convert("RGB")).copy()
+            H, W = arr.shape[:2]
+            mask = Image.new("L", (W, H), 0)
+            dr = ImageDraw.Draw(mask)
+            px = np.c_[uv[:, 0] % 1.0 * W, (1 - uv[:, 1] % 1.0) * H]
+            for a in tri:
+                dr.polygon([tuple(px[i]) for i in a], fill=255, outline=255)
+            mk = ndimage.binary_dilation(np.asarray(mask) > 0, iterations=2)
+            arr[mk] = np.median(arr[mk], axis=0)
+            npx += int(mk.sum())
+        out.append((name, m, uv, img if arr is None else Image.fromarray(arr)))
+    return out, npx
+
+
+def warp_parts(parts, path):
+    """기준 맵에 맞게 휘는 변형(npz)을 정점에 적용 — 혼합 맵: 폴리캠 안의 틀어짐 · 축척 · 기울기를 기준 맵에 맞춤.
+    dxy[ix, iy, 2] (lo · cell 격자, 놓은 좌표 → 수평 변위) 를 더한 뒤, dz[ix, iy] (zlo · zcell 격자, 휜 좌표 → 기준 바닥과의 높이 차) 를 뺌."""
+    w = np.load(path)
+    mx = 0.0
+    for _, m, _, _ in parts:
+        v = np.asarray(m.vertices).copy()
+        f = (v[:, :2] - w["lo"]) / float(w["cell"])
+        d = np.stack([ndimage.map_coordinates(w["dxy"][..., k], [f[:, 0], f[:, 1]], order=1, mode="nearest") for k in range(2)], 1)
+        v[:, :2] += d
+        fz = (v[:, :2] - w["zlo"]) / float(w["zcell"]) - 0.5
+        v[:, 2] -= ndimage.map_coordinates(w["dz"], [fz[:, 0], fz[:, 1]], order=1, mode="nearest")
+        m.vertices = o3d.utility.Vector3dVector(v)
+        m.compute_vertex_normals()
+        mx = max(mx, float(np.hypot(d[:, 0], d[:, 1]).max()))
+    return mx
+
+
+def base_points(usdc, prims):
+    """기준 맵 USD 의 prim 정점 (범위 합치기용)."""
+    from pxr import Usd, UsdGeom
+    st = Usd.Stage.Open(usdc)
+    root = st.GetDefaultPrim().GetPath()
+    return np.vstack([np.array(UsdGeom.Mesh(st.GetPrimAtPath(root.AppendChild(p))).GetPointsAttr().Get()) for p in prims])
+
+
+def add_base_prims(mesh_path, usdc, prims, drop):
+    """기준 맵 USD 의 보이는 prim(바닥 등)과 그 재질 · 텍스처를 이 맵의 메쉬 파일로 옮기고 drop 만큼 내림 (위에 얹는 스캔 바닥과 겹쳐 깜빡이지 않게).
+    스캔 바닥에 구멍이 있거나 범위가 모자란 곳에서 기준 맵 바닥이 보임."""
+    import shutil
+    from pxr import Sdf, Usd, UsdGeom, Vt
+    src, dst = Sdf.Layer.FindOrOpen(usdc), Sdf.Layer.FindOrOpen(mesh_path)
+    root = Sdf.Path("/" + src.defaultPrim)
+    if src.defaultPrim != dst.defaultPrim:
+        raise SystemExit(f"base_map: 루트 prim 이름이 다름 ({src.defaultPrim} / {dst.defaultPrim}) — name 을 같게")
+    for p in prims:
+        Sdf.CopySpec(src, root.AppendChild(p), dst, root.AppendChild(p))
+    from pxr import UsdShade
+    sst = Usd.Stage.Open(usdc)
+    files = set()
+    for p in prims:                                             # 옮긴 prim 에 묶인 재질과 그 재질이 쓰는 텍스처만
+        mat = UsdShade.MaterialBindingAPI(sst.GetPrimAtPath(root.AppendChild(p))).GetDirectBinding().GetMaterial()
+        if not mat:
+            continue
+        mp = mat.GetPath()
+        if not dst.GetPrimAtPath(mp):
+            if not dst.GetPrimAtPath(mp.GetParentPath()):
+                Sdf.CreatePrimInLayer(dst, mp.GetParentPath())
+            Sdf.CopySpec(src, mp, dst, mp)
+        for sh in Usd.PrimRange(mat.GetPrim()):
+            f = UsdShade.Shader(sh).GetInput("file") if sh.IsA(UsdShade.Shader) else None
+            if f and f.Get() is not None:
+                files.add(os.path.basename(f.Get().path))
+    dst.Save()
+    st = Usd.Stage.Open(mesh_path)
+    for p in prims:
+        g = UsdGeom.Mesh(st.GetPrimAtPath(root.AppendChild(p)))
+        pts = np.array(g.GetPointsAttr().Get())
+        pts[:, 2] -= drop
+        g.GetPointsAttr().Set(Vt.Vec3fArray.FromNumpy(pts.astype(np.float32)))
+        g.GetExtentAttr().Set(Vt.Vec3fArray.FromNumpy(np.array([pts.min(0), pts.max(0)], np.float32)))
+    st.GetRootLayer().Save()
+    td = os.path.join(os.path.dirname(usdc), "textures")
+    os.makedirs(os.path.join(os.path.dirname(mesh_path), "textures"), exist_ok=True)
+    for f in files:
+        if os.path.exists(os.path.join(td, f)):
+            shutil.copy(os.path.join(td, f), os.path.join(os.path.dirname(mesh_path), "textures", f))
+
+
+def match_base_color(mesh_path, prim, visuals, materials, ground, band, near_m=3.0, mode="holes"):
+    """기준 맵에서 가져온 바닥의 텍스처 색을 얹은 스캔 바닥 색에 맞춤 — 스캔 바닥의 구멍으로 기준 맵 바닥이 보일 때 이음매가 덜 보이게.
+    기준 바닥 중 스캔 바닥이 없는 자리(구멍)의 색 중앙값 → 그 둘레 near_m 안 스캔 바닥 색 중앙값이 되도록 채널마다 한 배율 (이 맵에 복사한 텍스처만 바꿈)."""
+    from pxr import Usd, UsdGeom, UsdShade
+    pts, cols = [], []
+    for name, m in visuals.items():                             # 스캔 바닥 정점과 그 색
+        if name not in materials or materials[name].get("uv") is None:
+            continue
+        v, n = np.asarray(m.vertices), np.asarray(m.vertex_normals)
+        sel = (n[:, 2] > 0.9) & (np.abs(v[:, 2] - (ground.height(v[:, :2]) if ground else 0.0)) < band)
+        if not sel.any():
+            continue
+        im = np.asarray(Image.open(materials[name]["color"]).convert("RGB")) / 255.0
+        uv = np.asarray(materials[name]["uv"])[sel] % 1.0
+        pts.append(v[sel, :2])
+        cols.append(im[((1 - uv[:, 1]) * (im.shape[0] - 1)).astype(int), (uv[:, 0] * (im.shape[1] - 1)).astype(int)])
+    pts, cols = np.vstack(pts), np.vstack(cols)
+    st = Usd.Stage.Open(mesh_path)
+    g = UsdGeom.Mesh(st.GetPrimAtPath(f"/{st.GetDefaultPrim().GetName()}/{prim}"))
+    bp = np.array(g.GetPointsAttr().Get())[:, :2]
+    buv = np.array(UsdGeom.PrimvarsAPI(g).GetPrimvar("st").Get())
+    tex = None
+    for sh in st.Traverse():
+        if sh.GetName() == "ColorTex" and prim in str(sh.GetPath()):
+            tex = UsdShade.Shader(sh).GetInput("file").Get().resolvedPath
+    if tex is None:
+        return None
+    if mode == "overlap":                                       # 두 바닥이 겹치는 자리에서 같은 곳의 색끼리 견줌 (구멍이 작거나 구멍 자리의 기준 색이 어두울 때)
+        d, j = cKDTree(pts).query(bp)
+        ov = (d < 0.1) & (buv >= 0).all(1) & (buv <= 1).all(1)
+        if ov.sum() < 100:
+            return None
+        im = np.asarray(Image.open(tex).convert("RGB")).astype(np.float32) / 255.0
+        src = im[((1 - buv[ov, 1]) * (im.shape[0] - 1)).astype(int), (buv[ov, 0] * (im.shape[1] - 1)).astype(int)]
+        gain = np.median(cols[j[ov]], axis=0) / np.maximum(np.median(src, axis=0), 1e-3)
+        Image.fromarray((np.clip(im * gain, 0, 1) * 255).astype(np.uint8)).save(tex, quality=92)
+        return np.round(gain, 3).tolist()
+    hole = cKDTree(pts).query(bp)[0] > 0.3                      # 기준 바닥 정점 중 스캔 바닥이 없는 자리
+    if hole.sum() < 100:
+        return None
+    step = max(1, int(hole.sum() // 20000))
+    hp = bp[hole][::step]
+    near = np.unique(np.concatenate(cKDTree(pts).query_ball_point(hp[::10], near_m)).astype(int))
+    im = np.asarray(Image.open(tex).convert("RGB")).astype(np.float32) / 255.0
+    huv = buv[hole][::step]
+    ok = (huv >= 0).all(1) & (huv <= 1).all(1)
+    src = im[((1 - huv[ok, 1]) * (im.shape[0] - 1)).astype(int), (huv[ok, 0] * (im.shape[1] - 1)).astype(int)]
+    gain = np.median(cols[near], axis=0) / np.maximum(np.median(src, axis=0), 1e-3)
+    Image.fromarray((np.clip(im * gain, 0, 1) * 255).astype(np.uint8)).save(tex, quality=92)
+    return np.round(gain, 3).tolist()
+
+
+def align_matrix(path):
+    """맞춤 파일(json) → 4x4. 다른 맵(기준 좌표)에 맞춰 둔 변환을 그대로 씀 — 바닥 찾기 · 원점 옮기기를 건너뜀.
+    xy = scale * R @ xy + t (수평 닮음 변환), z = scale * z − (a x' + b y' + c) (기준 바닥과의 높이 · 기울기 차, 없으면 0)."""
+    T = json.load(open(path, encoding="utf-8"))
+    if "matrix" in T:                                           # 4x4 를 통째로 (실내: 스캔 자체 바닥으로 수평 · z 0 을 잡은 것 + 수평 회전 · 이동)
+        M = np.array(T["matrix"], float)
+        return M, dict(align_file=os.path.basename(path), scale=round(float(np.cbrt(abs(np.linalg.det(M[:3, :3])))), 5),
+                       yaw_deg=round(float(np.degrees(np.arctan2(M[1, 0], M[0, 0]))), 3), t_xy=np.round(M[:2, 3], 3).tolist(), floor_tilt_deg=T.get("own_floor_tilt_deg", 0.0))
+    s, R, t = float(T["scale"]), np.array(T["R"], float), np.array(T["t"], float)
+    a, b, c = T.get("z_plane", [0.0, 0.0, 0.0])
+    M = np.eye(4)
+    M[:2, :2] = s * R
+    M[:2, 3] = t
+    M[2, :2] = -(np.array([a, b]) @ (s * R))
+    M[2, 2] = s
+    M[2, 3] = -(a * t[0] + b * t[1] + c)
+    tilt = float(np.degrees(np.arctan(np.hypot(a, b))))
+    return M, dict(align_file=os.path.basename(path), scale=round(s, 5), yaw_deg=round(float(np.degrees(np.arctan2(R[1, 0], R[0, 0]))), 3),
+                   t_xy=np.round(t, 3).tolist(), floor_tilt_deg=round(tilt, 2))
+
+
+def scan_ground(mesh, c):
+    """평평하지 않은 바닥(실외): 스캔의 위를 향한 면으로 바닥 높이 격자를 만듦 (mesh_utils.Ground).
+    1) 거친 칸(rough_cell_m)마다 위 향한 정점 높이의 낮은 쪽(15%) = 대략의 바닥 (차 지붕 · 보닛은 빠짐)
+    2) 그 ± ground_band_m 안의 정점만으로 잔 칸(ground_cell_m) 중앙값 → 빈 칸(구멍 · 차 밑)은 둘레에서 보간 → 다듬기"""
+    v, n = np.asarray(mesh.vertices), np.asarray(mesh.vertex_normals)
+    up = n[:, 2] > 0.9
+    p = v[up]
+    margin = 2.0
+    lo = v[:, :2].min(0) - margin
+
+    def cells(cell, pts, stat):
+        shape = np.ceil((v[:, :2].max(0) + margin - lo) / cell).astype(int) + 1
+        ij = np.floor((pts[:, :2] - lo) / cell).astype(int)
+        key = ij[:, 0] * shape[1] + ij[:, 1]
+        order = np.lexsort((pts[:, 2], key))
+        keys, start, count = np.unique(key[order], return_index=True, return_counts=True)
+        grid = np.full(shape, np.nan)
+        ok = count >= 3
+        grid.flat[keys[ok]] = pts[:, 2][order][start[ok] + (count[ok] * stat).astype(int)]
+        have = ~np.isnan(grid)
+        grid[~have] = _interp_xy(np.argwhere(have).astype(float), grid[have])(np.argwhere(~have).astype(float))
+        return grid, have
+
+    rc = c.get("rough_cell_m", 3.0)
+    rough, _ = cells(rc, p, 0.15)
+    rough = Ground(ndimage.median_filter(rough, size=3), lo, rc)
+    near = np.abs(p[:, 2] - rough.height(p[:, :2])) < c.get("ground_band_m", 0.2)
+    gc = c.get("ground_cell_m", 0.5)
+    grid, have = cells(gc, p[near], 0.5)
+    grid = ndimage.gaussian_filter(ndimage.median_filter(grid, size=3), c.get("ground_sigma_cells", 1.0))
+    g = Ground(grid, lo, gc)
+    g.stats = dict(cell_m=gc, floor_vertices=int(near.sum()), measured_cells=int(have.sum()),
+                   z_range_m=[round(float(grid[have].min()), 2), round(float(grid[have].max()), 2)])
+    return g
+
+
+def floor_color(visuals, materials, band, ground=None):
     """보이는 바닥 색 (중앙값): 부분마다 위를 향한 바닥 높이 정점의 정점 색, 텍스처 부분은 그 정점 UV 자리의 텍스처 색."""
     cols = []
     for name, m in visuals.items():
         v, n = np.asarray(m.vertices), np.asarray(m.vertex_normals)
-        sel = (n[:, 2] > 0.9) & (np.abs(v[:, 2]) < band)
+        sel = (n[:, 2] > 0.9) & (np.abs(v[:, 2] - (ground.height(v[:, :2]) if ground else 0.0)) < band)
         if sel.sum() == 0:
             continue
         if name in materials:
@@ -216,10 +457,16 @@ def main():
         print(f"      ⚠ 범위가 이상함 ({ext.max():.2f} m) — 단위 확인 (input.scale: cm 이면 0.01)")
 
     o = cfg.get("orient", {})
-    M, st = find_floor(whole, o)
+    if o.get("align_file"):                                     # 기준 맵에 맞춰 둔 변환 (설정 파일 옆)
+        M, st = align_matrix(os.path.join(os.path.dirname(os.path.abspath(args.config)), o["align_file"]))
+        st["floor_area_m2"] = "-"
+    else:
+        M, st = find_floor(whole, o)
     whole.transform(M)
     v = np.asarray(whole.vertices)
-    if o.get("origin", "min_corner") == "min_corner":
+    if o.get("align_file"):
+        pass
+    elif o.get("origin", "min_corner") == "min_corner":
         M2 = np.eye(4)
         M2[:2, 3] = -v[:, :2].min(0)
         M = M2 @ M
@@ -237,10 +484,34 @@ def main():
     usd_dir = os.path.join(out, "usd")
     tex_dir = os.path.join(out, "glb_tex")
     os.makedirs(tex_dir, exist_ok=True)
-    visuals, materials = {}, {}
-    for k, (name, m, uv, img) in enumerate(parts):
+    for _, m, _, _ in parts:
         m.transform(M)
         m.compute_vertex_normals()
+    cl = cfg.get("clean", {})
+    here = os.path.dirname(os.path.abspath(args.config))
+    if cl.get("float_h_m"):                                     # 떠 있는 조각 지움 (보이는 층 · 충돌 둘 다)
+        c0 = cfg.get("collision", {})                         # 휘기 전 좌표이므로 스캔 자체의 바닥 높이로 판단
+        g0 = scan_ground(whole, c0) if (c0.get("ground") == "scan" or c0.get("ground_file")) else None
+        parts, nd = drop_floating(parts, g0, cl)
+        whole = merged(parts)
+        whole.compute_vertex_normals()
+        report["clean"] = dict(floating_tris_removed=nd)
+        print(f"      떠 있는 조각: 삼각형 {nd:,} 지움")
+    if cl.get("redact_file"):                                   # 번호판 등: 텍스처에서 가림
+        parts, npx = redact(parts, os.path.join(here, cl["redact_file"]))
+        report.setdefault("clean", {})["redacted_texels"] = npx
+        print(f"      가림: 텍스처 화소 {npx:,} 덮음 ({cl['redact_file']})")
+    if o.get("warp_file"):                                      # 혼합 맵: 기준 맵에 맞게 휨 (가릴 상자 · 떠 있는 조각은 휘기 전 좌표에서 처리)
+        mx = warp_parts(parts, os.path.join(here, o["warp_file"]))
+        whole = merged(parts)
+        whole.compute_triangle_normals()
+        whole.compute_vertex_normals()
+        report["orient"]["warp"] = dict(file=o["warp_file"], max_shift_m=round(mx, 2))
+        print(f"      휘기: 기준 맵에 맞춤 — 수평 변위 최대 {mx:.2f} m ({o['warp_file']})")
+    bm = cfg.get("base_map")
+    base_xy = base_points(os.path.expanduser(bm["usd"]), bm["prims"])[:, :2] if bm else np.zeros((0, 2))
+    visuals, materials = {}, {}
+    for k, (name, m, uv, img) in enumerate(parts):
         pname = "Visual" if len(parts) == 1 else f"Visual{k}"
         visuals[pname] = m
         if uv is not None:
@@ -251,7 +522,31 @@ def main():
     print(f"[3/5] 보이는 부분: prim {len(visuals)}개 · 사진 텍스처 {len(materials)}")
 
     cc = cfg.get("collision", {})
-    col = o3d.geometry.TriangleMesh(whole.vertices, whole.triangles)
+    ground = None
+    flat = whole                                                # 바닥을 0 으로 편 사본 (바닥 · 물체 가르기 · 빈 곳 찾기는 여기서)
+    if cc.get("ground") == "scan" or cc.get("ground_file"):
+        if cc.get("ground_file"):                               # 기준 맵의 바닥 높이 지도 (혼합 맵: 충돌 바닥 = 기준 맵 바닥)
+            ground = Ground.load(os.path.expanduser(cc["ground_file"]))
+            ground.stats = dict(source=os.path.basename(cc["ground_file"]), cell_m=ground.cell, z_range_m="-")
+            if cc.get("ground_outside") == "scan" and len(base_xy):   # 기준 맵 바닥이 측정된 범위 밖은 스캔(휜 뒤) 바닥 높이 — 거기는 기준 맵 높이가 보간값이라 못 믿음
+                gs = scan_ground(whole, cc)
+                ij = np.argwhere(np.ones(ground.grid.shape, bool))
+                cxy = ground.lo + (ij + 0.5) * ground.cell
+                ins = Footprint(base_xy, 0.1).shrunk(cc.get("ground_inside_margin_m", 0.5)).inside(cxy).reshape(ground.grid.shape)
+                ground.grid = np.where(ins, ground.grid, gs.height(cxy).reshape(ground.grid.shape))
+                ground.stats["outside"] = "scan"
+                ground.stats["inside_cells"] = int(ins.sum())
+        else:
+            ground = scan_ground(whole, cc)
+        ground.save(os.path.join(out, "ground.npz"))
+        fv = np.asarray(whole.vertices).copy()
+        fv[:, 2] -= ground.height(fv[:, :2])
+        flat = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(fv), whole.triangles)
+        flat.compute_triangle_normals()
+        flat.compute_vertex_normals()
+        report["ground"] = ground.stats
+        print(f"      바닥 높이 지도 ({'기준 맵' if cc.get('ground_file') else '스캔'}): 칸 {ground.stats['cell_m']} m · 높이 {ground.stats['z_range_m']} m")
+    col = o3d.geometry.TriangleMesh(flat.vertices, flat.triangles)
     col.remove_duplicated_vertices()
     col.remove_degenerate_triangles()
     tri_c, n_c, _ = col.cluster_connected_triangles()
@@ -261,22 +556,32 @@ def main():
     vv, tt = np.asarray(col.vertices), np.asarray(col.triangles)
     cen = vv[tt].mean(1)
     scan_floor = (np.asarray(col.triangle_normals)[:, 2] > 0.9) & (np.abs(cen[:, 2]) < cc.get("floor_band_m", 0.03))
+    if cc.get("low_h_m"):                                       # 바닥에 붙은 낮은 것(울퉁불퉁한 스캔 바닥 · 턱)도 뺌 — 바닥 한 장과 겹치면 로봇이 걸림
+        scan_floor |= cen[:, 2] < cc["low_h_m"]
     if cc.get("flat_floor", True):                              # 스캔 바닥은 빼고 평평한 한 장
         col.remove_triangles_by_mask(scan_floor)
     col.remove_unreferenced_vertices()
+    if cc.get("min_cluster_tris_after"):                        # 바닥을 뺀 뒤 남은 부스러기
+        tri_c, n_c, _ = col.cluster_connected_triangles()
+        col.remove_triangles_by_mask(np.asarray(n_c)[np.asarray(tri_c)] < cc["min_cluster_tris_after"])
+        col.remove_unreferenced_vertices()
     if cc.get("tris") and len(col.triangles) > cc["tris"]:
         col = col.simplify_quadric_decimation(target_number_of_triangles=cc["tris"])
+    if ground is not None:                                      # 편 것을 다시 바닥 높이로
+        cv = np.asarray(col.vertices).copy()
+        cv[:, 2] += ground.height(cv[:, :2])
+        col.vertices = o3d.utility.Vector3dVector(cv)
     colliders = {}
     fs_cfg = cfg.get("drive_path", {})
-    fp, free = free_space(whole, fs_cfg)
-    floor_fp = Footprint(np.asarray(whole.vertices)[:, :2], cc.get("floor_cell_m", 0.1), margin=cc.get("floor_margin_m", 0.3))
-    colliders["Collision"] = col + floor_fp.plane(0.0) if cc.get("flat_floor", True) else col
-    if cc.get("floor_fill", True):                              # 보이는 바닥 받침: 스캔 바닥 아래 한 장 (스캔 가장자리 · 벽 밑 틈이 하얗게 비치지 않게)
-        fill = floor_fp.plane(-cc.get("floor_fill_depth_m", 0.02))   # 스캔 바닥이 몇 mm 출렁여도 뚫고 나오지 않게 2 cm 아래
-        fill.paint_uniform_color(floor_color(visuals, materials, cc.get("floor_band_m", 0.03)))
+    fp, free = free_space(flat, fs_cfg)
+    floor_fp = Footprint(np.vstack([np.asarray(whole.vertices)[:, :2], base_xy]), cc.get("floor_cell_m", 0.1), margin=cc.get("floor_margin_m", 0.3))
+    colliders["Collision"] = col + floor_fp.plane(0.0, ground=ground) if cc.get("flat_floor", True) else col
+    if cc.get("floor_fill", True):                              # 보이는 바닥 받침: 스캔 바닥 아래 한 장 (스캔 가장자리 · 벽 밑 틈 · 바닥 구멍이 하얗게 비치지 않게)
+        fill = floor_fp.plane(-cc.get("floor_fill_depth_m", 0.02), ground=ground)   # 스캔 바닥이 몇 mm 출렁여도 뚫고 나오지 않게 2 cm 아래
+        fill.paint_uniform_color(floor_color(visuals, materials, cc.get("floor_band_m", 0.03), ground))
         visuals["FloorFill"] = fill
     if cc.get("boundary_height_m", 2.0) > 0:
-        colliders["Boundary"] = floor_fp.walls(cc.get("boundary_height_m", 2.0))
+        colliders["Boundary"] = floor_fp.walls(cc.get("boundary_height_m", 2.0), ground=ground, below=0.5 if ground is not None else 0.0)
     report["collision"] = dict(object_tris=len(col.triangles), scan_floor_tris_removed=int(scan_floor.sum()) if cc.get("flat_floor", True) else 0,
                                floor_area_m2=round(floor_fp.area(), 1), boundary_height_m=cc.get("boundary_height_m", 2.0))
     print(f"[4/5] 충돌: 물체 삼각형 {len(col.triangles):,} (스캔 바닥 {report['collision']['scan_floor_tris_removed']:,} 빼고)"
@@ -285,6 +590,9 @@ def main():
     xy = skeleton_path(fp, free, fs_cfg)
     h = fs_cfg.get("camera_height_m", 0.3)
     poses = path_poses(xy, h)
+    if ground is not None and len(xy):
+        for P, z in zip(poses, ground.height(xy)):
+            P[2, 3] += z
     W, H, fov = 640, 480, 90.0
     fx = W / 2 / np.tan(np.radians(fov / 2))
     json.dump(dict(note="GLB 입력 — 바닥 빈 곳 뼈대로 만든 가상 경로 (실제 촬영 경로 아님)", camera_height_m=h,
@@ -301,6 +609,15 @@ def main():
     info = dict(source="glb", name=cfg["name"], built=time.strftime("%Y-%m-%d"))
     scene_path, mesh_path = write_scene(usd_dir, cfg["name"], visuals, colliders, info=info,
                                         double_sided=tuple(cfg.get("usd", {}).get("double_sided", ["Visual"])) + tuple(visuals), materials=materials)
+    if bm:
+        add_base_prims(mesh_path, os.path.expanduser(bm["usd"]), bm["prims"], bm.get("drop_m", 0.04))
+        report["base_map"] = dict(prims=bm["prims"], drop_m=bm.get("drop_m", 0.04))
+        print(f"      기준 맵에서 가져옴: {' · '.join(bm['prims'])} ({bm.get('drop_m', 0.04) * 100:.0f} cm 내림)")
+        if bm.get("match_color"):
+            gain = match_base_color(mesh_path, bm["prims"][0], visuals, materials, ground, cc.get("floor_band_m", 0.03),
+                                    mode="overlap" if bm["match_color"] == "overlap" else "holes")
+            report["base_map"]["color_gain"] = gain
+            print(f"      기준 바닥 색을 스캔 바닥에 맞춤: 채널 배율 {gain}")
     problems, counts = verify_scene(scene_path, mesh_path)
     report["usd"] = dict(scene=scene_path, mesh=mesh_path, mesh_mb=round(os.path.getsize(mesh_path) / 1e6, 2), problems=problems, prims=counts)
     report["seconds"] = round(time.time() - t0, 1)

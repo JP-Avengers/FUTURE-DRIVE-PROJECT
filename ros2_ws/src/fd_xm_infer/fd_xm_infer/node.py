@@ -267,7 +267,10 @@ class XmInfer(Node):
         self.reset_on_stale = _as_bool(p('reset_on_stale', True, '끊겼다 재개하면 상태 리셋'))
         self.route_jump_m = float(p('route_jump_m', 1.5, '경로가 이만큼 뛰면 상태 리셋'))
         self.pose_jump_m = float(p('pose_jump_m', 0.5, 'csv 모드 위치가 이만큼 뛰면 상태 리셋'))
-        self.feed_clamped = _as_bool(p('feed_clamped_action', False, '이전 명령 입력에 자른 값(기본 원래 예측)'))
+        self.feed_clamped = _as_bool(p('feed_clamped_action', False, '이전 명령 입력에 자른 값(기본 원래 예측)'
+                                       ' — prev_action_mode:=clamped 와 같음'))
+        self.prev_action_mode = str(p('prev_action_mode', 'own', '이전 명령 입력: own(직전 예측) · zero(늘 0) · '
+                                      'clamped(v · ω 를 상한으로 자른 값)'))
         self.publish_path = _as_bool(p('publish_path', True, '~/path · ~/route 디버그'))
         self.path_scale = float(p('path_scale', 1.0, '학습 데이터 PATH_SCALE.json 의 scale(p3 계열 ckpt = 0.3333) — ~/path 를 '
                                   '이 값으로 나눠 m 로 냄. 명령 v · ω 는 무관'))
@@ -290,6 +293,14 @@ class XmInfer(Node):
             raise StopNode('rate_hz > 0 이어야 함')
         if not self.path_scale > 0:
             raise StopNode(f'path_scale {self.path_scale} — 양수(p3 계열 ckpt 는 0.3333, 원래 축척 1.0)')
+        if self.prev_action_mode not in core.PREV_ACTION_MODES:
+            raise StopNode(f'prev_action_mode {self.prev_action_mode!r} — own · zero · clamped'
+                           '(teacher 는 오프라인 평가 전용)')
+        if self.feed_clamped:                      # 예전 이름 — clamped 와 같은 뜻
+            if self.prev_action_mode == 'zero':
+                raise StopNode('feed_clamped_action:=true 와 prev_action_mode:=zero 가 충돌 — 하나만 주세요'
+                               '(자른 값이면 prev_action_mode:=clamped)')
+            self.prev_action_mode = 'clamped'
 
         self.model = None
         self.cmd_pub = None
@@ -382,7 +393,7 @@ class XmInfer(Node):
         self.create_timer(0.5, self._wall_watchdog, clock=Clock(clock_type=ClockType.STEADY_TIME))
         lg.info(f'시작 — {1.0 / self.rate_hz:.3f} s 마다 추론 · 상한 v [{self.v_min}, {self.v_max}] · '
                 f'|ω| ≤ {self.w_max} · 끊김 {self.stale_s}/{self.route_stale_s} s · '
-                f'use_sim_time {self.get_parameter("use_sim_time").value}')
+                f'이전 명령 입력 {self.prev_action_mode} · use_sim_time {self.get_parameter("use_sim_time").value}')
 
     def _setup_csv_route(self):
         lg = self.get_logger()
@@ -431,6 +442,7 @@ class XmInfer(Node):
             gin=gins, gin_bindings=binds, gin_skip=list(GIN_SKIP), ckpt=self.ckpt,
             ckpt_sha12=_sha12(self.ckpt), keys=self.model.keys, device=self.device,
             cuda_device=self.model.cuda_name, policy_diffusion=self.model.diffusion,
+            prev_action_mode=self.prev_action_mode,     # 실제 쓰는 값(feed_clamped_action:=true 면 clamped)
             params={k: v.value for k, v in self.get_parameters_by_prefix('').items()})
         with open(self.meta_path, 'w', encoding='utf-8') as f:
             json.dump(self.meta, f, ensure_ascii=False, indent=1, default=str)
@@ -673,10 +685,8 @@ class XmInfer(Node):
                         status = 'nan'
                         self._reset('모델 출력이 유한값 아님')
                     else:
-                        fed = action.copy()
-                        if self.feed_clamped:
-                            fed[core.V_IDX], fed[core.W_IDX] = v, w
-                        self.prev_action = fed.astype(np.float32)        # navigator.py:242 · 265
+                        self.prev_action = core.prev_action_feed(        # navigator.py:242 · 265
+                            action, self.prev_action_mode, self.v_min, self.v_max, self.w_max)
                         if self.publish_path:
                             self._publish_debug(route_pts, path)
                     st = im.header.stamp

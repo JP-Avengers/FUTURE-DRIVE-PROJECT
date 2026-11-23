@@ -1,6 +1,6 @@
 # 약한 구간 — eval_zeroshot_test → eval_test
 
-- a: `C:\Users\hennr\AppData\Local\Temp\claude\kg_fd3\eval_zeroshot_test\frames.csv` · 프레임 4753 · split test · ckpt 339c68f9e027 · 이전 명령 직전 예측
+- a: `<로컬 임시 폴더>\kg_fd3\eval_zeroshot_test\frames.csv` · 프레임 4753 · split test · ckpt 339c68f9e027 · 이전 명령 직전 예측
   - s 출처: route_s 4753 · s 없어 뺀 프레임 0 · 방향 출처(프레임): file 4753
   - cw: route_s vs 지도 위치 투영 차 중앙값 0.000 m · P95 0.000 m (n 4753)
 - b: `C:\Users\hennr\Downloads\xm_ft_kaggle_full\xm_ft_kaggle_e10\eval_test\frames.csv` · 프레임 4753 · split test · ckpt d86970ce1faf · 이전 명령 직전 예측

@@ -25,6 +25,8 @@ ACTION_SIZE, PATH_SIZE = 6, 10       # base_train_config.gin:3-5
 V_IDX, W_IDX = 0, 5                  # navigator.py:272-273
 V_MIN, V_MAX, W_MAX = 0.0, 0.8, 0.7  # docs/interfaces/topics.md:61 — 0 ≤ v ≤ 0.8 m/s, |ω| ≤ 0.7 rad/s
 PROJECT_BACK, PROJECT_FWD = 1.0, 10.0   # sim/export_xmobility.py:239 의 project(…, back=1.0, fwd=10.0)
+# 노드 prev_action_mode 값 — e2e/eval_offline.py --prev-action-mode 와 같은 이름(teacher 는 오프라인 평가 전용)
+PREV_ACTION_MODES = ('own', 'zero', 'clamped')
 
 
 # ---------------------------------------------------------------- 이미지
@@ -256,6 +258,25 @@ def clamp_cmd(v, w, v_min=V_MIN, v_max=V_MAX, w_max=W_MAX):
     if not (math.isfinite(v) and math.isfinite(w)):
         return 0.0, 0.0, False
     return min(max(v, v_min), v_max), min(max(w, -w_max), w_max), True
+
+
+def prev_action_feed(action, mode='own', v_min=V_MIN, v_max=V_MAX, w_max=W_MAX):
+    """모델 action 6칸 → 다음 추론에 넣을 이전 명령(float32 6칸) — 노드 prev_action_mode.
+
+      own      예측 6칸 그대로(navigator.py:242 · 265) — 기본
+      zero     늘 0 — 리셋 직후 · run 첫 프레임과 같은 입력(드롭아웃 학습판을 '직전 명령 0' 으로 볼 때)
+      clamped  V_IDX · W_IDX 칸만 clamp_cmd 로 자른 값(= 보낸 명령), 나머지 4칸 그대로 = feed_clamped_action:=true
+    action 은 바꾸지 않음. 유한값 검사는 부르는 쪽(노드는 v · ω 가 유한값이 아니면 리셋하고 이것을 부르지 않음).
+    """
+    if mode not in PREV_ACTION_MODES:
+        raise ValueError(f'prev_action_mode {mode!r} — {" · ".join(PREV_ACTION_MODES)} 중 하나')
+    if mode == 'zero':
+        return np.zeros(ACTION_SIZE, np.float32)
+    a = np.asarray(action)
+    fed = a.astype(np.float32)                       # 새 배열(astype 은 늘 복사)
+    if mode == 'clamped':                            # node.py _tick 에 있던 식 — 받은 값(정밀도 그대로)으로 자름
+        fed[V_IDX], fed[W_IDX] = clamp_cmd(a[V_IDX], a[W_IDX], v_min, v_max, w_max)[:2]
+    return fed
 
 
 class LatencyStats:

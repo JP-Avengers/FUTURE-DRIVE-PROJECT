@@ -1,0 +1,14 @@
+# 실내 복도 v0.2 — 직선 구간 corridor_v02_straight_back v0 (11.14, D). C 제안 구간(x 3~43 m, 가운데선 y 0.17 m) 확인용 — 평가 시나리오 아님.
+# 형식은 parking_r3_straight_south.yaml 과 같음. 양 끝 2 m 는 띄움(출발 s 0 = 씬 시작 자세, 목표 s 38).
+name: corridor_v02_straight_back
+version: v0
+scene: sim/scenes/corridor/corridor_v0.2.usda
+route: eval/routes/corridor_v02_back.csv
+direction: cw
+start: {s: 0.0}
+goal: {s: 38.0, radius_m: 1.0}
+commands: [straight]
+obstacles: []
+deviation_limit_m: 2.0
+stall_limit_s: 10
+timeout_s: 200

@@ -1,6 +1,6 @@
 """시나리오를 한 장에 — Nav2 경로 계획용 지도(화단 채움) 위에 기준선, 장애물 시나리오의 장애물(숫자), 구간 시나리오의 구간(글자).
 
-    python3 eval/scenarios/plot_scenarios.py [eval/scenarios/parking_r3_*.yaml ...] --map data/nav2/parking_v0.4b_r3/map_keepout.yaml --out <png>
+    python3 eval/scenarios/plot_scenarios.py [eval/scenarios/parking_r3_*.yaml ...] --map data/nav2/parking_v0.8_r3/map_keepout.yaml --out <png>
 장애물 자리는 sim/make_obstacles.py 와 같은 계산(기준선 길이 s · 옆 오프셋 lateral). 구간은 기준선 바깥으로 띄운 굵은 선 + 화살표
 (출발 점 → 목표) — 1.3 m 부터, 앞서 그린 구간과 겹치면(시계 s 로 2 m 여유) 0.8 m 씩 더 띄움.
 """
@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ap = argparse.ArgumentParser()
 ap.add_argument("scenarios", nargs="*")
-ap.add_argument("--map", default="data/nav2/parking_v0.4b_r3/map_keepout.yaml")
+ap.add_argument("--map", default="data/nav2/parking_v0.8_r3/map_keepout.yaml")
 ap.add_argument("--out", default="logs/nav2/scenarios_r3.png")
 ap.add_argument("--box", default="-41,-25,4,4", help="자를 범위 x0,y0,x1,y1 (m)")
 ap.add_argument("--scale", type=int, default=3, help="0.05 m 칸 하나를 몇 px 로")

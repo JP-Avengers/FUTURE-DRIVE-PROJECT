@@ -1,0 +1,157 @@
+group,file,scenario,direction,result,fail_reason,obstacle,s,lateral,kind,exit_m,corner,corner_dh,passed,side,pass_offset_m,turn_start_m,min_clear_m
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_00_ccw_s1.json,parking_r3_rand_ev_00,ccw,SUCCEEDED,,cone_0,7.7,-0.13,중앙,2.3,10-15,-1.63,True,왼,1.5,6.24,0.85
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_00_ccw_s1.json,parking_r3_rand_ev_00,ccw,SUCCEEDED,,cone_1,27.84,0.59,옆,13.2,41-43,-0.7,True,왼,1.32,6.43,0.85
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_00_ccw_s1.json,parking_r3_rand_ev_00,ccw,SUCCEEDED,,cone_2,58.02,-0.61,옆,3.0,61-64,-0.9,True,오,1.07,5.96,0.62
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_00_ccw_s1.json,parking_r3_rand_ev_00,ccw,SUCCEEDED,,box_3,73.82,0.08,중앙,12.2,86-89,-1.23,True,오,1.55,5.81,0.87
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,SUCCEEDED,,cone_0,7.7,-0.13,중앙,8.7,86-89,-1.23,True,왼,1.31,1.37,0.57
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,SUCCEEDED,,cone_1,27.84,0.59,옆,12.8,10-15,-1.63,True,오,1.2,7.18,0.73
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,SUCCEEDED,,cone_2,58.02,-0.61,옆,7.0,47-51,-1.35,True,왼,1.34,1.92,0.85
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,SUCCEEDED,,box_3,73.82,0.08,중앙,9.8,61-64,-0.9,True,왼,1.55,6.72,0.96
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,ped_0,6.76,0.55,옆,3.2,10-15,-1.63,True,왼,1.07,2.77,0.59
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,box_1,29.68,0.65,옆,11.3,41-43,-0.7,True,왼,1.49,3.95,0.8
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,box_2,56.33,-0.11,중앙,4.7,61-64,-0.9,True,오,1.76,7.18,0.99
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,box_3,74.7,-0.02,중앙,11.3,86-89,-1.23,True,오,1.35,1.96,0.46
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_01_cw_s1.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,ped_0,6.76,0.55,옆,7.7,86-89,-1.23,True,오,1.12,2.53,0.63
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_01_cw_s1.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,box_1,29.68,0.65,옆,14.7,10-15,-1.63,True,오,1.57,3.58,0.93
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_01_cw_s1.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,box_2,56.33,-0.11,중앙,5.3,47-51,-1.35,True,오,1.41,3.16,0.64
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_01_cw_s1.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,box_3,74.7,-0.02,중앙,10.7,61-64,-0.9,True,왼,1.63,7.08,0.82
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_02_ccw_s1.json,parking_r3_rand_ev_02,ccw,SUCCEEDED,,ped_0,8.45,-0.01,중앙,1.6,10-15,-1.63,True,왼,1.03,3.47,0.47
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_02_ccw_s1.json,parking_r3_rand_ev_02,ccw,SUCCEEDED,,box_1,29.57,0.04,중앙,11.4,41-43,-0.7,True,오,1.19,1.72,0.38
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_02_ccw_s1.json,parking_r3_rand_ev_02,ccw,SUCCEEDED,,box_2,55.08,-0.42,옆,5.9,61-64,-0.9,True,오,1.57,2.84,1.02
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_02_ccw_s1.json,parking_r3_rand_ev_02,ccw,SUCCEEDED,,box_3,78.01,-0.6,옆,8.0,86-89,-1.23,True,오,1.56,2.49,0.97
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_02_cw_s1.json,parking_r3_rand_ev_02,cw,CANCELED,collision:s 54.6,ped_0,8.45,-0.01,중앙,9.4,86-89,-1.23,True,왼,0.98,1.3,0.45
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_02_cw_s1.json,parking_r3_rand_ev_02,cw,CANCELED,collision:s 54.6,box_1,29.57,0.04,중앙,14.6,10-15,-1.63,True,오,1.2,3.11,0.45
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_02_cw_s1.json,parking_r3_rand_ev_02,cw,CANCELED,collision:s 54.6,box_2,55.08,-0.42,옆,4.1,47-51,-1.35,False,,,1.32,0.0
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_02_cw_s1.json,parking_r3_rand_ev_02,cw,CANCELED,collision:s 54.6,box_3,78.01,-0.6,옆,14.0,61-64,-0.9,False,,,,
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_03_ccw_s1.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,,box_0,6.78,0.49,옆,3.2,10-15,-1.63,True,왼,2.27,3.37,1.61
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_03_ccw_s1.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,,box_1,29.42,-0.13,중앙,11.6,41-43,-0.7,True,오,1.54,3.02,0.89
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_03_ccw_s1.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,,cone_2,54.67,-0.34,옆,6.3,61-64,-0.9,True,오,1.35,2.5,0.79
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_03_ccw_s1.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,,box_3,81.14,-0.06,중앙,4.9,86-89,-1.23,True,오,1.4,3.67,0.81
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_03_cw_s1.json,parking_r3_rand_ev_03,cw,SUCCEEDED,,box_0,6.78,0.49,옆,7.7,86-89,-1.23,True,오,1.39,6.78,0.81
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_03_cw_s1.json,parking_r3_rand_ev_03,cw,SUCCEEDED,,box_1,29.42,-0.13,중앙,14.4,10-15,-1.63,True,왼,1.43,7.09,0.63
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_03_cw_s1.json,parking_r3_rand_ev_03,cw,SUCCEEDED,,cone_2,54.67,-0.34,옆,3.7,47-51,-1.35,True,왼,1.36,1.74,0.72
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_03_cw_s1.json,parking_r3_rand_ev_03,cw,SUCCEEDED,,box_3,81.14,-0.06,중앙,17.1,61-64,-0.9,True,왼,1.71,3.04,1.03
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_04_ccw_s1.json,parking_r3_rand_ev_04,ccw,SUCCEEDED,,box_0,4.73,-0.41,옆,5.3,10-15,-1.63,True,오,1.19,0.61,0.12
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_04_ccw_s1.json,parking_r3_rand_ev_04,ccw,SUCCEEDED,,box_1,34.13,0.54,옆,6.9,41-43,-0.7,True,왼,1.14,6.45,0.64
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_04_ccw_s1.json,parking_r3_rand_ev_04,ccw,SUCCEEDED,,cone_2,53.1,-0.58,옆,7.9,61-64,-0.9,True,오,1.53,4.0,1.07
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_04_ccw_s1.json,parking_r3_rand_ev_04,ccw,SUCCEEDED,,box_3,71.49,0.39,옆,14.5,86-89,-1.23,True,오,1.4,2.5,0.72
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,SUCCEEDED,,box_0,4.73,-0.41,옆,5.7,86-89,-1.23,True,왼,1.24,4.14,0.59
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,SUCCEEDED,,box_1,34.13,0.54,옆,19.1,10-15,-1.63,True,오,1.52,3.28,0.98
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,SUCCEEDED,,cone_2,53.1,-0.58,옆,2.1,47-51,-1.35,True,왼,1.13,5.84,0.67
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,SUCCEEDED,,box_3,71.49,0.39,옆,7.5,61-64,-0.9,True,오,1.53,5.88,0.87
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_05_ccw_s1.json,parking_r3_rand_ev_05,ccw,SUCCEEDED,,ped_0,5.83,0.47,옆,4.2,10-15,-1.63,True,왼,1.09,3.11,0.55
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_05_ccw_s1.json,parking_r3_rand_ev_05,ccw,SUCCEEDED,,ped_1,20.29,0.03,중앙,20.7,41-43,-0.7,True,오,0.84,1.61,0.3
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_05_ccw_s1.json,parking_r3_rand_ev_05,ccw,SUCCEEDED,,box_2,53.53,0.53,옆,7.5,61-64,-0.9,True,왼,1.58,3.15,0.86
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_05_ccw_s1.json,parking_r3_rand_ev_05,ccw,SUCCEEDED,,box_3,67.9,0.11,중앙,18.1,86-89,-1.23,True,오,1.45,6.69,0.93
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_05_cw_s1.json,parking_r3_rand_ev_05,cw,INTERVENED,max_dev:s 53.0 cte 2.02 m,ped_0,5.83,0.47,옆,6.8,86-89,-1.23,True,오,1.27,2.15,0.71
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_05_cw_s1.json,parking_r3_rand_ev_05,cw,INTERVENED,max_dev:s 53.0 cte 2.02 m,ped_1,20.29,0.03,중앙,5.3,10-15,-1.63,True,왼,1.13,1.34,0.52
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_05_cw_s1.json,parking_r3_rand_ev_05,cw,INTERVENED,max_dev:s 53.0 cte 2.02 m,box_2,53.53,0.53,옆,2.5,47-51,-1.35,False,,,5.64,0.81
+E6,C:/fd/data/dl_1115_d6/02_E6_rand_ev_12/runs/parking_r3_rand_ev_05_cw_s1.json,parking_r3_rand_ev_05,cw,INTERVENED,max_dev:s 53.0 cte 2.02 m,box_3,67.9,0.11,중앙,3.9,61-64,-0.9,False,,,,
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,INTERVENED,max_dev:s 74.3 cte 2.01 m,cone_0,7.7,-0.13,중앙,8.7,86-89,-1.23,True,왼,1.23,1.45,0.6
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,INTERVENED,max_dev:s 74.3 cte 2.01 m,cone_1,27.84,0.59,옆,12.8,10-15,-1.63,True,오,1.23,7.46,0.76
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,INTERVENED,max_dev:s 74.3 cte 2.01 m,cone_2,58.02,-0.61,옆,7.0,47-51,-1.35,True,왼,1.32,1.46,0.8
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,INTERVENED,max_dev:s 74.3 cte 2.01 m,box_3,73.82,0.08,중앙,9.8,61-64,-0.9,True,왼,1.8,5.24,0.95
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,ped_0,6.76,0.55,옆,3.2,10-15,-1.63,True,왼,1.07,2.63,0.59
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,box_1,29.68,0.65,옆,11.3,41-43,-0.7,True,왼,1.6,4.1,0.78
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,box_2,56.33,-0.11,중앙,4.7,61-64,-0.9,True,오,1.71,7.1,0.92
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,box_3,74.7,-0.02,중앙,11.3,86-89,-1.23,True,오,1.38,6.29,0.62
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,INTERVENED,max_dev:s 58.4 cte 2.01 m,box_0,4.73,-0.41,옆,5.7,86-89,-1.23,True,왼,1.29,3.32,0.63
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,INTERVENED,max_dev:s 58.4 cte 2.01 m,box_1,34.13,0.54,옆,19.1,10-15,-1.63,True,오,1.51,3.67,0.94
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,INTERVENED,max_dev:s 58.4 cte 2.01 m,cone_2,53.1,-0.58,옆,2.1,47-51,-1.35,True,왼,1.27,5.86,0.77
+E6,C:/fd/data/dl_1115_d7/04_E6_대조_3/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,INTERVENED,max_dev:s 58.4 cte 2.01 m,box_3,71.49,0.39,옆,7.5,61-64,-0.9,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_00_ccw_s1.json,parking_r3_rand_ev_00,ccw,INTERVENED,max_dev:s 82.9 cte 2.02 m,cone_0,7.7,-0.13,중앙,2.3,10-15,-1.63,True,왼,1.6,5.61,0.81
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_00_ccw_s1.json,parking_r3_rand_ev_00,ccw,INTERVENED,max_dev:s 82.9 cte 2.02 m,cone_1,27.84,0.59,옆,13.2,41-43,-0.7,True,왼,1.11,6.14,0.59
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_00_ccw_s1.json,parking_r3_rand_ev_00,ccw,INTERVENED,max_dev:s 82.9 cte 2.02 m,cone_2,58.02,-0.61,옆,3.0,61-64,-0.9,True,오,1.98,7.15,1.34
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_00_ccw_s1.json,parking_r3_rand_ev_00,ccw,INTERVENED,max_dev:s 82.9 cte 2.02 m,box_3,73.82,0.08,중앙,12.2,86-89,-1.23,True,왼,1.02,3.21,0.4
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,INTERVENED,max_dev:s 54.2 cte 2.04 m,cone_0,7.7,-0.13,중앙,8.7,86-89,-1.23,True,왼,0.63,0.58,0.1
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,INTERVENED,max_dev:s 54.2 cte 2.04 m,cone_1,27.84,0.59,옆,12.8,10-15,-1.63,True,왼,0.9,7.48,0.44
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,INTERVENED,max_dev:s 54.2 cte 2.04 m,cone_2,58.02,-0.61,옆,7.0,47-51,-1.35,False,,,6.74,3.5
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_00_cw_s1.json,parking_r3_rand_ev_00,cw,INTERVENED,max_dev:s 54.2 cte 2.04 m,box_3,73.82,0.08,중앙,9.8,61-64,-0.9,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,INTERVENED,max_dev:s 16.1 cte 2.01 m,ped_0,6.76,0.55,옆,3.2,10-15,-1.63,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,INTERVENED,max_dev:s 16.1 cte 2.01 m,box_1,29.68,0.65,옆,11.3,41-43,-0.7,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,INTERVENED,max_dev:s 16.1 cte 2.01 m,box_2,56.33,-0.11,중앙,4.7,61-64,-0.9,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_01_ccw_s1.json,parking_r3_rand_ev_01,ccw,INTERVENED,max_dev:s 16.1 cte 2.01 m,box_3,74.7,-0.02,중앙,11.3,86-89,-1.23,True,오,1.53,1.64,0.41
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_01_cw_s1.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,ped_0,6.76,0.55,옆,7.7,86-89,-1.23,True,오,1.6,1.76,1.0
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_01_cw_s1.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,box_1,29.68,0.65,옆,14.7,10-15,-1.63,True,오,1.29,6.38,0.67
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_01_cw_s1.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,box_2,56.33,-0.11,중앙,5.3,47-51,-1.35,True,오,1.45,7.54,0.73
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_01_cw_s1.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,box_3,74.7,-0.02,중앙,10.7,61-64,-0.9,True,왼,1.69,4.31,0.24
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_02_ccw_s1.json,parking_r3_rand_ev_02,ccw,INTERVENED,max_dev:s 36.0 cte 2.02 m,ped_0,8.45,-0.01,중앙,1.6,10-15,-1.63,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_02_ccw_s1.json,parking_r3_rand_ev_02,ccw,INTERVENED,max_dev:s 36.0 cte 2.02 m,box_1,29.57,0.04,중앙,11.4,41-43,-0.7,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_02_ccw_s1.json,parking_r3_rand_ev_02,ccw,INTERVENED,max_dev:s 36.0 cte 2.02 m,box_2,55.08,-0.42,옆,5.9,61-64,-0.9,True,오,1.97,4.7,1.03
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_02_ccw_s1.json,parking_r3_rand_ev_02,ccw,INTERVENED,max_dev:s 36.0 cte 2.02 m,box_3,78.01,-0.6,옆,8.0,86-89,-1.23,True,오,1.57,2.06,0.96
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_02_cw_s1.json,parking_r3_rand_ev_02,cw,CANCELED,collision:s 8.0,ped_0,8.45,-0.01,중앙,9.4,86-89,-1.23,False,,,0.76,0.0
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_02_cw_s1.json,parking_r3_rand_ev_02,cw,CANCELED,collision:s 8.0,box_1,29.57,0.04,중앙,14.6,10-15,-1.63,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_02_cw_s1.json,parking_r3_rand_ev_02,cw,CANCELED,collision:s 8.0,box_2,55.08,-0.42,옆,4.1,47-51,-1.35,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_02_cw_s1.json,parking_r3_rand_ev_02,cw,CANCELED,collision:s 8.0,box_3,78.01,-0.6,옆,14.0,61-64,-0.9,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_03_ccw_s1.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,goal:goal_err 1.32 m,box_0,6.78,0.49,옆,3.2,10-15,-1.63,True,왼,2.26,7.32,1.16
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_03_ccw_s1.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,goal:goal_err 1.32 m,box_1,29.42,-0.13,중앙,11.6,41-43,-0.7,True,오,1.34,6.68,0.63
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_03_ccw_s1.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,goal:goal_err 1.32 m,cone_2,54.67,-0.34,옆,6.3,61-64,-0.9,True,오,0.94,7.13,0.47
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_03_ccw_s1.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,goal:goal_err 1.32 m,box_3,81.14,-0.06,중앙,4.9,86-89,-1.23,True,오,1.2,4.14,0.51
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_03_cw_s1.json,parking_r3_rand_ev_03,cw,INTERVENED,max_dev:s 50.2 cte 2.01 m,box_0,6.78,0.49,옆,7.7,86-89,-1.23,True,오,1.43,2.14,0.76
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_03_cw_s1.json,parking_r3_rand_ev_03,cw,INTERVENED,max_dev:s 50.2 cte 2.01 m,box_1,29.42,-0.13,중앙,14.4,10-15,-1.63,True,왼,1.47,4.62,0.72
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_03_cw_s1.json,parking_r3_rand_ev_03,cw,INTERVENED,max_dev:s 50.2 cte 2.01 m,cone_2,54.67,-0.34,옆,3.7,47-51,-1.35,False,,,6.65,5.09
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_03_cw_s1.json,parking_r3_rand_ev_03,cw,INTERVENED,max_dev:s 50.2 cte 2.01 m,box_3,81.14,-0.06,중앙,17.1,61-64,-0.9,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_04_ccw_s1.json,parking_r3_rand_ev_04,ccw,INTERVENED,max_dev:s 84.8 cte 2.00 m,box_0,4.73,-0.41,옆,5.3,10-15,-1.63,False,,,4.37,0.95
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_04_ccw_s1.json,parking_r3_rand_ev_04,ccw,INTERVENED,max_dev:s 84.8 cte 2.00 m,box_1,34.13,0.54,옆,6.9,41-43,-0.7,True,왼,1.12,7.3,0.59
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_04_ccw_s1.json,parking_r3_rand_ev_04,ccw,INTERVENED,max_dev:s 84.8 cte 2.00 m,cone_2,53.1,-0.58,옆,7.9,61-64,-0.9,True,오,1.92,7.82,1.25
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_04_ccw_s1.json,parking_r3_rand_ev_04,ccw,INTERVENED,max_dev:s 84.8 cte 2.00 m,box_3,71.49,0.39,옆,14.5,86-89,-1.23,True,오,1.18,1.72,0.29
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,INTERVENED,max_dev:s 49.9 cte 2.02 m,box_0,4.73,-0.41,옆,5.7,86-89,-1.23,True,왼,1.37,3.67,0.6
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,INTERVENED,max_dev:s 49.9 cte 2.02 m,box_1,34.13,0.54,옆,19.1,10-15,-1.63,True,오,1.43,5.39,0.77
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,INTERVENED,max_dev:s 49.9 cte 2.02 m,cone_2,53.1,-0.58,옆,2.1,47-51,-1.35,False,,,6.45,3.89
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_04_cw_s1.json,parking_r3_rand_ev_04,cw,INTERVENED,max_dev:s 49.9 cte 2.02 m,box_3,71.49,0.39,옆,7.5,61-64,-0.9,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_05_ccw_s1.json,parking_r3_rand_ev_05,ccw,INTERVENED,max_dev:s 35.7 cte 2.01 m,ped_0,5.83,0.47,옆,4.2,10-15,-1.63,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_05_ccw_s1.json,parking_r3_rand_ev_05,ccw,INTERVENED,max_dev:s 35.7 cte 2.01 m,ped_1,20.29,0.03,중앙,20.7,41-43,-0.7,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_05_ccw_s1.json,parking_r3_rand_ev_05,ccw,INTERVENED,max_dev:s 35.7 cte 2.01 m,box_2,53.53,0.53,옆,7.5,61-64,-0.9,False,,,6.4,2.0
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_05_ccw_s1.json,parking_r3_rand_ev_05,ccw,INTERVENED,max_dev:s 35.7 cte 2.01 m,box_3,67.9,0.11,중앙,18.1,86-89,-1.23,True,왼,1.07,5.04,0.45
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_05_cw_s1.json,parking_r3_rand_ev_05,cw,INTERVENED,max_dev:s 20.4 cte 2.04 m,ped_0,5.83,0.47,옆,6.8,86-89,-1.23,True,오,1.37,2.43,0.81
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_05_cw_s1.json,parking_r3_rand_ev_05,cw,INTERVENED,max_dev:s 20.4 cte 2.04 m,ped_1,20.29,0.03,중앙,5.3,10-15,-1.63,True,왼,1.91,7.45,0.3
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_05_cw_s1.json,parking_r3_rand_ev_05,cw,INTERVENED,max_dev:s 20.4 cte 2.04 m,box_2,53.53,0.53,옆,2.5,47-51,-1.35,False,,,,
+E7,C:/fd/data/dl_1115_d7/02_E7_rand_ev_12/runs/parking_r3_rand_ev_05_cw_s1.json,parking_r3_rand_ev_05,cw,INTERVENED,max_dev:s 20.4 cte 2.04 m,box_3,67.9,0.11,중앙,3.9,61-64,-0.9,False,,,,
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_00_ccw.json,parking_r3_rand_ev_00,ccw,SUCCEEDED,,cone_0,7.7,-0.13,중앙,2.3,10-15,-1.63,True,오,1.12,6.51,0.67
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_00_ccw.json,parking_r3_rand_ev_00,ccw,SUCCEEDED,,cone_1,27.84,0.59,옆,13.2,41-43,-0.7,True,왼,0.97,0.82,0.49
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_00_ccw.json,parking_r3_rand_ev_00,ccw,SUCCEEDED,,cone_2,58.02,-0.61,옆,3.0,61-64,-0.9,True,오,1.28,6.03,0.82
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_00_ccw.json,parking_r3_rand_ev_00,ccw,SUCCEEDED,,box_3,73.82,0.08,중앙,12.2,86-89,-1.23,True,왼,1.38,7.02,0.78
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_00_cw.json,parking_r3_rand_ev_00,cw,SUCCEEDED,,cone_0,7.7,-0.13,중앙,8.7,86-89,-1.23,True,오,1.15,2.82,0.7
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_00_cw.json,parking_r3_rand_ev_00,cw,SUCCEEDED,,cone_1,27.84,0.59,옆,12.8,10-15,-1.63,True,오,1.31,2.06,0.85
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_00_cw.json,parking_r3_rand_ev_00,cw,SUCCEEDED,,cone_2,58.02,-0.61,옆,7.0,47-51,-1.35,True,왼,1.11,5.53,0.65
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_00_cw.json,parking_r3_rand_ev_00,cw,SUCCEEDED,,box_3,73.82,0.08,중앙,9.8,61-64,-0.9,True,왼,1.26,4.92,0.68
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_01_ccw.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,ped_0,6.76,0.55,옆,3.2,10-15,-1.63,True,왼,1.51,6.46,0.96
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_01_ccw.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,box_1,29.68,0.65,옆,11.3,41-43,-0.7,True,왼,1.35,3.58,0.72
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_01_ccw.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,box_2,56.33,-0.11,중앙,4.7,61-64,-0.9,True,왼,1.64,6.26,0.94
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_01_ccw.json,parking_r3_rand_ev_01,ccw,SUCCEEDED,,box_3,74.7,-0.02,중앙,11.3,86-89,-1.23,True,오,1.63,6.45,0.9
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_01_cw.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,ped_0,6.76,0.55,옆,7.7,86-89,-1.23,True,오,1.33,2.2,0.82
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_01_cw.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,box_1,29.68,0.65,옆,14.7,10-15,-1.63,True,오,1.41,3.65,0.78
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_01_cw.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,box_2,56.33,-0.11,중앙,5.3,47-51,-1.35,True,오,1.15,6.06,0.44
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_01_cw.json,parking_r3_rand_ev_01,cw,SUCCEEDED,,box_3,74.7,-0.02,중앙,10.7,61-64,-0.9,True,왼,1.42,2.49,0.66
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_02_ccw.json,parking_r3_rand_ev_02,ccw,SUCCEEDED,,ped_0,8.45,-0.01,중앙,1.6,10-15,-1.63,True,왼,1.46,7.2,0.91
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_02_ccw.json,parking_r3_rand_ev_02,ccw,SUCCEEDED,,box_1,29.57,0.04,중앙,11.4,41-43,-0.7,True,왼,1.32,3.23,0.74
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_02_ccw.json,parking_r3_rand_ev_02,ccw,SUCCEEDED,,box_2,55.08,-0.42,옆,5.9,61-64,-0.9,True,오,1.43,6.91,0.85
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_02_ccw.json,parking_r3_rand_ev_02,ccw,SUCCEEDED,,box_3,78.01,-0.6,옆,8.0,86-89,-1.23,True,오,1.46,7.71,0.85
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_02_cw.json,parking_r3_rand_ev_02,cw,SUCCEEDED,,ped_0,8.45,-0.01,중앙,9.4,86-89,-1.23,True,오,1.33,3.48,0.79
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_02_cw.json,parking_r3_rand_ev_02,cw,SUCCEEDED,,box_1,29.57,0.04,중앙,14.6,10-15,-1.63,True,오,1.35,3.75,0.76
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_02_cw.json,parking_r3_rand_ev_02,cw,SUCCEEDED,,box_2,55.08,-0.42,옆,4.1,47-51,-1.35,True,왼,1.57,4.81,0.9
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_02_cw.json,parking_r3_rand_ev_02,cw,SUCCEEDED,,box_3,78.01,-0.6,옆,14.0,61-64,-0.9,True,왼,1.28,0.95,0.62
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_03_ccw.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,,box_0,6.78,0.49,옆,3.2,10-15,-1.63,True,왼,1.58,7.29,0.72
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_03_ccw.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,,box_1,29.42,-0.13,중앙,11.6,41-43,-0.7,True,오,1.48,3.16,0.85
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_03_ccw.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,,cone_2,54.67,-0.34,옆,6.3,61-64,-0.9,True,오,1.25,7.34,0.75
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_03_ccw.json,parking_r3_rand_ev_03,ccw,SUCCEEDED,,box_3,81.14,-0.06,중앙,4.9,86-89,-1.23,True,오,1.42,6.03,0.84
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_03_cw.json,parking_r3_rand_ev_03,cw,SUCCEEDED,,box_0,6.78,0.49,옆,7.7,86-89,-1.23,True,오,1.51,1.99,0.84
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_03_cw.json,parking_r3_rand_ev_03,cw,SUCCEEDED,,box_1,29.42,-0.13,중앙,14.4,10-15,-1.63,True,왼,1.46,5.08,0.78
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_03_cw.json,parking_r3_rand_ev_03,cw,SUCCEEDED,,cone_2,54.67,-0.34,옆,3.7,47-51,-1.35,True,왼,1.3,2.42,0.72
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_03_cw.json,parking_r3_rand_ev_03,cw,SUCCEEDED,,box_3,81.14,-0.06,중앙,17.1,61-64,-0.9,True,왼,1.26,4.44,0.66
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_04_ccw.json,parking_r3_rand_ev_04,ccw,SUCCEEDED,,box_0,4.73,-0.41,옆,5.3,10-15,-1.63,True,오,1.47,7.29,0.77
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_04_ccw.json,parking_r3_rand_ev_04,ccw,SUCCEEDED,,box_1,34.13,0.54,옆,6.9,41-43,-0.7,True,왼,1.33,7.18,0.82
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_04_ccw.json,parking_r3_rand_ev_04,ccw,SUCCEEDED,,cone_2,53.1,-0.58,옆,7.9,61-64,-0.9,True,오,1.32,6.47,0.86
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_04_ccw.json,parking_r3_rand_ev_04,ccw,SUCCEEDED,,box_3,71.49,0.39,옆,14.5,86-89,-1.23,True,왼,1.57,2.35,0.77
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_04_cw.json,parking_r3_rand_ev_04,cw,SUCCEEDED,,box_0,4.73,-0.41,옆,5.7,86-89,-1.23,True,왼,1.54,4.73,0.85
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_04_cw.json,parking_r3_rand_ev_04,cw,SUCCEEDED,,box_1,34.13,0.54,옆,19.1,10-15,-1.63,True,오,1.36,1.94,0.85
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_04_cw.json,parking_r3_rand_ev_04,cw,SUCCEEDED,,cone_2,53.1,-0.58,옆,2.1,47-51,-1.35,True,오,1.16,6.7,0.69
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_04_cw.json,parking_r3_rand_ev_04,cw,SUCCEEDED,,box_3,71.49,0.39,옆,7.5,61-64,-0.9,True,오,1.62,7.7,0.97
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_05_ccw.json,parking_r3_rand_ev_05,ccw,SUCCEEDED,,ped_0,5.83,0.47,옆,4.2,10-15,-1.63,True,왼,1.53,7.61,0.97
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_05_ccw.json,parking_r3_rand_ev_05,ccw,SUCCEEDED,,ped_1,20.29,0.03,중앙,20.7,41-43,-0.7,True,왼,1.25,4.42,0.79
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_05_ccw.json,parking_r3_rand_ev_05,ccw,SUCCEEDED,,box_2,53.53,0.53,옆,7.5,61-64,-0.9,True,왼,1.48,7.66,0.79
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_05_ccw.json,parking_r3_rand_ev_05,ccw,SUCCEEDED,,box_3,67.9,0.11,중앙,18.1,86-89,-1.23,True,왼,1.32,2.66,0.63
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_05_cw.json,parking_r3_rand_ev_05,cw,SUCCEEDED,,ped_0,5.83,0.47,옆,6.8,86-89,-1.23,True,오,1.34,5.83,0.8
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_05_cw.json,parking_r3_rand_ev_05,cw,SUCCEEDED,,ped_1,20.29,0.03,중앙,5.3,10-15,-1.63,True,오,1.14,6.98,0.65
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_05_cw.json,parking_r3_rand_ev_05,cw,SUCCEEDED,,box_2,53.53,0.53,옆,2.5,47-51,-1.35,True,오,1.51,6.81,0.83
+Nav2,C:/fd/data/dl_1115_d6/03_Nav2_rand_ev_12/parking_r3_rand_ev_05_cw.json,parking_r3_rand_ev_05,cw,SUCCEEDED,,box_3,67.9,0.11,중앙,3.9,61-64,-0.9,True,오,1.39,7.52,0.86

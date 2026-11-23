@@ -4,7 +4,7 @@
 # 기준선 직선(시계 s): 동쪽 0~9.7 · 남쪽 15.2~40.5 · 서쪽 사선 51.5~60.0 · 북쪽 63.5~85.2. 반시계 s = 90.0 − 시계 s.
 name: parking_r3_curve_se_cw
 version: v1
-scene: sim/scenes/parking/parking_v0.4b_r3.usda
+scene: sim/scenes/parking/parking_v0.8_r3.usda
 route: eval/routes/parking_r3_cw.csv
 direction: cw
 start: {s: 3.0}

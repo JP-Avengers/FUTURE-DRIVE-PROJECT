@@ -5,8 +5,7 @@
 만든 레이어는 씬 파일을 고치지 않고 실행 때 얹는다:
     FD_LAYERS=<out.usda> FD_LIDAR=1 FD_SCENE=sim/scenes/parking/parking_v0.4b_r3.usda sim/run_proxy.sh headless
 레포 루트(= $CD1)에서:
-    envs/isaacsim_env/bin/python sim/make_obstacles.py eval/scenarios/parking_r3_obs_south_box.yaml sim/scenes/parking/obstacles/parking_r3_obs_south_box.usda \
-        [--mesh data/usd/parking_v0.4b_r3/usd/parking_mesh.usdc]
+    envs/isaacsim_env/bin/python sim/make_obstacles.py <시나리오.yaml> <out.usda> [--mesh <충돌 메쉬>] [--scene <씬 루트>]   # 메쉬 기본 = 씬과 같은 판의 맵 폴더(eval/scenario_site.py)
 끝에 장애물마다 월드 좌표 · 바닥 높이를 찍는다(평가 · 교사 스크립트가 같은 값을 쓰도록 레이어 customLayerData 에도 남김).
 시나리오의 start 가 기준선 길이(start: {s: ...})로 적혀 있으면 로봇 출발 자세도 이 레이어에서 덮어쓴다(구간 시나리오 — 그 자리에서 띄움).
 그 자세는 START 줄로 찍음 — Nav2 launch 의 x0 · y0 · yaw0_deg(AMCL 초기 자세)로 넘김(sim/nav2/scenario_batch.sh 가 함).
@@ -16,7 +15,7 @@ import csv
 import json
 import math
 import os
-
+import sys
 import numpy as np
 import yaml
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
@@ -24,9 +23,14 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 ap = argparse.ArgumentParser()
 ap.add_argument("scenario")
 ap.add_argument("out")
-ap.add_argument("--mesh", default="data/usd/parking_v0.4b_r3/usd/parking_mesh.usdc", help="바닥 높이를 잴 충돌 메쉬")
+ap.add_argument("--mesh", default=None, help="바닥 높이를 잴 충돌 메쉬(기본: 씬과 같은 판 data/usd/<씬 파일 이름>/usd/ 의 *_mesh.usdc — eval/scenario_site.py)")
+ap.add_argument("--scene", default=None, help="시나리오의 scene 대신 쓸 씬 루트 — 메쉬를 이 씬 기준으로 찾음(일괄 실행이 FD_SCENE 을 넘김)")
 a = ap.parse_args()
 sc = yaml.safe_load(open(a.scenario))
+if a.mesh is None:   # 11.11 씬 판을 따라감 · 11.17 메쉬 이름을 가정하지 않음(예전엔 parking_mesh.usdc 고정이라 복도는 링크로 돌렸고, 못 찾으면 말없이 v0.4b r3 메쉬를 썼음)
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "eval")); import scenario_site   # noqa: E702
+    a.mesh = scenario_site.mesh_for(sc, a.scene, root=".")   # 못 찾으면 SiteError — 무엇을 어디서 찾았는지 적힘
+print(f"MESH {a.mesh}")
 
 R = np.array([(float(r["s"]), float(r["x"]), float(r["y"])) for r in csv.DictReader(open(sc["route"])) if r.get("run", "0") == "0"])
 

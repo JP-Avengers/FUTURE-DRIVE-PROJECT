@@ -1,0 +1,23 @@
+# 복도 v0.4 — B 실내 복도 맵 v0.4 (11/8 4회차 + 11/18 추가 3회차, 받은 날 11.20). v0.2 와 같은 복도 · 같은 좌표, 천장과 벽 위쪽이 채워짐.
+# corridor.yaml(v0.2 설정)에서 입력과 보조 묶음만 바꿈.
+base: corridor.yaml
+
+out: ~/jinwoo/out/pipeline/corridor_v04
+
+input:
+  root: ~/jinwoo/data/FutureDrive_corridor_v0.4/corridor_v0.4
+
+colorize:
+  extra_inputs:                        # B README 순서. ceil30 · wall45a · wall45b 는 11/18 추가 촬영 (카메라 27~32도 위)
+    - name: ceil30
+      input: {format: rtabmap_keyframes, root: ~/jinwoo/data/FutureDrive_corridor_v0.4/corridor_v0.4, keyframes: keyframes_ceil30, poses: trajectory_ceil30_camera_optical.txt, depth_scale: 1000.0}
+    - name: wall45a
+      input: {format: rtabmap_keyframes, root: ~/jinwoo/data/FutureDrive_corridor_v0.4/corridor_v0.4, keyframes: keyframes_wall45a, poses: trajectory_wall45a_camera_optical.txt, depth_scale: 1000.0}
+    - name: wall45b
+      input: {format: rtabmap_keyframes, root: ~/jinwoo/data/FutureDrive_corridor_v0.4/corridor_v0.4, keyframes: keyframes_wall45b, poses: trajectory_wall45b_camera_optical.txt, depth_scale: 1000.0}
+    - name: rightwall
+      input: {format: rtabmap_keyframes, root: ~/jinwoo/data/FutureDrive_corridor_v0.4/corridor_v0.4, keyframes: keyframes_rightwall, poses: trajectory_rightwall_camera_optical.txt, depth_scale: 1000.0}
+    - name: in1
+      input: {format: rtabmap_keyframes, root: ~/jinwoo/data/FutureDrive_corridor_v0.4/corridor_v0.4, keyframes: keyframes_in1, poses: trajectory_in1_camera_optical.txt, depth_scale: 1000.0}
+
+# 충돌 바닥 두 겹(v0.2 빌드: 주행 띠의 97.8% 가 2.4 mm 간격 두 겹, B 11.20 지적)은 실내 틀에서 고침 — zones.ground_plane: false

@@ -15,6 +15,7 @@ Nav2(sim/nav2/nav2.launch.py)가 떠 있어야 한다. 경유점 사이는 Nav2 
 """
 import argparse
 import csv
+import re
 import json
 import math
 import os
@@ -32,7 +33,7 @@ from sensor_msgs.msg import LaserScan
 from tf2_msgs.msg import TFMessage
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--route", default="eval/routes/parking_r3_cw.csv")
+ap.add_argument("--route", default=None, help="기준선 CSV(점 순서 = 진행 방향). 안 주면 시나리오의 route, 시나리오도 없으면 eval/routes/parking_r3_cw.csv")
 ap.add_argument("--spacing", type=float, default=4.0)
 ap.add_argument("--out")
 ap.add_argument("--initial-pose", action="store_true", help="AMCL 초기 자세를 기준선 출발점으로 다시 보냄(씬을 다시 띄우지 않고 이어 돌 때). 평소엔 nav2.launch.py 의 초기 자세(x0 · y0 · yaw0_deg)로 충분")
@@ -46,7 +47,7 @@ if a.scenario:
     import yaml
     SC = yaml.safe_load(open(a.scenario))
 SEGMENT = "s" in (SC.get("goal") or {})          # 구간 시나리오 — 시나리오의 route 를 그대로 따름
-ROUTE = SC["route"] if SEGMENT else a.route
+ROUTE = SC["route"] if SEGMENT else (a.route or SC.get("route") or "eval/routes/parking_r3_cw.csv")   # 바퀴: --route → 시나리오 route → 예전 기본값(11.17 — 그 전엔 --route 가 없으면 시나리오와 상관없이 주차장 r3 시계 기준선)
 R = np.array([(float(r["x"]), float(r["y"])) for r in csv.DictReader(open(ROUTE)) if r.get("run", "0") == "0"])
 seg = np.diff(R, axis=0)
 s = np.concatenate([[0], np.cumsum(np.hypot(seg[:, 0], seg[:, 1]))])
@@ -224,7 +225,10 @@ nav.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", lambda m: _ap.a
 _ip = nav.create_publisher(PoseWithCovarianceStamped, "/initialpose", 10)
 amcl_err = lambda: math.hypot(_ap[-1][0] - track[-1][1], _ap[-1][1] - track[-1][2]) if _ap else float("inf")   # noqa: E731
 _t, _last, n_init = time.time(), time.time(), 0
-while amcl_err() > 0.5 and time.time() - _t < 30:
+GT_LOC = os.environ.get("FD_NAV2_LOC", "amcl") == "gt"   # 11.10 — nav2.launch.py localization:=gt(정답 map → odom)면 AMCL 이 없어 확인을 건너뜀(교사 녹화용, 평가 아님)
+if GT_LOC:
+    _ap.append((track[-1][1], track[-1][2]))
+while not GT_LOC and amcl_err() > 0.5 and time.time() - _t < 30:
     if time.time() - _last > (1.0 if n_init else 5.0) and _ip.get_subscription_count() > 0:   # 처음 5 s 는 launch 초기 자세를 기다림
         m = PoseWithCovarianceStamped()
         m.header.frame_id, m.header.stamp = "map", nav.get_clock().now().to_msg()
@@ -232,11 +236,11 @@ while amcl_err() > 0.5 and time.time() - _t < 30:
         _ip.publish(m)
         _last, n_init = time.time(), n_init + 1
     rclpy.spin_once(nav, timeout_sec=0.2)
-print(f"NAV2_ROUTE_AMCL 출발 위치 오차 {amcl_err():.3f} m · /initialpose 다시 보냄 {n_init}회", flush=True)
+print(f"NAV2_ROUTE_AMCL 출발 위치 오차 {amcl_err():.3f} m · /initialpose 다시 보냄 {n_init}회" + (" (localization gt — 확인 건너뜀)" if GT_LOC else ""), flush=True)
 if amcl_err() > 0.5:
     print("NAV2_ROUTE_NO_AMCL AMCL 위치가 출발 자리와 안 맞음", flush=True)
     raise SystemExit(3)
-amcl_start_err = round(amcl_err(), 3)
+amcl_start_err = None if GT_LOC else round(amcl_err(), 3)
 if not nav.nav_through_poses_client.wait_for_server(timeout_sec=30.0):   # goThroughPoses 의 대기도 끝이 없음
     print("NAV2_ROUTE_NO_NAV2 NavigateThroughPoses 액션 서버를 30 s 안에 못 찾음", flush=True)
     raise SystemExit(3)
@@ -255,7 +259,9 @@ while not nav.isTaskComplete():
         break
 res = nav.getResult()
 name = {TaskResult.SUCCEEDED: "SUCCEEDED", TaskResult.CANCELED: "CANCELED", TaskResult.FAILED: "FAILED"}.get(res, str(res))
-c = np.array([t[3] for t in track]) if track else np.array([np.nan])
+# 이탈 표본은 목표를 보낸 뒤(t ≥ t_goal)만 — 출발 전 대기(지도 · AMCL 확인) 표본이 평균을 낮추지 않게(11.14, eval/XM_HARNESS.md §7 질문 5.
+# X-Mobility 하네스는 첫 표본이 t_goal 이라 원래 이 구간만 셈). 정지 · 거리와 같은 구간
+c = np.array([t[3] for t in track if t[0] >= t_goal]) if track else np.array([np.nan])
 # 가장 긴 정지(0.05 m/s 미만) — 0.5 s 간격 속도로
 stall, run, prev = 0.0, 0.0, None
 for t in [t for t in track if t[0] >= t_goal][::5]:
@@ -270,6 +276,9 @@ summ = {"route": ROUTE, "result": name, "spacing_m": a.spacing, "waypoints": len
         "mean_cte": round(float(np.nanmean(c)), 3), "max_cte": round(float(np.nanmax(c)), 3),
         "over_2m_frac": round(float(np.mean(c > 2.0)), 4), "recoveries": getattr(nav.getFeedback(), "number_of_recoveries", None),
         "max_stall_s": round(stall, 1)}
+# t_goal · direction — eval/xm_route.py --rejudge 가 lap_sim_s(0.1 s 반올림)로 되짚지 않고 그대로 씀(11.14, §7 질문 9)
+_dm = re.search(r"_(cw|ccw)\.csv$", ROUTE)
+summ.update({"t_goal": round(t_goal, 3), "direction": SC.get("direction") or (_dm.group(1) if _dm else None)})
 if OBS:
     summ.update({"scenario": a.scenario, "min_clearance": round(min(clr), 3) if clr else None, "collision": bool(clr and min(clr) <= 0.0)})
 # 마지막 경유점(바퀴면 출발점 바로 앞, 구간이면 goal.s)까지 실제 거리 — Nav2 가 SUCCEEDED 라도 여기서 다시 확인(10.14: 안 움직이고

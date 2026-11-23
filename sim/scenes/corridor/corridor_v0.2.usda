@@ -1,0 +1,42 @@
+#usda 1.0
+(
+    customLayerData = {
+        string lights = "돔 600 (하늘 텍스처 없음 — 실내) · 해 0. 실내 조명은 D 가 정함"
+        string map = "data/usd/corridor_v0.2/ — C 이진우 11.14: 실내 복도 (B 복도 맵 v0.2, 11/8 D435i 손 촬영). 좌표 = B 건물 좌표 (복도 축 x · 바닥 z 0). 주차장과 이어져 있지 않음"
+        string start_pose = "C 제안 (시험 안 함): 복도 가운데선 (3.0, 0.17) · +x 방향. 바닥 0.000 + 0.022"
+    }
+    defaultPrim = "World"
+    doc = "실내 복도 씬(맵 v0.2) 루트 제안 — 주차장 v0.9 루트에서 맵 경로 · 로봇 시작 · 조명만 바꿈. Isaac Sim 에서 열어 보지 못함"
+    metersPerUnit = 1
+    subLayers = [
+        @../proxy/sensors.usda@,
+        @../proxy/ros.usda@,
+        @../proxy/robot.usda@,
+        @../../../data/usd/corridor_v0.2/usd/corridor_scene.usda@,
+        @../proxy/world.usda@
+    ]
+    timeCodesPerSecond = 60
+    upAxis = "Z"
+)
+
+over "World"
+{
+    over "Nova_Carter_ROS"
+    {
+        float xformOp:rotateZ = 0.0
+        double3 xformOp:translate = (3.0, 0.17, 0.022)
+    }
+
+    over "Lights"
+    {
+        over "Dome"
+        {
+            float inputs:intensity = 600
+        }
+
+        over "Sun"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}

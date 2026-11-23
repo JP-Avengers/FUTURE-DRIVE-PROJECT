@@ -14,7 +14,11 @@ import numpy as np
 import open3d as o3d
 from PIL import Image
 
+from scipy import ndimage
+from scipy.spatial import cKDTree
+
 import floor_texture
+from edge_finish import grid_mesh
 from mesh_utils import Ground
 
 
@@ -28,6 +32,32 @@ def frame(n, d):
     A[:3, :3] = np.stack([x, y, z])
     A[:3, 3] = [0.0, 0.0, d]                                    # n·p + d = 벽까지 거리 → 벽 위 점은 z = 0
     return A
+
+
+def _flatten_wall(im, f, cell):
+    """벽 색 고르기 (복도 v0.2, 11.14): 흰 벽은 실제로는 한 가지 색인데, 키프레임마다 자동 노출 · 화이트밸런스가 달라 이어 붙인 자리마다
+    밝기 · 색조가 달라지고 (덧칠한 것처럼 보임), 사진이 안 닿은 곳은 흐린 스캔 색이라 또 다름. 바닥의 아스팔트 색 통일과 같은 방식 —
+    무채색(sat_max 안) · 밝은(벽 중앙 밝기의 low~high 배) 텍셀의 넓은 색 흐름(sigma_m 보다 넓은 것)만 벽 중앙 색으로 맞추고, 그보다 작은 무늬
+    (문틀 · 표지판 · 얼룩)와 색 있는 면(문 · 게시판)은 그대로 둠. 보완: 벽이 한 가지 색이라는 가정."""
+    a = np.asarray(im).astype(np.float32) / 255
+    lum, sat = a.mean(-1), a.max(-1) - a.min(-1)
+    cand = sat < f.get("sat_max", 0.14)
+    if cand.sum() < 1000:
+        return im
+    m0 = float(np.median(lum[cand & (lum > 0.25)])) if (cand & (lum > 0.25)).any() else float(np.median(lum[cand]))
+    wall = cand & (lum > m0 * f.get("low", 0.55)) & (lum < m0 * f.get("high", 1.5))
+    if wall.sum() < 1000:
+        return im
+    target = np.median(a[wall], axis=0)
+    sg = f.get("sigma_m", 0.4) / cell
+    den = ndimage.gaussian_filter(wall.astype(np.float32), sg)
+    soft = np.clip(ndimage.gaussian_filter(wall.astype(np.float32), 3) * 1.5, 0, 1)
+    out = a.copy()
+    for ch in range(3):
+        low = ndimage.gaussian_filter(np.where(wall, a[..., ch], 0), sg) / np.maximum(den, 1e-4)
+        r = np.clip(target[ch] / np.where(den > 0.02, low, target[ch]), *f.get("range", (0.6, 1.7)))
+        out[..., ch] = a[..., ch] * (1 + (r - 1) * soft)
+    return Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8))
 
 
 def find(mesh, cams, c):
@@ -46,7 +76,9 @@ def find(mesh, cams, c):
     for _ in range(c.get("max_walls", 12) * 3):
         if len(walls) >= c.get("max_walls", 12) or free.sum() < 100:
             break
-        idx = np.where(free)[0]
+        idx = np.where(free & (area > 0))[0]                    # 넓이 0 삼각형(촘촘한 TSDF 메쉬에 섞여 있음)은 뽑을 수 없음 — 복도 v0.2 에서 오류 (11.14)
+        if len(idx) < 100:
+            break
         pick = rng.choice(idx, size=min(len(idx), 60000), replace=False, p=area[idx] / area[idx].sum())
         pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(cen[pick]))
         (a, b, cc, d), _ = pc.segment_plane(c.get("dist_m", 0.03), 3, 500)
@@ -54,7 +86,7 @@ def find(mesh, cams, c):
         if abs(n[2]) > np.sin(np.radians(c.get("max_tilt_deg", 10))):
             free[pick] = False                                  # 수평에 가까운 평면 (탁자 등) — 그 점들은 빼고 다시
             continue
-        on = free & (np.abs(cen @ n + d) < c.get("dist_m", 0.03)) & (np.abs(tn @ n) > 0.9)
+        on = free & (np.abs(cen @ n + d) < c.get("dist_m", 0.03)) & (np.abs(tn @ n) > c.get("min_normal_cos", 0.9))
         if area[on].sum() < c.get("min_area_m2", 2.0):
             free[on | np.isin(np.arange(len(free)), pick)] = False
             continue
@@ -76,6 +108,8 @@ def run(cfg, out, visuals, occ_mesh, sets):
     if not walls:
         return {}, dict(walls=0)
     tri = np.asarray(vis.triangles)
+    cen = np.asarray(vis.vertices)[tri].mean(1)
+    vcol = np.asarray(vis.vertex_colors)
     taken = np.zeros(len(tri), bool)
     mats, stats = {}, []
     for k, (n, d, on) in enumerate(walls):
@@ -85,6 +119,42 @@ def run(cfg, out, visuals, occ_mesh, sets):
         if vis.has_triangle_normals():
             part.triangle_normals = o3d.utility.Vector3dVector(np.asarray(vis.triangle_normals)[on])
         part.remove_unreferenced_vertices()
+        if c.get("sheet"):   # 벽 한 장 (복도 v0.2, 11.14): 손 촬영 TSDF 벽은 깊이 잡음 · 묶음 사이 2~3 cm 어긋남으로 울퉁불퉁하고 면 방향도 들쭉날쭉함 —
+            #  바닥 한 장(single_floor)과 같은 생각으로, 벽 평면 dist_m 안의 스캔 면을 모두 빼고 그 범위에 평평한 격자 한 장을 새로 깖.
+            #  보완(만든 것): 벽의 위치 · 범위(문 · 끊긴 곳 포함)는 측정, 평평함은 가정. 충돌 메쉬는 스캔 그대로.
+            #  (정점만 평면으로 옮기는 방식은 벽 삼각형 일부만 옮겨져 구멍이 숭숭 뚫렸음 — 보이는 구멍 7.4 → 11.3%)
+            cw = cen @ A[:3, :3].T + A[:3, 3]
+            sc = c.get("sheet_cell_m", 0.05)
+            lo2 = cw[on, :2].min(0) - 4 * sc
+            shp = np.ceil((cw[on, :2].max(0) - lo2) / sc).astype(int) + 5
+
+            def cells(mask):
+                q = ((cw[mask, :2] - lo2) / sc).astype(int)
+                return q, (q >= 0).all(1) & (q < shp).all(1)
+            M = np.zeros(shp, bool)
+            q, ok = cells(on)
+            M[q[ok, 0], q[ok, 1]] = True
+            near = ~taken & ~on & (np.abs(cw[:, 2]) < c.get("dist_m", 0.03))        # 면 방향이 안 맞아 벽으로 안 잡힌 울퉁불퉁한 조각도 같은 벽 자리면 뺌
+            Md = ndimage.binary_dilation(M, iterations=max(1, int(round(0.15 / sc))))
+            qn, okn = cells(near)
+            hit = np.zeros(len(qn), bool)
+            hit[okn] = Md[qn[okn, 0], qn[okn, 1]]
+            on = on.copy()
+            on[np.where(near)[0][hit]] = True
+            q, ok = cells(on)
+            M[q[ok, 0], q[ok, 1]] = True
+            M = ndimage.binary_closing(M, iterations=max(1, int(round(c.get("sheet_close_m", 0.15) / sc))))
+            lab, nl = ndimage.label(M)
+            if nl:
+                M = np.isin(lab, 1 + np.nonzero(ndimage.sum(M, lab, range(1, nl + 1)) * sc * sc >= c.get("sheet_min_m2", 0.3))[0])
+            sheet = grid_mesh(M, lo2, sc, lambda xy: np.zeros(len(xy)))
+            if len(sheet.triangles):
+                if vis.has_vertex_colors():                                        # 사진이 안 닿은 텍셀이 쓸 색 = 가장 가까운 스캔 벽 색
+                    _, j = cKDTree(cw[on, :2]).query(np.asarray(sheet.vertices)[:, :2])
+                    sheet.vertex_colors = o3d.utility.Vector3dVector(vcol[tri[on][j, 0]])
+                sheet.transform(np.linalg.inv(A))
+                sheet.compute_vertex_normals()
+                part = sheet
         flat = copy.deepcopy(part).transform(A)                 # 벽 좌표: 벽 = z 0 평면
         occ = o3d.t.geometry.RaycastingScene()
         occ.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(copy.deepcopy(occ_mesh).transform(A)))
@@ -94,7 +164,10 @@ def run(cfg, out, visuals, occ_mesh, sets):
         os.makedirs(dk, exist_ok=True)
         region, st = floor_texture.bake(wsets, flat, Ground(), occ, c, dk)
         color = os.path.join(dk, f"wall{k}_color.jpg")
-        Image.open(os.path.join(dk, "bake_raw.png")).convert("RGB").save(color, quality=c.get("jpeg_quality", 92))
+        raw = Image.open(os.path.join(dk, "bake_raw.png")).convert("RGB")
+        if c.get("flatten"):
+            raw = _flatten_wall(raw, c["flatten"], c.get("cell_m", 0.01))
+        raw.save(color, quality=c.get("jpeg_quality", 92))
         name = f"Wall{k}"
         visuals[name] = part
         mats[name] = dict(color=color, region=region, uv_T=A.tolist(), tile_m=1.0)
