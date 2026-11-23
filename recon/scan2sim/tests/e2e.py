@@ -1,12 +1,17 @@
 """전체 흐름 시험 — 서버를 띄워 실제 사용자처럼 파일을 올리고, 끝날 때까지 기다린 뒤 결과가 약속(docs/CONTRACT.md)에 맞는지 본다.
 
     cd recon
-    python -m scan2sim.tests.e2e <파일(zip · glb)> [--truth room_truth.json] [--server http://… --code …] [--json 결과.json]
+    python -m scan2sim.tests.e2e <파일(zip · glb)> [--truth 정답.json] [--server http://… --code …] [--json 결과.json] [--allow-fail]
 
---server 를 안 주면 빈 포트에 서버를 새로 띄우고(임시 작업 폴더 · 무작위 접속 코드) 끝나면 끈다.
---truth 를 주면 (samples/make_room.py 가 쓴 정답) 넣어 둔 결함마다 같은 종류의 결함이 정답 자리에서 --tol 안에 잡혔는지 본다.
-검사 항목: 접속 코드 없이 401 · 조각 순서가 틀리면 409 · 상태가 done · 상태 응답 필드 · 결함 목록 필드 · 결과 파일 4개(preview.glb · map.png · report.md · bundle.zip)
-종료 코드: 0 = 모두 통과 · 1 = 하나라도 실패 · 2 = 서버가 안 뜸 / 시간 초과
+--server 를 안 주면 빈 포트에 서버를 새로 띄우고(임시 작업 폴더 · 무작위 접속 코드) 끝나면 엔진까지 함께 끈다.
+--truth 를 주면 (samples/make_room.py · make_stray.py 가 쓴 정답) 넣어 둔 결함마다 같은 종류의 결함이 정답 자리에서 --tol 안에 잡혔는지 본다.
+  정답 자리는 결함의 center_input(glTF 좌표, Y 위)을 이 작업의 T_input_to_scene 으로 옮겨 씬 좌표로 견준다.
+  Stray 입력(zip)이면 그 앞에 stray.py 와 같은 Y_UP_TO_Z_UP 을 먼저 곱한다 (입력 좌표 = input_map 세계, docs/CONTRACT.md 1장).
+  정답 하나에 잡힌 결함 하나만 짝지음(같은 결함이 정답 둘을 맞추지 못함). 정답이 있는데 견줄 것이 하나도 없으면 실패.
+검사 항목: 접속 코드 없이 401 · 조각 순서가 틀리면 409 · 상태가 done · 상태 응답 필드 · 결함 목록 필드(보정 전 · 뒤)
+           · 엔진 단계에 실패 없음 · 결과 파일 4개(preview.glb · map.png · report.md · bundle.zip)
+--allow-fail: 일부러 나쁘게 찍은 입력처럼 엔진이 실패하는 것이 맞을 때. 단계 실패를 허용하고, 실패한 단계 뒤의 결과 파일은 404 가 맞는지 본다.
+종료 코드: 0 = 모두 통과 · 1 = 하나라도 실패 · 2 = 서버가 안 뜸 · 연결이 끊김 · 시간 초과
 """
 import argparse
 import io
@@ -15,6 +20,7 @@ import math
 import os
 import secrets
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -30,6 +36,12 @@ JOB_KEYS = ("id", "name", "size", "received", "status", "stages", "queue_ahead")
 DONE_KEYS = ("verdict", "has_bundle", "metrics", "defects_before", "defects_after")
 STAGE_KEYS = ("name", "label", "status")
 DEFECT_KEYS = ("id", "type", "title", "severity", "fixable", "center_scene", "center_input", "radius_m", "extent_m", "samples", "basis", "action")
+OK = ("pass", "warn")
+Y_UP_TO_Z_UP = [[1.0, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0], [0, 0, 0, 1]]     # stray.py 와 같은 값
+
+
+class Broken(Exception):
+    """서버와 연결이 끊김 · 시간 초과 — 종료 코드 2"""
 
 
 class Api:
@@ -55,11 +67,13 @@ class Api:
                 return e.code, json.loads(data)
             except Exception:
                 return e.code, data
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            raise Broken(f"{method} {path}: {e}") from e
 
 
 class Checks:
-    def __init__(self):
-        self.rows = []
+    def __init__(self, allow_fail=False):
+        self.rows, self.allow_fail = [], allow_fail
 
     def add(self, name, ok, detail=""):
         self.rows.append(dict(name=name, ok=bool(ok), detail=str(detail)))
@@ -68,7 +82,7 @@ class Checks:
 
     @property
     def ok(self):
-        return all(r["ok"] for r in self.rows)
+        return bool(self.rows) and all(r["ok"] for r in self.rows)
 
 
 def free_port():
@@ -80,9 +94,10 @@ def free_port():
 
 
 def start_server(jobs, code, log):
+    """서버를 새 프로세스 묶음으로 띄움 — 끌 때 서버가 띄운 엔진과 그 아래 파이프라인까지 한꺼번에 끄기 위해"""
     port = free_port()
     p = subprocess.Popen([sys.executable, "-m", "scan2sim.web.server", "--port", str(port), "--jobs", jobs, "--code", code], cwd=RECON,
-                         stdout=log, stderr=subprocess.STDOUT, env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+                         stdout=log, stderr=subprocess.STDOUT, env=dict(os.environ, PYTHONIOENCODING="utf-8"), start_new_session=True)
     api = Api(f"http://127.0.0.1:{port}", code)
     for _ in range(60):
         if p.poll() is not None:
@@ -90,11 +105,29 @@ def start_server(jobs, code, log):
         try:
             if api.call("GET", "/api/info", timeout=2)[0] == 200:
                 return p, api
-        except Exception:
+        except Broken:
             pass
         time.sleep(0.5)
-    p.kill()
+    stop_server(p)
     return None, None
+
+
+def stop_server(p):
+    """서버 프로세스 묶음(서버 · 엔진 · 파이프라인)을 SIGTERM 으로, 10초 안에 안 끝나면 SIGKILL 로 끔"""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(p.pid, sig)
+        except ProcessLookupError:
+            p.poll()
+            return
+        end = time.time() + 10
+        while time.time() < end:
+            p.poll()                                            # 서버가 끝났으면 거둬야 묶음이 비워짐
+            try:
+                os.killpg(p.pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.3)
 
 
 def upload(api, path, C):
@@ -111,23 +144,23 @@ def upload(api, path, C):
         while off < size:
             buf = f.read(CHUNK)
             st, r = api.call("PUT", f"/api/jobs/{jid}/chunk?offset={off}", buf, ctype="application/octet-stream")
-            if st != 200 or r.get("received") != off + len(buf):
+            if st != 200 or not isinstance(r, dict) or r.get("received") != off + len(buf):
                 C.add("조각 올리기", False, f"offset {off}: HTTP {st} {r}")
                 return None
             off += len(buf)
     C.add("조각 올리기", True, f"{size / 1e6:.1f} MB · {math.ceil(size / CHUNK)}조각 · {time.time() - t:.1f}초")
     st, r = api.call("POST", f"/api/jobs/{jid}/start")
-    C.add("줄에 넣기", st == 200 and r.get("status") == "queued", f"HTTP {st} {r}")
+    if not C.add("줄에 넣기", st == 200 and isinstance(r, dict) and r.get("status") == "queued", f"HTTP {st} {r}"):
+        return None
     return jid
 
 
-def wait(api, jid, timeout, C):
+def wait(api, jid, timeout):
     t0, seen = time.time(), None
     while time.time() - t0 < timeout:
         st, j = api.call("GET", f"/api/jobs/{jid}")
         if st != 200:
-            C.add("상태 조회", False, f"HTTP {st}")
-            return None
+            raise Broken(f"상태 조회 HTTP {st}")
         run = next((s["name"] for s in j.get("stages", []) if s.get("status") == "running"), None)
         if run != seen:
             print(f"    … {j['status']} {run or ''} ({time.time() - t0:.0f}초)", flush=True)
@@ -136,52 +169,118 @@ def wait(api, jid, timeout, C):
             j["_seconds"] = round(time.time() - t0, 1)
             return j
         time.sleep(2)
-    C.add("시간 안에 끝남", False, f"{timeout}초 초과")
-    return None
+    raise Broken(f"{timeout}초 안에 끝나지 않음")
+
+
+def defect_list_ok(d, phase):
+    """결함 목록 파일 하나가 약속대로인지 → (맞음, 결함 목록)"""
+    if not isinstance(d, dict):
+        return False, []
+    ds = d.get("defects")
+    ok = (isinstance(ds, list) and d.get("phase") == phase and "T_input_to_scene" in d
+          and all(isinstance(x, dict) and not [k for k in DEFECT_KEYS if k not in x] for x in ds))
+    return ok, ds if isinstance(ds, list) else []
+
+
+def stage_status(j):
+    return {s.get("name"): s.get("status") for s in j.get("stages", [])}
 
 
 def check_job(j, C):
-    C.add("상태가 done", j["status"] == "done", f"{j['status']} · {j.get('error', '')} · 판정 {j.get('verdict')}")
+    st = stage_status(j)
+    C.add("상태가 done", j["status"] == "done", f"{j['status']} {j.get('error', '')} · 판정 {j.get('verdict')}".strip())
     miss = [k for k in JOB_KEYS + DONE_KEYS if k not in j]
     C.add("상태 응답 필드", not miss, f"없음 {miss}" if miss else "")
     bad = [s.get("name") for s in j.get("stages", []) if any(k not in s for k in STAGE_KEYS) or s["status"] not in ("pass", "warn", "fail", "skip")]
-    C.add("단계 8개 · 판정 값", len(j.get("stages", [])) == 8 and not bad, " · ".join(f"{s['name']} {s['status']}" for s in j.get("stages", [])))
-    db = j.get("defects_before") or {}
-    ds = db.get("defects")
-    ok = isinstance(ds, list) and all(not [k for k in DEFECT_KEYS if k not in d] for d in ds) and all(k in db for k in ("phase", "T_input_to_scene"))
-    C.add("결함 목록 필드", ok, f"보정 전 {len(ds or [])}곳 · 보정 뒤 {len((j.get('defects_after') or {}).get('defects') or []) if j.get('defects_after') else '없음'}")
+    C.add("단계 8개 · 판정 값", len(st) == 8 and not bad, " · ".join(f"{k} {v}" for k, v in st.items()))
     failed = [s for s in j.get("stages", []) if s.get("status") == "fail"]
-    if not C.allow_fail:                                          # 서버는 report.md 만 있으면 done 으로 둠 — 엔진 단계의 실패는 따로 봄
+    if not C.allow_fail:                                        # 서버는 report.md 만 있으면 done 으로 둠 — 엔진 단계의 실패는 따로 봄
         C.add("엔진 단계에 실패 없음", not failed, " / ".join(f"{s['name']}: {s.get('summary')} {s.get('messages', [])[:2]}" for s in failed))
-    return ds or []
+    defects = []
+    if st.get("diagnose") in OK:
+        ok, defects = defect_list_ok(j.get("defects_before"), "before")
+        C.add("결함 목록 필드(보정 전)", ok, f"{len(defects)}곳")
+        if st.get("correct") in OK:
+            ok2, after = defect_list_ok(j.get("defects_after"), "after")
+            C.add("결함 목록 필드(보정 뒤)", ok2, f"{len(after)}곳")
+        else:
+            C.add("보정을 안 했으면 보정 뒤 목록 없음", j.get("defects_after") is None, f"correct {st.get('correct')}")
+    else:
+        C.add("진단을 못 했으면 결함 목록 없음", j.get("defects_before") is None, f"diagnose {st.get('diagnose')}")
+    return defects
 
 
-def check_files(api, jid, C):
-    st, b = api.call("GET", f"/api/jobs/{jid}/preview.glb", raw=True, timeout=600)
-    C.add("preview.glb", st == 200 and b[:4] == b"glTF", f"HTTP {st} · {len(b) / 1e6:.1f} MB" if st == 200 else f"HTTP {st}")
-    st, b = api.call("GET", f"/api/jobs/{jid}/map.png", raw=True)
-    C.add("map.png", st == 200 and b[:8] == b"\x89PNG\r\n\x1a\n", f"HTTP {st}")
-    st, b = api.call("GET", f"/api/jobs/{jid}/report.md", raw=True)
-    C.add("report.md", st == 200 and len(b) > 100, f"HTTP {st}")
-    st, b = api.call("GET", f"/api/jobs/{jid}/bundle.zip", raw=True, timeout=600)
-    names = zipfile.ZipFile(io.BytesIO(b)).namelist() if st == 200 else []
+def check_files(api, jid, j, C):
+    """결과 파일 — 만들어진 단계까지는 있어야 하고, 실패 · 건너뛴 단계의 것은 404 여야 함"""
+    st = stage_status(j)
+    want = dict(preview=st.get("convert") in OK, map=st.get("nav2") in OK, report=True, bundle=st.get("bundle") in OK)
+    s, b = api.call("GET", f"/api/jobs/{jid}/preview.glb", raw=True, timeout=900)
+    C.add("preview.glb", (s == 200 and b[:4] == b"glTF") if want["preview"] else s == 404,
+          (f"HTTP {s} · {len(b) / 1e6:.1f} MB" if s == 200 else f"HTTP {s}") + ("" if want["preview"] else " (convert 가 안 돼 404 가 맞음)"))
+    s, b = api.call("GET", f"/api/jobs/{jid}/map.png", raw=True)
+    C.add("map.png", (s == 200 and b[:8] == b"\x89PNG\r\n\x1a\n") if want["map"] else s == 404, f"HTTP {s}")
+    s, b = api.call("GET", f"/api/jobs/{jid}/report.md", raw=True)
+    C.add("report.md", s == 200 and len(b) > 100, f"HTTP {s}")
+    s, b = api.call("GET", f"/api/jobs/{jid}/bundle.zip", raw=True, timeout=900)
+    if not want["bundle"]:
+        C.add("bundle.zip", s == 404, f"HTTP {s} (bundle 이 안 돼 404 가 맞음)")
+        return []
+    try:
+        names = zipfile.ZipFile(io.BytesIO(b)).namelist() if s == 200 else []
+    except zipfile.BadZipFile:
+        C.add("bundle.zip", False, "zip 이 깨짐")
+        return []
     usd = [n for n in names if n.endswith("_mesh.usdc")]
-    C.add("bundle.zip 에 USD", bool(usd) and any(n.endswith("scene_root.usda") for n in names), f"HTTP {st} · 파일 {len(names)}개 · {usd[:1]}")
+    C.add("bundle.zip 에 USD", bool(usd) and any(n.endswith("scene_root.usda") for n in names), f"HTTP {s} · 파일 {len(names)}개 · {usd[:1]}")
     return names
 
 
-def check_truth(defects, truth, tol, C):
-    """정답의 결함마다 같은 종류 중 가장 가까운 것을 찾음. 정답 형식: {"defects": [{"type", "center_scene": [x, y, z]}]}"""
-    res = []
-    for t in truth.get("defects", []):
-        if "center_scene" not in t:
+def truth_scene(t, T, stray_input):
+    """정답 결함의 씬 좌표 (x, y). center_input 이 있으면 이 작업의 T_input_to_scene 으로 옮김"""
+    if "center_input" in t and T is not None:
+        p = list(t["center_input"][:3]) + [1.0]
+        if stray_input:
+            p = [sum(Y_UP_TO_Z_UP[r][c] * p[c] for c in range(4)) for r in range(4)]
+        q = [sum(T[r][c] * p[c] for c in range(4)) for r in range(3)]
+        return q[:2], "center_input × T_input_to_scene" + (" (Y_UP_TO_Z_UP 먼저)" if stray_input else "")
+    for k in ("center_scene", "center_scene_expected"):
+        if k in t:
+            return list(t[k][:2]), k
+    return None, None
+
+
+def check_truth(defects, truth, T, stray_input, tol, C):
+    """정답마다 같은 종류의 결함 하나를 거리 순으로 1:1 짝지음."""
+    want = [t for t in truth.get("defects", []) if isinstance(t, dict) and "type" in t]
+    pairs = []
+    for i, t in enumerate(want):
+        xy, how = truth_scene(t, T, stray_input)
+        if xy is None:
+            C.add(f"정답 결함 {t['type']}", False, "정답에 자리(center_input · center_scene)가 없음")
             continue
-        same = [d for d in defects if d["type"] == t["type"]]
-        dist = min((math.dist(d["center_scene"][:2], t["center_scene"][:2]) for d in same), default=None)
+        for k, d in enumerate(defects):
+            if d["type"] == t["type"]:
+                pairs.append((math.dist(d["center_scene"][:2], xy), i, k))
+        t["_xy"], t["_how"] = xy, how
+    pairs.sort()
+    used_t, used_d, match = set(), set(), {}
+    for dist, i, k in pairs:
+        if i not in used_t and k not in used_d:
+            used_t.add(i), used_d.add(k)
+            match[i] = dist
+    res = []
+    for i, t in enumerate(want):
+        if "_xy" not in t:
+            continue
+        dist = match.get(i)
         ok = dist is not None and dist <= tol
-        C.add(f"정답 결함 {t['type']} @({t['center_scene'][0]:.1f}, {t['center_scene'][1]:.1f})", ok,
-              f"가장 가까운 것 {dist:.2f} m" if dist is not None else "같은 종류가 없음")
-        res.append(dict(type=t["type"], truth=t["center_scene"], dist_m=None if dist is None else round(dist, 3), ok=ok))
+        C.add(f"정답 결함 {t['type']} @({t['_xy'][0]:.2f}, {t['_xy'][1]:.2f})", ok,
+              (f"짝지은 결함까지 {dist:.2f} m" if dist is not None else "짝지을 같은 종류 결함이 없음") + f" · {t['_how']}")
+        res.append(dict(type=t["type"], truth_xy=[round(v, 3) for v in t["_xy"]], dist_m=None if dist is None else round(dist, 3), ok=ok))
+    if want and not res:
+        C.add("정답과 견줌", False, "정답 결함이 있는데 견준 것이 없음")
+    if not want:
+        print("    (정답 파일에 결함이 없음 — 결함 위치는 견주지 않음)", flush=True)
     return res
 
 
@@ -195,49 +294,49 @@ def main():
     ap.add_argument("--timeout", type=int, default=1200)
     ap.add_argument("--json", help="결과를 이 파일에")
     ap.add_argument("--keep", action="store_true", help="새로 띄운 서버의 작업 폴더를 지우지 않음")
-    ap.add_argument("--allow-fail", action="store_true", help="엔진 단계가 실패해도 시험 실패로 보지 않음 (일부러 나쁘게 찍은 촬영본처럼 실패가 맞는 입력)")
+    ap.add_argument("--allow-fail", action="store_true", help="엔진 단계가 실패하는 것이 맞는 입력 (일부러 나쁘게 찍은 촬영본 등)")
     a = ap.parse_args()
-    C, srv, tmp = Checks(), None, None
-    C.allow_fail = a.allow_fail
+    C, srv, tmp, rc = Checks(a.allow_fail), None, None, None
     t0 = time.time()
     print(f"e2e: {a.input}", flush=True)
-    if a.server:
-        api = Api(a.server, a.code)
-    else:
-        tmp = tempfile.mkdtemp(prefix="scan2sim_e2e_")
-        log = open(os.path.join(tmp, "server.txt"), "w", encoding="utf-8")
-        srv, api = start_server(os.path.join(tmp, "jobs"), secrets.token_hex(4), log)
-        if not srv:
-            print(f"서버가 뜨지 않음 — {tmp}/server.txt", flush=True)
-            sys.exit(2)
-        print(f"  서버 {api.base} · 작업 폴더 {tmp}/jobs", flush=True)
     out = dict(input=os.path.abspath(a.input))
     try:
+        if a.server:
+            api = Api(a.server, a.code)
+        else:
+            tmp = tempfile.mkdtemp(prefix="scan2sim_e2e_")
+            log = open(os.path.join(tmp, "server.txt"), "w", encoding="utf-8")
+            srv, api = start_server(os.path.join(tmp, "jobs"), secrets.token_hex(4), log)
+            if not srv:
+                raise Broken(f"서버가 뜨지 않음 — {tmp}/server.txt")
+            print(f"  서버 {api.base} · 작업 폴더 {tmp}/jobs", flush=True)
         if api.code:
             st, _ = api.call("GET", "/api/info", code=False)
             C.add("접속 코드 없이 401", st == 401, f"HTTP {st}")
         jid = upload(api, a.input, C)
-        j = wait(api, jid, a.timeout, C) if jid else None
-        if j:
+        if jid:
+            j = wait(api, jid, a.timeout)
             out.update(job=jid, status=j["status"], verdict=j.get("verdict"), seconds=j["_seconds"],
                        stages={s["name"]: [s["status"], s.get("seconds")] for s in j.get("stages", [])})
             defects = check_job(j, C)
             out["defects"] = [dict(type=d["type"], center_scene=d["center_scene"], samples=d["samples"]) for d in defects]
-            if j["status"] == "done":
-                check_files(api, jid, C)
+            check_files(api, jid, j, C)
             if a.truth:
-                out["truth"] = check_truth(defects, json.load(open(a.truth, encoding="utf-8")), a.tol, C)
+                T = (j.get("defects_before") or {}).get("T_input_to_scene")
+                out["truth"] = check_truth(defects, json.load(open(a.truth, encoding="utf-8")), T, a.input.lower().endswith(".zip"), a.tol, C)
+    except Broken as e:
+        print(f"  중단 — {e}", flush=True)
+        out["broken"], rc = str(e), 2
     finally:
         if srv:
-            srv.terminate()
-            srv.wait(10)
+            stop_server(srv)
             if not a.keep:
                 shutil.rmtree(tmp, ignore_errors=True)
-    out.update(ok=C.ok, checks=C.rows, total_s=round(time.time() - t0, 1))
-    if a.json:
-        json.dump(out, open(a.json, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    print(f"e2e {'통과' if C.ok else '실패'} — 검사 {sum(r['ok'] for r in C.rows)}/{len(C.rows)} · {out['total_s']}초", flush=True)
-    sys.exit(0 if C.ok else 1)
+        out.update(ok=C.ok and rc is None, checks=C.rows, total_s=round(time.time() - t0, 1))
+        if a.json:
+            json.dump(out, open(a.json, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    print(f"e2e {'통과' if out['ok'] else '실패'} — 검사 {sum(r['ok'] for r in C.rows)}/{len(C.rows)} · {out['total_s']}초", flush=True)
+    sys.exit(rc if rc is not None else (0 if out["ok"] else 1))
 
 
 if __name__ == "__main__":
