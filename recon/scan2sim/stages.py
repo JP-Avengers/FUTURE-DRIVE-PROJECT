@@ -33,10 +33,20 @@ def s_input(ctx):
     ctx["kind"] = k
     ctx["name"] = detect.safe_name(ctx["input"])
     if k is None:
-        return Result(FAIL, "입력을 알아볼 수 없음", messages=["받는 입력: GLB 파일 · B 형식 맵 폴더(keyframes/ + trajectory_camera_optical.txt)"])
+        return Result(FAIL, "입력을 알아볼 수 없음", messages=["받는 입력: GLB 파일 · B 형식 맵 폴더(keyframes/ + trajectory_camera_optical.txt) · 아이폰 LiDAR 원본(Stray Scanner 폴더 또는 zip)"])
     if k == "bag":
         return Result(FAIL, "녹화 파일(bag) 입력은 아직 연결되지 않음", messages=["녹화 파일 → 맵 폴더는 B 단계의 자리 (한 명령 스크립트가 나오면 여기에 붙임). 지금은 맵 폴더나 GLB 를 넣을 것"])
     build = ctx.path("build", ".keep")[:-len(".keep")].rstrip("/\\")
+    sm = None
+    if k == "stray":                                            # 아이폰 원본 → 맵 폴더 형식으로 바꾼 뒤 맵 폴더 경로를 그대로 탐
+        from . import stray
+        mp = ctx.path("input_map", ".keep")[:-len(".keep")].rstrip("/\\")
+        mj = os.path.join(mp, "stray_meta.json")
+        if ctx.get("resume") and os.path.exists(mj):
+            sm = json.load(open(mj, encoding="utf-8"))
+        else:
+            sm = stray.convert(stray.find_capture(ctx["input"], os.path.join(mp, "_unzip")), mp)
+        ctx["source"], ctx["map_root"], ctx["kind"], k = "stray", mp, "map_folder", "map_folder"
     if k == "glb":
         path = ctx["input"] if os.path.isfile(ctx["input"]) else [os.path.join(ctx["input"], f) for f in os.listdir(ctx["input"]) if f.lower().endswith(".glb")][0]
         p = detect.profile_glb(path)
@@ -51,13 +61,23 @@ def s_input(ctx):
         if p["textured"] == 0:
             r.warn("사진 텍스처가 없음 — 정점 색으로만 보임")
     else:
-        p = detect.profile_map_folder(ctx["input"])
-        cfg = detect.config_map_folder(ctx["input"], ctx["name"], build, p)
-        r = Result(PASS, f"맵 폴더 · 주 묶음 {p['main_keyframes']}장 · 보조 묶음 {len(p['extra_sets'])}개 · 형상 메쉬 {'있음' if p['geometry_mesh'] else '없음'}", metrics=p)
+        root = ctx.get("map_root") or ctx["input"]
+        p = detect.profile_map_folder(root)
+        cfg = detect.config_map_folder(root, ctx["name"], build, p, stray=sm is not None)
+        r = Result(PASS, ("아이폰 원본 → " if sm else "") + f"맵 폴더 · 주 묶음 {p['main_keyframes']}장 · 보조 묶음 {len(p['extra_sets'])}개 · 형상 메쉬 {'있음' if p['geometry_mesh'] else '없음'}", metrics=p)
         if p["main_keyframes"] == 0 or p["main_poses"] == 0:
             r.fail("주 묶음의 키프레임 또는 자세가 없음")
         elif p["main_keyframes"] < 0.95 * p["main_poses"] or p["main_poses"] < 0.95 * p["main_keyframes"]:
             r.warn(f"키프레임 {p['main_keyframes']}장과 자세 {p['main_poses']}줄의 수가 다름 — 범위가 빠졌을 수 있음")
+        if sm:
+            p["stray"] = sm
+            if sm["path_length_m"] < 5 or max(sm["extent_m"][:2]) < 3:
+                r.warn(f"촬영 범위가 좁음 (이동 {sm['path_length_m']} m · 카메라가 움직인 범위 {max(sm['extent_m'][:2]):.1f} m) — 로봇이 다닐 맵으로는 부족할 수 있음")
+            if sm["valid_depth_pct"] < 50:
+                r.warn(f"쓸 수 있는 깊이가 적음 ({sm['valid_depth_pct']}%) — 멀리 있거나 반사 · 유리가 많은 장면")
+            if sm["speed_median_mps"] > 0.8:
+                r.warn(f"촬영 속도가 빠름 (중앙값 {sm['speed_median_mps']} m/s) — 사진이 흐리고 깊이가 성김")
+            r.warn("아이폰 자세에는 되돌아온 자리를 맞추는 보정이 없음 — 긴 구간은 틀어질 수 있음 (얼마나인지는 재지 않음)")
     ctx["profile"] = p
     ctx["config"] = ctx.path("build", "auto_config.yaml")
     open(ctx["config"], "w", encoding="utf-8", newline="\n").write(cfg)
@@ -320,7 +340,7 @@ def s_report(ctx):
     res = ctx.get("results", [])
     worst = FAIL if any(d["status"] == FAIL for d in res) else WARN if any(d["status"] == WARN for d in res) else PASS
     verdict = {PASS: "시뮬레이션에 올릴 수 있음 (주행 검증 전)", WARN: "올릴 수 있으나 아래 주의 항목을 볼 것", FAIL: "쓸 수 없음 — 아래 실패 단계 참고"}[worst]
-    L = [f"# scan2sim 보고서 — {ctx.get('name', '?')}", "", f"- 입력: `{os.path.basename(os.path.normpath(ctx['input']))}` ({ctx.get('kind') or '알 수 없음'})", f"- 만든 때: {time.strftime('%Y-%m-%d %H:%M')}",
+    L = [f"# scan2sim 보고서 — {ctx.get('name', '?')}", "", f"- 입력: `{os.path.basename(os.path.normpath(ctx['input']))}` ({'아이폰 LiDAR 원본 → ' if ctx.get('source') == 'stray' else ''}{ctx.get('kind') or '알 수 없음'})", f"- 만든 때: {time.strftime('%Y-%m-%d %H:%M')}",
          f"- **판정: {verdict}**", "", "## 단계", "", "| 단계 | 판정 | 걸린 시간 | 요약 |", "| --- | --- | ---: | --- |"]
     L += [f"| {d['stage']} | {MARK[d['status']]} | {d['seconds']} s | {d['summary']} |" for d in res]
     notes = [(d["stage"], m) for d in res for m in d["messages"]]

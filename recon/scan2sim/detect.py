@@ -11,7 +11,10 @@ TEMPLATES = os.path.join(RECON, "configs", "templates")
 
 
 def kind_of(path):
-    """→ 'glb' | 'map_folder' | 'bag' | None"""
+    """→ 'glb' | 'map_folder' | 'stray' | 'bag' | None"""
+    from . import stray
+    if stray.find_capture(path):
+        return "stray"
     if os.path.isfile(path):
         ext = os.path.splitext(path)[1].lower()
         return "glb" if ext in (".glb", ".gltf") else "bag" if ext in (".mcap", ".db3", ".bag") else None
@@ -102,7 +105,7 @@ def config_glb(path, name, build_dir, prof):
     return "\n".join(L) + "\n"
 
 
-def config_map_folder(path, name, build_dir, prof):
+def config_map_folder(path, name, build_dir, prof, stray=False):
     """B 형식 맵 폴더용 빌드 설정(yaml 문자열) — 실내 틀 + 찾은 묶음. 벽 처리 값은 복도에서 맞춘 것(다른 실내에서는 확인 안 됨)."""
     root = os.path.abspath(path).replace(os.sep, "/")
     L = [f"# scan2sim 이 자동으로 만든 설정 — 입력 {os.path.basename(os.path.normpath(path))}",
@@ -110,6 +113,8 @@ def config_map_folder(path, name, build_dir, prof):
          "input:", f"  root: {root}", "  keyframes: keyframes", "  poses: trajectory_camera_optical.txt"]
     if prof["geometry_mesh"]:
         L += ["geometry:", f"  mesh: {prof['geometry_mesh']}"]
+    if stray:                                                   # 아이폰 LiDAR: 깊이가 256×192 라 2 cm 칸 · 3 m 까지 (잠정값 — 복도 촬영으로 맞춰야 함)
+        L += ["tsdf:", "  voxel: 0.02", "  depth_trunc: 3.0"]
     if prof["extra_sets"]:
         L += ["colorize:", "  extra_inputs:"]
         for nm in prof["extra_sets"]:
