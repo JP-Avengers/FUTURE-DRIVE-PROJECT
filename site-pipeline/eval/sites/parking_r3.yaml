@@ -1,0 +1,19 @@
+# 장소 설정 parking_r3 (11.17, D) — 장소마다 다른 값을 코드 밖에 둔 파일. 지금 읽는 곳: eval/scenarios/gen_rand_obstacles.py(무작위 장애물 시나리오 생성).
+# 값은 11.05 부터 생성기 안에 박혀 있던 것 그대로임 — 같은 --seed 로 다시 만들면 eval/scenarios/rand/ 의 파일과 바이트 단위로 같아야 함.
+# 새 장소는 이 파일을 본떠 eval/sites/<이름>.yaml 을 만들고 생성기에 --site 로 넘김.
+name: parking_r3                         # 시나리오 이름 앞머리 — <name>_rand_<prefix>_NN
+title: 실제 주차장 r3                     # 시나리오 파일 첫 줄에 적는 장소 이름
+scene: sim/scenes/parking/parking_v0.8_r3.usda
+route: eval/routes/parking_r3_cw.csv     # 장애물 자리 s 를 재는 기준선(시계 방향)
+directions: [cw, ccw]
+start: {x: -1.756, y: -7.621, yaw_deg: -96.0}   # 씬 시작 자세 = 기준선 출발점
+rand_obstacles:
+  stamp: "11.05, D"                      # 시나리오 파일 첫 줄의 (날짜, 만든 사람)
+  lateral_note: 시계 방향 진행의 왼쪽 + — 화단 반대쪽, − 는 화단 쪽
+  lap_m: 90.0                            # 바퀴 이음 너머 장애물 간격을 잴 때 쓰는 한 바퀴 길이(기준선은 89.96 m — 11.05 값 그대로). 닫힌 경로가 아니면 뺌
+  min_gap_m: 9.0                         # 장애물 사이 최소 거리 — 앞 장애물을 피하고 기준선에 돌아올 거리
+  windows:                               # 장애물을 놓는 직선 구간 [이름, 시작 s, 끝 s] — 모서리 앞뒤를 뺀 곳(10.14 시나리오 결과 바탕)
+    - [east, 4.5, 8.5]
+    - [south, 20.0, 37.0]
+    - [west, 53.0, 58.5]                 # 서쪽 사선
+    - [north, 67.0, 82.0]
