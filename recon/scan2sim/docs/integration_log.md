@@ -9,6 +9,8 @@
 | R1 | D | `recon/requirements.txt`에 `opencv-python-headless`, `scikit-image`, `flask`, `Pillow`를 버전 고정해 더하기. 없으면 새 환경에서 Stray 입력은 `input` 단계(`stray.py`의 `import cv2`), GLB 입력은 `convert` 단계(`pipeline/glb_to_usd.py`의 `skeletonize`)에서 실패함. `flask` · `Pillow`는 지금 open3d에 딸려 우연히 설치됨 | 11/23 새 환경 시험 | 열림 |
 | R2 | D | 서버가 엔진의 단계 실패를 `done`으로 표시함. `web/server.py` worker가 `report.md`가 있으면 `done`으로 두는데, `report` 단계는 앞 단계가 실패해도 항상 씀. 화면이 판정(`verdict`)으로 실패를 보여 주는지 A와 확인하거나, 실패 단계가 있으면 `failed`로 두기 | 11/23 복도 GLB e2e | 열림 |
 | R3 | C | `stages.py`에서 B의 `stray_quality.measure`를 불러 복원 정확도를 진단 결과와 보고서에 넣기. 아래 "R3 붙이는 자리" | 6-B4의 1번 | 열림 |
+| R4 | C | `s_input`에서 `stray.CaptureError`를 받아 그 문장만 실패 이유로 보여 주기(`except stray.CaptureError as e: return Result(FAIL, str(e))`). 지금은 `core.run`이 예외로 잡아 요약이 "예외: CaptureError: …"이고 보고서에 traceback 6줄이 나감. 그리고 `stray_meta.json`의 `checks.warnings`를 `r.warn`으로 보여 주기(예: 깊이 파일 1장 모자람, confidence/ 없음) | 11/23 B의 `stray.py` 입력 검사 | 열림 |
+| R5 | C · D | 화면용 `preview.glb`가 너무 큼: 복도 GLB(삼각형 619만 개)에서 129.7 MB. 폰에서 못 열 수 있고 터널로 받는 데 오래 걸림. 삼각형 수를 줄이고(예: 30만 개), 작업이 끝날 때 미리 만들기(implementation 6-C 3번 · 6-D 4번) | 11/23 복도 GLB e2e | 열림 |
 
 ### R3 붙이는 자리 (제안, 약 1초 더 걸림)
 
@@ -46,4 +48,6 @@
 | 아이폰 예시 zip(17초, 50 MB, 사람이 찍혀 있음) | 엔진 직접 | 주의 · 결함 후보 4곳(보이는 바닥 없음) · 보정 안 함 | 52초(convert 45초), 최대 메모리 0.7 GB | 키프레임 839장 중 136장. 묶음의 메쉬 이름 `m_9a5813208f_mesh.usdc` |
 | 같은 zip | `tests/e2e.py`(서버 + API) | 13/13 통과 | 55초 | 묶음의 메쉬 이름이 `input_mesh.usdc` — 서버가 올린 파일을 `input.zip`으로 저장해서 |
 | 복도 v0.4 메쉬로 만든 GLB(삼각형 619만 개, 169 MB, 꼭짓점 색) | `tests/e2e.py` | **convert 실패**(`skimage` 없음) · 상태는 `done` | 108초 | R1 · R2 |
+| 같은 GLB(`scikit-image 0.26.0`을 넣은 뒤) | `tests/e2e.py` | 14/14 통과 · 주의 · 결함 후보 30곳 → 보정 뒤 12곳 | 5분 23초(convert 2분 16초, correct 2분 43초) | `preview.glb` 129.7 MB(R5). 묶음의 메쉬 이름 `input_mesh.usdc` |
+| 망가진 촬영본 25가지(파일 빠짐 · 짧음 · 자세 파일 깨짐 · 장 수 불일치 · zip 폴더 여러 개 · 폴더 밖 경로 등, 실제 촬영본을 잘라 만듦) | `stray.py` 입력 검사 | 모두 사용자 문장으로 멈춤. 1~2장 차이와 confidence/ 없음은 주의만 | — | 좋은 촬영본은 키프레임 파일까지 고치기 전과 같음(md5) |
 | 아이폰 예시 zip의 엔진 결과 | `stray_quality.py` | 안 쓴 프레임 30장 깊이 ↔ 맵: 중앙 1.08 cm · 90% 4.39 cm · 2 cm 안 70.2% · 맵에 닿음 97.8% → 통과 | 4.5초(측정 본체 1초) | 신뢰도 2 화소만 쓰면 중앙 0.82 cm · 2 cm 안 79%. 화면용 메쉬(`visual.ply`, 정리 · 줄임 뒤)는 중앙 2.74 cm. 자세를 일부러 틀리게 넣으면 38~65 cm로 커져 `fail` |
