@@ -51,6 +51,7 @@ ZIP_HINT = "Stray Scanner 의 촬영 폴더 하나(rgb.mp4 · odometry.csv · ca
 MIN_ROWS, MIN_S = 100, 2.0                                      # 이보다 짧은 촬영은 맵이 안 됨
 COUNT_TOL, VIDEO_MIN = 2, 0.9                                   # 깊이 · 영상 장 수가 자세 줄 수와 다를 때: 2장까지는 주의, 영상은 90 % 밑이면 실패
 QUAT_TOL = 0.01                                                 # 자세 사원수 길이가 1 에서 벗어나도 되는 정도
+MAX_KEYFRAMES = 800                                             # 긴 촬영은 간격을 넓혀 이 수 안으로 — 맵 빌드 시간이 키프레임 수 × (바닥 + 벽 수)에 비례 (11/23 시간 측정)
 ZIP_MAX_FILES, ZIP_MAX_BYTES = 100_000, 6 * 1024 ** 3           # zip 폭탄 막기 (샘플 17 초 = 1682개 · 50 MB)
 
 
@@ -268,7 +269,7 @@ def select(pos, R, speed, move_m, turn_deg, max_speed, start=0):
     return keep, fast
 
 
-def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_speed=1.5, max_depth_m=5.0, skip_s=1.0, log=print):
+def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_speed=1.5, max_depth_m=5.0, skip_s=1.0, log=print, max_keyframes=None):
     """촬영 폴더 src → 맵 폴더 out. → 요약 dict (stray_meta.json 과 같음). 자료가 잘못됐으면 CaptureError (무엇이 잘못됐는지 한국어로)"""
     import cv2
     if not src or not os.path.isdir(src):
@@ -295,6 +296,13 @@ def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_spee
     speed = np.convolve(step / dt, np.ones(5) / 5, mode="same")   # 프레임 5장 평균 속력 (m/s)
     start = int(min(np.searchsorted(t, t[0] + skip_s), len(od) - 2))
     keep, fast = select(pos, R, speed, move_m, turn_deg, max_speed, start)
+    cap_n, widen = MAX_KEYFRAMES if max_keyframes is None else max_keyframes, 1.0
+    while cap_n and len(keep) > cap_n and widen < 32:              # 긴 촬영: 움직임 · 회전 간격을 같이 넓혀 상한 안으로
+        widen *= 1.2
+        keep, fast = select(pos, R, speed, move_m * widen, turn_deg * widen, max_speed, start)
+    if widen > 1:
+        warns.append(f"촬영이 길어 키프레임 간격을 {widen:.2f}배 넓힘 ({move_m * widen * 100:.0f} cm · {turn_deg * widen:.1f}°, 상한 {cap_n}장) — 처리 시간을 줄이려는 것")
+        log(f"[stray] {warns[-1]}")
     keep_set = set(keep)
 
     for sub in ("rgb", "depth", "calib"):
@@ -347,7 +355,8 @@ def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_spee
                 focal_variation_pct=round(float(100 * np.ptp(fl) / np.median(fl)), 2),   # 프레임마다 초점거리가 조금 다름 — 한 값(camera_matrix.csv)으로 씀
                 confidence_pct=np.round(100 * conf_hist / max(conf_hist.sum(), 1), 1).tolist(), min_confidence=min_conf,
                 valid_depth_pct=round(100 * float(np.mean(valid)), 1),
-                select=dict(move_m=move_m, turn_deg=turn_deg, max_speed_mps=max_speed, max_depth_m=max_depth_m, skip_s=skip_s),
+                select=dict(move_m=move_m, turn_deg=turn_deg, max_speed_mps=max_speed, max_depth_m=max_depth_m, skip_s=skip_s,
+                            max_keyframes=cap_n, widen=round(widen, 3), move_m_used=round(move_m * widen, 4), turn_deg_used=round(turn_deg * widen, 2)),
                 checks=dict(warnings=warns, info=info))                # validate 결과 — 주의는 보고서에 띄울 수 있게
     json.dump(meta, open(os.path.join(out, "stray_meta.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     log(f"[stray] {meta['frames_total']}장 중 {meta['keyframes']}장 고름 (빨라서 뺀 것 {fast}) | 이동 {meta['path_length_m']} m · {meta['duration_s']} s | "
