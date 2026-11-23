@@ -296,6 +296,10 @@ def main():
     ap.add_argument("--keep", action="store_true", help="새로 띄운 서버의 작업 폴더를 지우지 않음")
     ap.add_argument("--allow-fail", action="store_true", help="엔진 단계가 실패하는 것이 맞는 입력 (일부러 나쁘게 찍은 촬영본 등)")
     a = ap.parse_args()
+    for f in [a.input] + ([a.truth] if a.truth else []):
+        if not os.path.isfile(f):
+            print(f"e2e: 파일이 없음 — {f}", flush=True)
+            sys.exit(2)
     C, srv, tmp, rc = Checks(a.allow_fail), None, None, None
     t0 = time.time()
     print(f"e2e: {a.input}", flush=True)
