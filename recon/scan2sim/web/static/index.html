@@ -51,7 +51,7 @@
   table.cmp td, table.cmp th { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
   table.cmp td:first-child, table.cmp th:first-child { text-align: left; }
   table.cmp th { color: var(--sub); font-weight: 600; }
-  .defect { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+  .defect { display: block; width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
   .defect:hover { border-color: var(--accent); }
   .defect.sel { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
   .defect .top { display: flex; gap: 8px; align-items: center; font-weight: 700; }
@@ -121,25 +121,23 @@
   </aside>
 
   <main>
-    <div id="view"></div>
+    <div id="view" aria-label="실내 스캔 3D 지도"></div>
     <div class="hint" id="hint"><div>파일을 올리고 진단이 끝나면 여기에 3D 지도가 뜸.<br>끌기 = 돌리기 · 휠 = 확대 · 오른쪽 끌기 = 옮기기</div></div>
     <div class="hud" id="hud" hidden>
       <label>위쪽 자르기 <input type="range" id="clip" min="0" max="100" value="100"> <span id="clipV"></span></label>
       <button id="fit">전체 보기</button>
       <button id="topv">위에서 보기</button>
+      <span class="note">표식을 눌러 결함 확인 · 겹친 표식은 다시 눌러 전환</span>
     </div>
     <div class="mapbox" id="mapbox"><img id="mapimg" alt="Nav2 지도"><br><span>Nav2 지도 (흰색 = 빈 바닥)</span></div>
   </main>
 </div>
 
+<!-- Three.js r160 · web/static/vendor/three/LICENSE -->
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+{ "imports": { "three": "/static/vendor/three/build/three.module.min.js", "three/addons/": "/static/vendor/three/examples/jsm/" } }
 </script>
 <script type="module">
-import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-
 const $ = (id) => document.getElementById(id);
 const CHUNK = 8 * 1024 * 1024;
 const MARK = { pass: "통과", warn: "주의", fail: "실패", skip: "건너뜀", running: "진행 중", pending: "" };
@@ -192,14 +190,19 @@ $("go").onclick = async () => {
 };
 
 // ── 진행 상태 ────────────────────────────────────────────────────────
-async function poll() {
-  try { job = await api(`/api/jobs/${jobId}`); } catch (e) { $("note").textContent = e.message; return; }
+async function poll(id = jobId) {
+  if (id !== jobId) return;
+  try {
+    const result = await api(`/api/jobs/${id}`);
+    if (id !== jobId) return;
+    job = result;
+  } catch (e) { if (id === jobId) $("note").textContent = e.message; return; }
   $("progress").hidden = false; $("bar").hidden = true;
   renderSteps();
   if (job.status === "queued") $("note").textContent = `작업 번호 ${jobId} · 앞에 ${job.queue_ahead}건 기다리는 중`;
   if (job.status === "running") $("note").textContent = `작업 번호 ${jobId} · 처리 중 (${Math.round(Date.now() / 1000 - job.started)}초)`;
   if (job.status === "done" || job.status === "failed") { finish(); return; }
-  setTimeout(poll, 1500);
+  setTimeout(() => poll(id), 1500);
 }
 function renderSteps() {
   const ol = $("steps"); ol.replaceChildren();
@@ -238,7 +241,13 @@ function finish() {
   loadScene();
   renderDefects();
 }
-function setSeg() { for (const b of $("seg").children) b.classList.toggle("on", b.dataset.p === phase); }
+function setSeg() {
+  for (const b of $("seg").children) {
+    const active = b.dataset.p === phase;
+    b.classList.toggle("on", active);
+    b.setAttribute("aria-pressed", active);
+  }
+}
 for (const b of $("seg").children) b.onclick = () => { phase = b.dataset.p; selected = null; setSeg(); renderDefects(); };
 
 function renderCompare() {
@@ -256,106 +265,87 @@ function currentDefects() { const d = phase === "after" ? job.defects_after : jo
 function renderDefects() {
   const box = $("defects"); box.replaceChildren();
   const list = currentDefects();
-  if (!list.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = phase === "after" ? "보정 뒤 남은 결함 후보가 없음" : "결함 후보가 없음"; box.append(e); }
+  if (!list.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    const report = phase === "after" ? job.defects_after : job.defects_before;
+    empty.textContent = report ? "결함 후보가 없습니다." : "이 작업에는 결함 진단 결과가 없습니다.";
+    box.append(empty);
+  }
   for (const d of list) {
-    const el = document.createElement("div"); el.className = "defect" + (selected === d.id ? " sel" : "");
+    const el = document.createElement("button");
+    el.type = "button";
+    el.dataset.id = d.id;
+    el.setAttribute("aria-expanded", selected === d.id);
+    el.className = "defect" + (selected === d.id ? " sel" : "");
     const top = document.createElement("div"); top.className = "top";
     const tag = document.createElement("span"); tag.className = `tag ${d.severity}`; tag.textContent = d.severity === "fail" ? "결함" : "주의";
     const ti = document.createElement("span"); ti.textContent = `${d.id} · ${d.title}`;
     top.append(tag, ti);
     const meta = document.createElement("div"); meta.className = "meta";
-    meta.textContent = `위치 (${d.center_scene[0].toFixed(1)}, ${d.center_scene[1].toFixed(1)}) m · 범위 약 ${d.extent_m} m · ${d.fixable ? "자동 보정 대상" : "보정 안 함"}`;
+    meta.textContent = `장면 좌표 (x, y, z) = (${d.center_scene.map(v => v.toFixed(2)).join(", ")}) m · 범위 약 ${d.extent_m} m · ${d.fixable ? "자동 보정 대상" : "보정 안 함"}`;
     const more = document.createElement("div"); more.className = "more";
     for (const [k, v] of [["판정 근거", d.basis], ["처리", d.action]]) { const p = document.createElement("p"); const b = document.createElement("b"); b.textContent = k + " "; p.append(b, v); more.append(p); }
     el.append(top, meta, more);
-    el.onclick = () => { selected = d.id; renderDefects(); focusDefect(d); };
+    el.onclick = () => selectDefect(d.id);
     box.append(el);
   }
-  drawMarkers();
+  viewer?.drawMarkers(list, selected);
 }
 
-// ── 3D 화면 (서버가 만든 결과 메쉬: 화면 (x, y, z) = 씬 (x, z, −y), 바닥 y = 0) ──────────────
-const view = $("view");
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.localClippingEnabled = true;
-view.append(renderer.domElement);
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 2000);
-camera.position.set(6, 8, 6);
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-scene.add(new THREE.HemisphereLight(0xffffff, 0x59606e, 1.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(3, 5, 2); scene.add(sun);
-const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1000);
-const markers = new THREE.Group(); scene.add(markers);
-let model = null, bounds = null;
-const toView = (p) => new THREE.Vector3(p[0], p[2], -p[1]);
-
-function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h); camera.aspect = w / Math.max(h, 1); camera.updateProjectionMatrix(); }
-new ResizeObserver(resize).observe(view); resize();
-function bg() { renderer.setClearColor(getComputedStyle(document.documentElement).getPropertyValue("--view").trim() || "#e9ecf1"); }
-bg(); matchMedia("(prefers-color-scheme: dark)").addEventListener("change", bg);
-(function loop() { requestAnimationFrame(loop); controls.update(); const t = performance.now() / 400; for (const m of markers.children) if (m.userData.sel) m.children[0].material.opacity = 0.35 + 0.25 * Math.sin(t); renderer.render(scene, camera); })();
-
-function clearScene() { if (model) { scene.remove(model); model = null; } markers.clear(); $("hud").hidden = true; $("mapbox").style.display = "none"; $("hint").style.display = ""; }
-function loadScene() {
-  new GLTFLoader().load(withCode(`/api/jobs/${jobId}/preview.glb`), (g) => {
-    model = g.scene;
-    model.traverse((o) => { if (o.isMesh) { if (o.material && o.material.map) o.material = new THREE.MeshBasicMaterial({ map: o.material.map, side: THREE.DoubleSide, clippingPlanes: [clipPlane] });
-      else if (o.geometry.attributes.color) o.material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, clippingPlanes: [clipPlane] });
-      else { o.geometry.computeVertexNormals(); o.material = new THREE.MeshLambertMaterial({ color: 0xc4cad6, side: THREE.DoubleSide, clippingPlanes: [clipPlane] }); } } });
-    scene.add(model);
-    bounds = new THREE.Box3().setFromObject(model);
-    $("hint").style.display = "none"; $("hud").hidden = false;
-    const hasCeil = job.stages.some((s) => s.name === "diagnose" && (s.messages || []).some((m) => m.includes("천장이 있음")));
-    $("clip").value = hasCeil ? 55 : 100; setClip();      // 천장이 있으면 안이 보이게 위쪽을 잘라 둠
-    fit(true); drawMarkers();
-  }, undefined, () => { $("hint").firstElementChild.textContent = "3D 지도를 불러오지 못함 (빌드가 실패했을 수 있음)"; });
-  const img = $("mapimg"); img.onload = () => ($("mapbox").style.display = "block"); img.src = withCode(`/api/jobs/${jobId}/map.png`);
+function selectDefect(id) {
+  const defect = currentDefects().find(d => d.id === id);
+  if (!defect) return;
+  selected = id;
+  renderDefects();
+  viewer?.focusDefect(defect);
+  const card = Array.from($("defects").children).find(el => el.dataset.id === id);
+  card.focus({ preventScroll: true });
+  if (matchMedia("(min-width: 701px)").matches) card.scrollIntoView({ block: "nearest" });
 }
-function setClip() {
-  if (!bounds) return;
-  const h = Math.max(0.3, (bounds.max.y * $("clip").value) / 100);
-  clipPlane.constant = $("clip").value >= 100 ? 1000 : h;
-  $("clipV").textContent = $("clip").value >= 100 ? "안 자름" : `${h.toFixed(1)} m 위`;
-}
-$("clip").oninput = setClip;
-function fit(top) {
-  if (!bounds) return;
-  const c = bounds.getCenter(new THREE.Vector3()), s = bounds.getSize(new THREE.Vector3());
-  const r = (Math.max(s.x, s.z) * 0.6) / (Math.tan((camera.fov * Math.PI) / 360) * Math.min(1, camera.aspect));   // 전체가 화면에 들어오는 거리
-  controls.target.set(c.x, 0, c.z);
-  camera.position.set(c.x + (top ? 0.001 : r * 0.55), r * (top ? 1 : 0.75), c.z + (top ? 0.001 : r * 0.55));
-}
-$("fit").onclick = () => fit(false);
-$("topv").onclick = () => fit(true);
 
-function drawMarkers() {
-  markers.clear();
-  if (!model || !job) return;
-  for (const d of currentDefects()) {
-    const col = d.severity === "fail" ? 0xe5323e : 0xe39a1c, sel = selected === d.id, r = Math.max(d.radius_m, 0.25);
-    const g = new THREE.Group(); g.userData = { id: d.id, sel };
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(r, r, sel ? 0.5 : 0.06, 40), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: sel ? 0.5 : 0.15, depthTest: false }));
-    disc.position.y = sel ? 0.25 : 0.03;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, sel ? 0.05 : 0.025, 8, 48), new THREE.MeshBasicMaterial({ color: col, depthTest: false }));
-    ring.rotation.x = Math.PI / 2; ring.position.y = 0.04;
-    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, sel ? 2.2 : 1.0, 8), new THREE.MeshBasicMaterial({ color: col, depthTest: false }));
-    pin.position.y = (sel ? 2.2 : 1.0) / 2;
-    g.add(disc, ring, pin); g.renderOrder = 10;
-    g.position.copy(toView(d.center_scene));
-    markers.add(g);
+let viewer, viewerReady;
+let viewVersion = 0;
+function clearScene() {
+  ++viewVersion;
+  selected = null;
+  viewer?.clear();
+  $("hud").hidden = true;
+  $("mapbox").style.display = "none";
+  $("mapimg").removeAttribute("src");
+  $("hint").hidden = false;
+  $("hint").firstElementChild.textContent = "진단이 끝나면 여기에 3D 지도가 표시됩니다.";
+}
+async function loadScene() {
+  const version = viewVersion;
+  const hint = $("hint").firstElementChild;
+  if (job.status === "failed" && !job.has_bundle && !job.defects_before) {
+    hint.textContent = "작업이 중단되어 표시할 3D 지도가 없습니다.";
+    return;
   }
-}
-function focusDefect(d) {
-  const p = toView(d.center_scene), r = Math.max(d.radius_m, 1.5);
-  controls.target.copy(p);
-  camera.position.set(p.x + r * 1.6, Math.max(2.5, r * 2.6), p.z + r * 1.6);
+  hint.textContent = "3D 지도를 불러오는 중입니다.";
+  const img = $("mapimg");
+  img.onload = () => { if (version === viewVersion) $("mapbox").style.display = "block"; };
+  img.src = withCode(`/api/jobs/${jobId}/map.png`);
+  try {
+    viewerReady ??= import("/static/viewer.js").then(m => m.createViewer(selectDefect));
+    viewer = await viewerReady;
+    if (version !== viewVersion) return;
+    const ceiling = job.stages.some(s => s.name === "diagnose" && s.messages?.some(m => m.includes("천장이 있음")));
+    if (!await viewer.load(withCode(`/api/jobs/${jobId}/preview.glb`), ceiling)) return;
+    if (version !== viewVersion) return;
+    $("hint").hidden = true;
+    $("hud").hidden = false;
+    viewer.drawMarkers(currentDefects(), selected);
+    const active = currentDefects().find(d => d.id === selected);
+    if (active) viewer.focusDefect(active);
+  } catch {
+    if (version === viewVersion) hint.textContent = "3D 지도를 열 수 없습니다. 결함 위치와 범위는 목록에서 확인하세요.";
+  }
 }
 
 // 주소에 작업 번호가 있으면 그 결과를 다시 엶
-function openFromHash() { if (/^#[0-9a-f]{12}$/.test(location.hash) && location.hash.slice(1) !== jobId) { jobId = location.hash.slice(1); clearScene(); poll(); } }
+function openFromHash() { if (/^#[0-9a-f]{12}$/.test(location.hash) && location.hash.slice(1) !== jobId) { jobId = location.hash.slice(1); clearScene(); $("result").hidden = true; $("progress").hidden = true; poll(); } }
 addEventListener("hashchange", openFromHash);
 api("/api/info").catch(() => {}).finally(openFromHash);
 </script>
