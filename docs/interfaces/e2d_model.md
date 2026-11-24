@@ -26,6 +26,7 @@
 - 11.12 오후: **`xm_ft_v1.5_aw30_exec_e6`**(E6 = v1.5(v0.8 r3 자동 · Nav2 장애물 녹화 포함) + aw30 + 실행 명령 입력, 6 에폭, best 에폭 5 `epoch=5-step=21060.ckpt`, 1,034,138,748 B, sha256 `551cee7beb5d`)를 같은 폴더에 **`xm_ft_v1.5_aw30_exec_e6_e5.ckpt`** 로 업로드(md5 일치). v0.8 r3(60회 씬) 오프라인 지표가 E5 보다 좋아 **폐루프 1순위**(`e2e/results/xm_ft_v1.5_aw30_exec_e6/`) — 노드 설정은 E5 와 같음(`prev_action_mode:=clamped`, `path_scale` 1)
 - 11.13: **`xm_ft_v1.5_aw30_exec_pad05_e6`**(E7 = E6 + 직전 명령 드롭아웃 0.5, best 에폭 5 `epoch=5-step=21060.ckpt`, 1,034,138,812 B, sha256 `93f1c105df96`)를 같은 폴더에 **`xm_ft_v1.5_aw30_exec_pad05_e6_e5.ckpt`** 로 업로드. test 에서 E6 · E5 보다 거의 모든 칸이 좋아 **폐루프 1순위**(E7 → E6 → E5, `e2e/results/xm_ft_v1.5_aw30_exec_pad05_e6/judge_11_13.md`) — 노드 설정은 E5 · E6 과 같음(`prev_action_mode:=clamped`, `path_scale` 1)
 - 11.15: 무작위 배치 폐루프(학습에 안 쓴 `rand_ev_00–05` × 양방향, D 11.13–14)에서 **E6 11/15 · E7 1/12 · Nav2 12/12** — 오프라인과 반대로 E6 가 나음(`e2e/results/closed_loop_rand_ev_11_14.md`). **폐루프 1순위 = E6**(`xm_ft_v1.5_aw30_exec_e6_e5.ckpt`, sha256 `551cee7beb5d`, `prev_action_mode:=clamped`). 직전 명령 드롭아웃 계열(E5 · E7)은 후보에서 뺌. E9(v1.6 × E6 설정)는 11.15 개루프 거르기 탈락(`e2e/results/xm_ft_v1.6_aw30_exec_e6/judge_11_15.md`) · E6 시드 반복도 거르기 1칸 근소 탈락(`e2e/results/xm_ft_v1.5_aw30_exec_seed1_e6/judge_11_15.md`) → **11.20 전달은 E6 하나**
+- 11.24: **모델 동결(납기 11.23) = E6** — `xm_ft_v1.5_aw30_exec_e6_e5.ckpt` · 1,034,138,748 B · sha256 `551cee7beb5d` · `prev_action_mode:=clamped` · `path_scale` 1 · gin 같음. 11.17 에 올린 E11(`xm_ft_v1.5_aw30_exec_e10_e9.ckpt`, sha256 `5e95ae92c852`)은 11.18 무작위 배치 폐루프 4/12 · 충돌 2(같은 날 E6 8/12)로 미리 정한 기준에 못 미쳐 쓰지 않음(`e2e/results/closed_loop_e11_11_18.md`). 동결 기록 `e2e/results/xm_ft_v1.0/README.md`. 60회 결과 CSV 의 `model_version` 은 `xm_ft_v1.5_aw30_exec_e6` 로 제안(11.24 E → D, `FD_MODEL_VERSION` 으로 직접 넣음 — 하네스 자동 값은 이름 끝의 `_e6` 을 떼어 E11 과 구분이 안 됨. D 확인 전)
 - 납기: 모델 동결: 11.23
 
 ## 변경 이력
@@ -39,3 +40,4 @@
 | 11.12 | v0 | 폐루프 후보 `xm_ft_v1.4_aw30_exec_pad05_e10`(E5, sha `c9e01983a7ae`) Drive 업로드 · 노드 `prev_action_mode:=clamped`, 오후 `xm_ft_v1.5_aw30_exec_e6`(E6, sha `551cee7beb5d`) 업로드 = 폐루프 1순위 (E) | |
 | 11.13 | v0 | `xm_ft_v1.5_aw30_exec_pad05_e6`(E7, sha `93f1c105df96`) Drive 업로드 = 폐루프 1순위(E7 → E6 → E5) (E) | |
 | 11.15 | v0 | 상태 **합의** — D 확인 2건(`/route` 형식 · 60회 추론 도구). 무작위 배치 폐루프 E6 11/15 · E7 1/12 → 폐루프 1순위 E6, 드롭아웃 계열(E5 · E7) 뺌 (E) | D(11.14 메시지) |
+| 11.24 | v0 | 모델 동결 = E6(sha `551cee7beb5d`, 노드 설정 그대로). E11 은 11.18 폐루프 4/12 로 쓰지 않음. 60회 `model_version` = `xm_ft_v1.5_aw30_exec_e6` 제안 (E) | 모델 E6: D(11.18 메시지 — E6 그대로 60회 준비) · `model_version` 값: D 확인 전 |
