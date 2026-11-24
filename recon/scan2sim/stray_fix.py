@@ -123,7 +123,7 @@ XY_GATES = dict(min_r4=0.5, min_aligned=0.5, max_peak2=0.5, min_axis_share=0.08,
 STEPS = ("floor", "xy")                                         # 단계와 차례 (높이 → 수평)
 STEP_NAMES = dict(floor="높이", xy="수평")
 FIXES = {"floor+xy": ("floor", "xy"), "floor": ("floor",), "xy": ("xy",)}   # stray_mesh.build(fix=…) 이름 → 단계
-DEFAULT_FIX = "floor+xy"                                        # 근거: 머리말 "측정"
+DEFAULT_FIX = "xy"                                              # 11/24 밤 hf 깊이 규칙 · 5 m 로 다시 잼 — 높이 단계는 천장을 나쁘게 하고 바닥 이득이 작아 끔 (머리말 "측정" 은 예전 규칙 · 3 m)
 SUMMARY_KEYS = ("method", "applied", "status", "reasons", "flags", "keyframes", "frames_supported_pct", "dz_p5_p95_cm", "dz_max_abs_cm",
                 "resid_rms_cm", "max_unsupported_s", "stand_other_pct", "jump_frames", "tilt_deg_p50_p95", "tilt_max_deg", "tilt_big_frames", "seconds")
 XY_SUMMARY_KEYS = ("method", "applied", "status", "reasons", "flags", "keyframes", "axes_applied", "shift_cm_p50_p95", "yaw_fit", "seconds")

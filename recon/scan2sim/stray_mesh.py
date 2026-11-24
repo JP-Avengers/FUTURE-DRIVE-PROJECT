@@ -1,7 +1,7 @@
 """아이폰 LiDAR 원본(Stray Scanner)을 바꾼 맵 폴더 → 깊이를 합친 형상 메쉬. B 의 단계 — stages.py 가 pipeline/tsdf.py 대신 부름.
 
     cd recon
-    python -m scan2sim.stray_mesh <맵 폴더> --out <빌드 폴더> [--voxel 0.02] [--depth-trunc 3.0] [--image-step 1]
+    python -m scan2sim.stray_mesh <맵 폴더> --out <빌드 폴더> [--voxel 0.02] [--depth-trunc 5.0] [--image-step 1]
                                   [--fix floor+xy|floor|none] [--no-fix] [--tilt | --no-tilt]
 
 입력 (stray.py 가 쓴 맵 폴더 = pipeline/io_rgbd.load_rtabmap_keyframes 가 읽는 모양)
@@ -152,7 +152,7 @@ def _fix_poses(fr, poses, fix, fix_opts, pose_fix, log):
     return new, info, fix                                       # 단계마다 오류는 fix_poses 가 받아 status "error" 로 남김 — 메쉬는 계속 만듦
 
 
-def build(map_root, build_dir, voxel=0.02, depth_trunc=3.0, sdf_trunc_voxels=4, image_step=1, pose_fix=None, log=print,
+def build(map_root, build_dir, voxel=0.02, depth_trunc=5.0, sdf_trunc_voxels=4, image_step=1, pose_fix=None, log=print,
           fix=stray_fix.DEFAULT_FIX, fix_opts=None):
     """맵 폴더 → <build_dir>/mesh_raw.ply · tsdf_meta.json (+ <map_root>/pose_fix.json). → meta dict (tsdf_meta.json 과 같음). 만들 수 없으면 MeshError.
     fix = 합치기 전 자세 보정: "floor+xy" (기본 — 높이를 바닥으로 고친 뒤 수평을 벽으로, stray_fix.fix_poses) · "floor" (높이만) · None (끔, 자세 그대로).
@@ -260,7 +260,7 @@ def main():
     ap.add_argument("map", help="맵 폴더 (stray.py 출력: keyframes/ · trajectory_camera_optical.txt)")
     ap.add_argument("--out", required=True, help="빌드 폴더 (mesh_raw.ply · tsdf_meta.json 을 씀)")
     ap.add_argument("--voxel", type=float, default=0.02, help="칸 크기 m (기본 0.02)")
-    ap.add_argument("--depth-trunc", type=float, default=3.0, help="이보다 먼 깊이는 버림 m (기본 3.0)")
+    ap.add_argument("--depth-trunc", type=float, default=5.0, help="이보다 먼 깊이는 버림 m (기본 5.0 — stray.py 가 키프레임 깊이를 이미 규칙대로 골라 둠)")
     ap.add_argument("--sdf-trunc-voxels", type=int, default=4, help="sdf 폭 = 칸 × 이 값 (기본 4)")
     ap.add_argument("--image-step", type=int, default=1, help="그림을 이 화소마다 하나씩만 읽음 (기본 1 = 다 읽음, 2 = 절반 크기)")
     ap.add_argument("--fix", choices=sorted(stray_fix.FIXES) + ["none"], default=stray_fix.DEFAULT_FIX,

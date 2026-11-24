@@ -13,7 +13,18 @@
 출력 (io_rgbd.load_rtabmap_keyframes 가 읽는 모양)
     keyframes/rgb/<id>.jpg · depth/<id>.png (mm, 색에 맞춘 크기) · calib/<id>.yaml
     trajectory_camera_optical.txt   `시각 tx ty tz qx qy qz qw id` — 카메라 광학 좌표계 → 세계 (Z 가 위)
-    stray_meta.json                 무엇을 얼마나 골랐는지
+    stray_meta.json                 무엇을 얼마나 골랐는지 (깊이 규칙은 depth_rule)
+
+깊이 고르기 (conf_rule, 기본 "hf" — 11/24 기준 촬영본에서 잰 것)
+    신뢰도 2 는 max_depth_m(5 m)까지 씀. 신뢰도 1 은 near_conf1_m(3 m) 안이고 세계 높이가 바닥 + floor_margin_m(10 cm) 보다 높을 때만 씀.
+    신뢰도 0 은 버림. 멀리 · 비스듬히 본 바닥의 신뢰도 1 깊이가 바닥을 두 겹으로 만들었음 (1.5 m 넘는 곳부터). 기준 촬영본(키프레임 1133장)에서
+    예전 규칙 · 3 m 대비: 바닥 7~20 cm 아래 겹 9.3 → 0.8 m² · 보이는 바닥 두 높이 15.8 → 3.2% · 천장 덮음 28 → 56% · 보이는 바닥 없음 0.8 → 6.9%.
+    신뢰도 2 만 쓰면 어두운 물체 약 19 m² 를 잃어서 바닥보다 높은 신뢰도 1 은 남김 (Nav2 장애물 40.5 → 41.1 m²).
+    바닥 높이는 먼저 한 번 훑어 정함: 고른 키프레임 10장마다 1장의 신뢰도 2 화소 세계 높이 → 2 cm 칸 분포에서 가장 많은 칸의 30% 이상인
+    가장 낮은 칸 → 그 위 10 cm 안의 봉우리 (pipeline/glb_to_usd.find_floor 와 같은 생각). 바닥을 못 찾으면 (바닥 근처 신뢰도 2 화소가 적거나
+    카메라보다 30 cm 넘게 낮지 않음) 높이 조건 없이 "dist" (신뢰도 1 은 3 m 안 · 그 밖은 2 만)로 쓰고 주의를 남김.
+    신뢰도 그림이 없으면 3 m 안의 깊이를 모두 씀. conf_rule="min" = 예전 규칙 (신뢰도 min_conf 이상 · max_depth_m 까지).
+    쓴 규칙 · 값 · 바닥 높이는 stray_meta.json 의 depth_rule — stray_quality 가 안 쓴 프레임에 같은 규칙을 씀 (depth_keep)
 
 좌표: odometry.csv 의 자세는 카메라 광학 좌표계(x 오른쪽 · y 아래 · z 앞) → 세계이고 세계는 y 가 위 (샘플에서 프레임 사이 깊이를 겹쳐 확인,
 어긋남 중앙값 1~2.5 cm). 그래서 카메라 쪽은 그대로 두고 세계만 y 위 → z 위로 돌림.
@@ -53,6 +64,10 @@ COUNT_TOL, VIDEO_MIN = 2, 0.9                                   # 깊이 · 영�
 QUAT_TOL = 0.01                                                 # 자세 사원수 길이가 1 에서 벗어나도 되는 정도
 MAX_KEYFRAMES = 2000                                            # 긴 촬영은 간격을 넓혀 이 수 안으로 — 맵 빌드 시간이 키프레임 수 × (바닥 + 벽 수)에 비례 (11/23 시간 측정)
 ZIP_MAX_FILES, ZIP_MAX_BYTES = 100_000, 6 * 1024 ** 3           # zip 폭탄 막기 (샘플 17 초 = 1682개 · 50 MB)
+CONF_RULES = ("hf", "min")                                      # 깊이 고르기 규칙 (머리말 "깊이 고르기")
+FLOOR_EVERY, FLOOR_MIN_FRAMES = 10, 30                          # 바닥 높이 훑기: 고른 키프레임 10장마다 1장 (짧은 촬영은 30장이 되게 촘촘히)
+FLOOR_BIN_M, FLOOR_PEAK_FRAC, FLOOR_BAND_M = 0.02, 0.3, 0.05    # 높이 칸 · 바닥 칸 문턱(가장 많은 칸 대비) · 바닥 화소로 셀 폭(±)
+FLOOR_MIN_PX, FLOOR_MIN_SHARE, FLOOR_BELOW_CAM_M = 5000, 0.03, 0.3   # 이보다 적거나 낮지 않으면 바닥을 못 찾은 것 → dist 규칙
 
 
 class CaptureError(Exception):
@@ -269,8 +284,80 @@ def select(pos, R, speed, move_m, turn_deg, max_speed, start=0):
     return keep, fast
 
 
-def convert(src, out, width=None, min_conf=1, move_m=0.05, turn_deg=5.0, max_speed=1.5, max_depth_m=5.0, skip_s=1.0, log=print, max_keyframes=None):
-    """촬영 폴더 src → 맵 폴더 out. → 요약 dict (stray_meta.json 과 같음). 자료가 잘못됐으면 CaptureError (무엇이 잘못됐는지 한국어로)"""
+def world_z(z, T, K, sel):
+    """깊이 그림(mm)의 sel 화소마다 세계 높이 (m, Z 위). T = 카메라 광학 → 세계, K = 그 그림 크기의 (fx, fy, cx, cy) — 화소 중심 기준"""
+    fx, fy, cx, cy = K
+    v, u = np.nonzero(sel)
+    zz = z[v, u] / 1000.0
+    return T[2, 0] * (u - cx) / fx * zz + T[2, 1] * (v - cy) / fy * zz + T[2, 2] * zz + T[2, 3]
+
+
+def depth_keep(z, c, rule, T=None, K=None):
+    """깊이(mm) · 신뢰도(없으면 None) → 쓸 화소 (bool). rule = stray_meta.json 의 depth_rule (T · K 는 hf 일 때만 씀).
+    hf: 신뢰도 2 는 max_depth_m 까지 · 1 은 near_conf1_m 안이고 바닥 + floor_margin_m 보다 높을 때만 · dist: hf 에서 높이 조건을 뺀 것 ·
+    min: 신뢰도 min_confidence 이상 · max_depth_m 까지 (예전 규칙). 신뢰도 그림이 없으면 min 은 max_depth_m · 다른 규칙은 near_conf1_m 까지 모두"""
+    name = rule["name"]
+    ok = z > 0
+    if c is None:
+        return ok & (z <= 1000 * rule["max_depth_m" if name == "min" else "near_conf1_m"])
+    ok &= z <= 1000 * rule["max_depth_m"]
+    if name == "min":
+        return ok & (c >= rule["min_confidence"])
+    near = ok & (c == 1) & (z <= 1000 * rule["near_conf1_m"])
+    if name == "hf" and near.any():
+        near[near] = world_z(z, T, K, near) > rule["floor_z_m"] + rule["floor_margin_m"]
+    return (ok & (c >= 2)) | near
+
+
+def depth_rule(src, frames, pose, K, conf_rule="hf", min_conf=1, max_depth_m=5.0, near_conf1_m=3.0, floor_margin_m=0.10):
+    """깊이 고르기 규칙 → (rule dict = stray_meta.json 의 depth_rule, 주의 문장 또는 None). hf 면 바닥 높이를 먼저 훑음:
+    frames(고른 키프레임 줄 번호)의 FLOOR_EVERY 장마다 신뢰도 2 화소의 세계 높이 (pose(i) = 카메라 광학 → 세계, K = 깊이 그림 크기)"""
+    import cv2
+    if conf_rule not in CONF_RULES:
+        raise ValueError(f"conf_rule 은 {CONF_RULES} 중 하나: {conf_rule!r}")
+    if conf_rule == "min":
+        return dict(name="min", min_confidence=int(min_conf), max_depth_m=max_depth_m), None
+    rule = dict(name="hf", max_depth_m=max_depth_m, near_conf1_m=near_conf1_m, floor_margin_m=floor_margin_m, floor_z_m=None)
+    if not os.path.isdir(os.path.join(src, "confidence")):       # validate 가 이미 주의를 남김
+        rule["name"] = "no_confidence"
+        return rule, None
+    step = max(1, min(FLOOR_EVERY, len(frames) // FLOOR_MIN_FRAMES))
+    hs, n = [], 0
+    for i in frames[::step]:
+        dp, cp = (os.path.join(src, d, f"{i:06d}.png") for d in ("depth", "confidence"))
+        z, c = (cv2.imread(p, cv2.IMREAD_UNCHANGED) if os.path.exists(p) else None for p in (dp, cp))
+        if z is None or c is None or c.shape != z.shape:
+            continue
+        n += 1
+        m = (c >= 2) & (z > 0) & (z <= 1000 * max_depth_m)
+        if m.any():
+            hs.append(world_z(z, pose(i), K, m).astype(np.float32))
+    h = np.concatenate(hs) if hs else np.zeros(0, np.float32)
+    floor, near = None, 0
+    if len(h):
+        cnt, edges = np.histogram(h, np.arange(float(h.min()), float(h.max()) + 2 * FLOOR_BIN_M, FLOOR_BIN_M))
+        k = int(np.argmax(cnt >= FLOOR_PEAK_FRAC * cnt.max()))    # 가장 많은 칸의 30% 이상인 가장 낮은 칸 → 그 위 10 cm 안의 봉우리
+        k += int(np.argmax(cnt[k:k + 5]))
+        floor = float(0.5 * (edges[k] + edges[k + 1]))
+        near = int((np.abs(h - floor) <= FLOOR_BAND_M).sum())
+    cam = float(np.median([pose(i)[2, 3] for i in frames])) if len(frames) else float("nan")
+    rule["floor"] = dict(frames=n, step=step, conf2_px=int(len(h)), floor_px=near, floor_px_pct=round(100 * near / max(len(h), 1), 1),
+                         floor_z_est_m=None if floor is None else round(floor, 3), camera_above_floor_m=None if floor is None else round(cam - floor, 2))
+    why = ("신뢰도 2 깊이가 없음" if floor is None else
+           f"바닥 근처(±{100 * FLOOR_BAND_M:.0f} cm) 신뢰도 2 화소가 {near}개 · {rule['floor']['floor_px_pct']}% 뿐" if near < FLOOR_MIN_PX or near < FLOOR_MIN_SHARE * len(h) else
+           f"찾은 바닥이 카메라보다 {cam - floor:.2f} m 아래뿐" if cam - floor < FLOOR_BELOW_CAM_M else None)
+    if why:
+        rule["name"], rule["fallback_reason"] = "dist", why
+        return rule, (f"바닥 높이를 찾지 못함 ({why}) — 신뢰도 1 깊이를 높이와 상관없이 {near_conf1_m:g} m 안에서 씀. "
+                      "멀리 본 바닥이 두 겹으로 찍힐 수 있음")
+    rule["floor_z_m"] = round(floor, 3)                         # 규칙은 반올림한 값으로 — stray_quality 가 같은 값을 읽음
+    return rule, None
+
+
+def convert(src, out, width=None, min_conf=1, move_m=0.05, turn_deg=5.0, max_speed=1.5, max_depth_m=5.0, skip_s=1.0, log=print, max_keyframes=None,
+            conf_rule="hf", near_conf1_m=3.0, floor_margin_m=0.10):
+    """촬영 폴더 src → 맵 폴더 out. → 요약 dict (stray_meta.json 과 같음). 자료가 잘못됐으면 CaptureError (무엇이 잘못됐는지 한국어로)
+    conf_rule = 깊이 고르기 (머리말): "hf" (기본 — max_depth_m · near_conf1_m · floor_margin_m) · "min" (예전 — 신뢰도 min_conf 이상)"""
     import cv2
     if not src or not os.path.isdir(src):
         raise CaptureError(f"Stray Scanner 촬영 폴더를 찾지 못함 — {ZIP_HINT}")
@@ -326,11 +413,22 @@ def convert(src, out, width=None, min_conf=1, move_m=0.05, turn_deg=5.0, max_spe
         log(f"[stray] {warns[-1]}")
     keep_set = set(keep)
 
+    def pose(i):                                                # 카메라 광학 → 세계 (Z 위) — 깊이를 고르기 전에 씀 (hf 규칙의 높이)
+        T = np.eye(4)
+        T[:3, :3], T[:3, 3] = R[i], pos[i]
+        return Y_UP_TO_Z_UP @ T
+    s_dx, s_dy = DW / W0, DH / H0                                # 깊이 그림 크기의 내부 파라미터 (화소 중심 기준) — 기본(키프레임 = 깊이 원래 크기)이면 calib 에 쓰는 값과 같음
+    Kd = (K[0, 0] * s_dx, K[1, 1] * s_dy, (K[0, 2] + 0.5) * s_dx - 0.5, (K[1, 2] + 0.5) * s_dy - 0.5)
+    rule, why = depth_rule(src, keep, pose, Kd, conf_rule, min_conf, max_depth_m, near_conf1_m, floor_margin_m)
+    if why:
+        warns.append(why)
+        log(f"[stray] 주의: {why}")
+
     for sub in ("rgb", "depth", "calib"):
         d = os.path.join(out, "keyframes", sub)
         shutil.rmtree(d, ignore_errors=True)
         os.makedirs(d)
-    rows, conf_hist, valid, i = [], np.zeros(3), [], 0
+    rows, conf_hist, conf_used, valid, used, i = [], np.zeros(3), np.zeros(3), [], [], 0
     while True:                                                   # 영상은 차례로만 읽음 (건너뛰어 읽으면 빈 장이 나옴)
         ok = cap.grab()
         if not ok or i >= len(od):
@@ -340,13 +438,18 @@ def convert(src, out, width=None, min_conf=1, move_m=0.05, turn_deg=5.0, max_spe
             dp = os.path.join(src, "depth", f"{i:06d}.png")
             z = cv2.imread(dp, cv2.IMREAD_UNCHANGED) if ok and os.path.exists(dp) else None
             if z is not None:
+                T = pose(i)
                 cp = os.path.join(src, "confidence", f"{i:06d}.png")
                 c = cv2.imread(cp, cv2.IMREAD_UNCHANGED) if os.path.exists(cp) else None   # 없으면 cv2 가 장마다 경고를 찍음
+                k_px = depth_keep(z, c, rule, T, Kd)
+                ok_px = (z > 0) & (z <= max_depth_m * 1000)              # 쓸 수 있는 깊이 = 신뢰도 1 이상 · max_depth_m 안 (규칙과 상관없이 — 촬영 상태)
                 if c is not None:
                     conf_hist += np.bincount(c.ravel(), minlength=3)[:3]
-                    z = np.where(c >= min_conf, z, 0)
-                z = np.where(z > max_depth_m * 1000, 0, z).astype(np.uint16)
-                valid.append(float((z > 0).mean()))
+                    conf_used += np.bincount(c[k_px].ravel(), minlength=3)[:3]
+                    ok_px &= c >= 1
+                valid.append(float(ok_px.mean()))
+                used.append(float(k_px.mean()))
+                z = np.where(k_px, z, 0).astype(np.uint16)
                 kid = len(rows) + 1
                 if W < MID[0] < bgr.shape[1]:
                     bgr = cv2.resize(bgr, MID, interpolation=cv2.INTER_AREA)
@@ -355,9 +458,6 @@ def convert(src, out, width=None, min_conf=1, move_m=0.05, turn_deg=5.0, max_spe
                     z = cv2.resize(z, (W, H), interpolation=cv2.INTER_NEAREST)
                 cv2.imwrite(os.path.join(out, "keyframes", "depth", f"{kid}.png"), z)
                 open(os.path.join(out, "keyframes", "calib", f"{kid}.yaml"), "w", encoding="utf-8").write(CALIB.format(id=kid, w=W, h=H, fx=fx, fy=fy, cx=cx, cy=cy))
-                T = np.eye(4)
-                T[:3, :3], T[:3, 3] = R[i], pos[i]
-                T = Y_UP_TO_Z_UP @ T
                 rows.append((t[i], *T[:3, 3], *_quat(T[:3, :3]), kid))
         i += 1
     cap.release()
@@ -378,14 +478,20 @@ def convert(src, out, width=None, min_conf=1, move_m=0.05, turn_deg=5.0, max_spe
                 color_size=[W0, H0], depth_size_in=[DW, DH], keyframe_size=[W, H],
                 intrinsics=dict(fx=round(fx, 3), fy=round(fy, 3), cx=round(cx, 3), cy=round(cy, 3)),
                 focal_variation_pct=round(float(100 * np.ptp(fl) / np.median(fl)), 2),   # 프레임마다 초점거리가 조금 다름 — 한 값(camera_matrix.csv)으로 씀
-                confidence_pct=np.round(100 * conf_hist / max(conf_hist.sum(), 1), 1).tolist(), min_confidence=min_conf,
-                valid_depth_pct=round(100 * float(np.mean(valid)), 1),
+                confidence_pct=np.round(100 * conf_hist / max(conf_hist.sum(), 1), 1).tolist(),
+                confidence_used_pct=np.round(100 * conf_used / np.maximum(conf_hist, 1), 1).tolist(),   # 신뢰도 0 · 1 · 2 화소 중 맵에 쓴 비율
+                min_confidence=rule.get("min_confidence", 1),           # 예전 키 (가장 낮게 쓴 신뢰도) — 규칙은 depth_rule
+                depth_rule=rule,
+                valid_depth_pct=round(100 * float(np.mean(valid)), 1), used_depth_pct=round(100 * float(np.mean(used)), 1),
                 select=dict(move_m=move_m, turn_deg=turn_deg, max_speed_mps=max_speed, max_depth_m=max_depth_m, skip_s=skip_s,
                             max_keyframes=cap_n, widen=round(widen, 3), move_m_used=round(move_m * widen, 4), turn_deg_used=round(turn_deg * widen, 2)),
                 checks=dict(warnings=warns, info=info))                # validate 결과 — 주의는 보고서에 띄울 수 있게
     json.dump(meta, open(os.path.join(out, "stray_meta.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    rs = (f"신뢰도 {rule['min_confidence']} 이상 · {max_depth_m:g} m 안" if rule["name"] == "min" else
+          f"신뢰도 2 는 {max_depth_m:g} m · 1 은 {near_conf1_m:g} m 안" + (f" · 바닥({rule['floor_z_m']} m) + {100 * floor_margin_m:g} cm 위만" if rule["name"] == "hf" else
+                                                                         " (바닥 높이 조건 없음)" if rule["name"] == "dist" else " (신뢰도 그림 없음 — 모두)"))
     log(f"[stray] {meta['frames_total']}장 중 {meta['keyframes']}장 고름 (빨라서 뺀 것 {fast}) | 이동 {meta['path_length_m']} m · {meta['duration_s']} s | "
-        f"쓸 수 있는 깊이 {meta['valid_depth_pct']}% → {out}")
+        f"깊이 규칙 {rule['name']}: {rs} | 쓸 수 있는 깊이 {meta['valid_depth_pct']}% 중 {meta['used_depth_pct']}% 씀 → {out}")
     return meta
 
 
@@ -394,7 +500,10 @@ def main():
     ap.add_argument("input")
     ap.add_argument("--out", required=True)
     ap.add_argument("--width", type=int, default=None, help="키프레임 가로 크기 (세로는 비율대로). 기본은 깊이 원래 크기(256×192). 사진 텍스처를 구울 때만 960 등으로")
-    ap.add_argument("--min-conf", type=int, default=1, choices=[0, 1, 2], help="이 신뢰도 밑의 깊이는 버림")
+    ap.add_argument("--conf-rule", default="hf", choices=CONF_RULES,
+                    help="깊이 고르기: hf (기본 — 신뢰도 2 는 --max-depth 까지 · 1 은 3 m 안이고 바닥 + 10 cm 위만) · min (예전 — --min-conf 이상)")
+    ap.add_argument("--min-conf", type=int, default=1, choices=[0, 1, 2], help="--conf-rule min 일 때: 이 신뢰도 밑의 깊이는 버림")
+    ap.add_argument("--max-depth", type=float, default=5.0, help="이보다 먼 깊이는 버림 m (기본 5)")
     ap.add_argument("--move-m", type=float, default=0.05)
     ap.add_argument("--turn-deg", type=float, default=5.0)
     a = ap.parse_args()
@@ -403,7 +512,7 @@ def main():
         src = find_capture(os.path.abspath(a.input), os.path.join(out, "_unzip"))
         if not src:
             sys.exit("Stray Scanner 촬영 폴더가 아님 (rgb.mp4 · odometry.csv · camera_matrix.csv · depth/ 가 있어야 함)")
-        convert(src, out, a.width, a.min_conf, a.move_m, a.turn_deg)
+        convert(src, out, a.width, a.min_conf, a.move_m, a.turn_deg, max_depth_m=a.max_depth, conf_rule=a.conf_rule)
     except CaptureError as e:
         sys.exit(f"[stray] 실패: {e}")
 

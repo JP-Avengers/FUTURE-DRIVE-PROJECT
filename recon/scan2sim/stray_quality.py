@@ -22,8 +22,13 @@
       안 쓴 프레임 자세에도 같은 보정을 시각으로 이어 적용 (stray_fix.apply_fix — 높이 → 수평, applied 인 단계만).
       info 파일 = tsdf_meta.json 의 pose_fix.file (없으면 input_map/pose_fix.json → floor_fix.json — 11/24 af65f1b 판으로 만든 맵).
       결과 pose_fix 에 적용 여부 · 파일 · 단계(steps) · 높이 dz_p5_p95_cm · 수평 xy_shift_cm_p50_p95 · 적용 못 한 이유(note)
-    - 깊이: 신뢰도 min_conf 이상(주지 않으면 맵을 만들 때와 같은 값 = stray_meta.json 의 min_confidence) ·
-      깊이 한계 = min(맵 TSDF 의 depth_trunc(build/tsdf_meta.json, 없으면 3 m), stray.py 가 키프레임 깊이를 자른 select.max_depth_m) 이하
+    - 깊이: 맵을 만들 때와 같은 규칙 (stray_meta.json 의 depth_rule → stray.depth_keep). hf 면 바닥 높이 조건은 stray.py 와 똑같이 —
+      보정 전 자세(stray.py 는 stray_fix 보다 먼저 돎) · camera_matrix.csv 한 값을 깊이 크기로 줄인 내부 파라미터 (아래 '내부 파라미터' 와 상관없이).
+      기준 촬영본 키프레임 120장에 적용하면 stray.py 가 남긴 화소와 100% 같음. no_confidence 맵(신뢰도 그림 없음)은 near_conf1_m(3 m)까지.
+      depth_rule 이 없는 예전 맵이나 min_conf 를 주면 신뢰도 min_conf 이상(주지 않으면 stray_meta.json 의 min_confidence).
+      쓴 규칙은 결과 depth_rule. measure · drift 모두 같음
+      깊이 한계 = min(맵 TSDF 의 depth_trunc, stray.py 가 키프레임 깊이를 자른 select.max_depth_m) 이하. depth_trunc 는 build/tsdf_meta.json —
+      없으면 stray_mesh 기본 5 m (depth_rule 이 없는 예전 맵은 3 m — 그때는 3 m 로 합침)
     - 내부 파라미터: 기본은 odometry.csv 의 프레임별 값(그 장의 실제 값 — 맵이 한 값을 써서 생긴 오차도 맵 오차로 잡으려고).
       맵(stray.py)은 camera_matrix.csv 한 값으로 만들었음 — --k-source camera_matrix 로 맵과 같은 값을 쓸 수 있음.
       stray1(프레임마다 초점거리가 최대 1.5% 다름)에서 중앙 차이 1.23 → 1.21 cm 로 거의 같음. 색 영상 크기 → 깊이 크기로 줄임 (화소 중심 기준)
@@ -127,10 +132,12 @@ def _load(src, meta, k_source="odometry"):
     dt = np.r_[1, np.maximum(np.diff(t), 1e-3)]
     speed = np.convolve(step / dt, np.ones(5) / 5, mode="same")   # stray.py 와 같은 5장 평균 속력
     K = od[:, 9:13]
+    Kc = np.loadtxt(os.path.join(src, "camera_matrix.csv"), delimiter=",")
+    K_map = (Kc[0, 0], Kc[1, 1], Kc[0, 2], Kc[1, 2])            # stray.py 가 쓴 한 값 — 깊이 규칙(바닥 높이)은 늘 이것으로
     if k_source == "camera_matrix":
-        Kc = np.loadtxt(os.path.join(src, "camera_matrix.csv"), delimiter=",")
-        K = np.tile([Kc[0, 0], Kc[1, 1], Kc[0, 2], Kc[1, 2]], (len(od), 1))
-    return dict(t=t, T=T, K=K, speed=speed, color_w=(meta.get("color_size") or [1920, 1440])[0])
+        K = np.tile(K_map, (len(od), 1))
+    cs = meta.get("color_size") or [1920, 1440]
+    return dict(t=t, T=T, T_raw=T, K=K, K_map=K_map, speed=speed, color_w=cs[0], color_size=cs)   # T_raw = 보정 전 자세 (apply_fix 는 새 배열)
 
 
 def _keyframe_rows(mp, t, src=None, frames_total=None):
@@ -148,17 +155,23 @@ def _keyframe_rows(mp, t, src=None, frames_total=None):
     return rows
 
 
-def _depth_trunc(bd):
-    """맵을 만들 때 쓴 깊이 한계 (tsdf.py 가 남긴 설정). 없으면 3 m"""
+DEPTH_TRUNC_DEFAULT, DEPTH_TRUNC_OLD = 5.0, 3.0                 # tsdf_meta.json 이 없을 때: stray_mesh.build 기본 · depth_rule 이 없는 예전 맵
+
+
+def _depth_trunc(bd, default=DEPTH_TRUNC_DEFAULT):
+    """맵을 만들 때 쓴 깊이 한계 (stray_mesh · tsdf.py 가 남긴 설정). 없으면 default"""
     p = os.path.join(bd, "tsdf_meta.json")
-    return float(json.load(open(p, encoding="utf-8"))["tsdf"]["depth_trunc"]) if os.path.exists(p) else 3.0
+    return float(json.load(open(p, encoding="utf-8"))["tsdf"]["depth_trunc"]) if os.path.exists(p) else float(default)
 
 
-def _limits(meta, bd, min_conf):
-    """→ (TSDF depth_trunc, 쓸 깊이 한계 = min(depth_trunc, select.max_depth_m), 신뢰도 기준 — None 이면 맵을 만들 때와 같게)"""
-    trunc = _depth_trunc(bd)
+def _limits(meta, bd, min_conf, rule=None):
+    """→ (TSDF depth_trunc, 쓸 깊이 한계 = min(depth_trunc, select.max_depth_m), 신뢰도 기준 — None 이면 맵을 만들 때와 같게).
+    rule 이 no_confidence 면 한계도 near_conf1_m (그 맵은 그 안의 깊이로만 만듦)"""
+    trunc = _depth_trunc(bd, DEPTH_TRUNC_DEFAULT if meta.get("depth_rule") else DEPTH_TRUNC_OLD)
     mx = (meta.get("select") or {}).get("max_depth_m")
     lim = min(trunc, float(mx)) if mx else trunc
+    if rule is not None and rule.get("name") == "no_confidence" and rule.get("near_conf1_m"):
+        lim = min(lim, float(rule["near_conf1_m"]))
     if min_conf is None:
         min_conf = int(meta.get("min_confidence", 1))
     return trunc, lim, int(min_conf)
@@ -243,18 +256,27 @@ def _fix_text(pf):
     return f"{pf.get('file')}: " + " · ".join(parts)
 
 
-def _depth(src, i, trunc, min_conf):
-    """원본 깊이(m) · 쓸 수 있는 화소. 없으면 None."""
+def _rule(meta, min_conf):
+    """안 쓴 프레임 깊이에 쓸 규칙: min_conf 를 주지 않았으면 맵을 만들 때의 depth_rule (없는 예전 맵 · "min" 규칙은 None = 신뢰도 기준만)"""
+    r = meta.get("depth_rule")
+    return r if min_conf is None and isinstance(r, dict) and r.get("name") != "min" else None
+
+
+def _depth(src, i, trunc, min_conf, rule=None, cap=None):
+    """원본 깊이(m) · 쓸 수 있는 화소. 없으면 None. rule 이 있으면 stray.py 와 같은 규칙
+    (높이 조건은 cap 의 보정 전 자세 · stray.py 와 같은 내부 파라미터 _intr_map)"""
     import cv2
     z = cv2.imread(os.path.join(src, "depth", f"{i:06d}.png"), cv2.IMREAD_UNCHANGED)
     if z is None:
         return None, None
-    z = z.astype(np.float32) / 1000.0
-    ok = (z > 0) & (z <= trunc)
-    c = cv2.imread(os.path.join(src, "confidence", f"{i:06d}.png"), cv2.IMREAD_UNCHANGED)
-    if c is not None:
+    cp = os.path.join(src, "confidence", f"{i:06d}.png")
+    c = cv2.imread(cp, cv2.IMREAD_UNCHANGED) if os.path.exists(cp) else None
+    ok = (z > 0) & (z <= trunc * 1000)
+    if rule is not None:
+        ok &= stray.depth_keep(z, c, rule, cap["T_raw"][i], _intr_map(cap, z.shape[1], z.shape[0]))
+    elif c is not None:
         ok &= c >= min_conf
-    return z, ok
+    return z.astype(np.float32) / 1000.0, ok
 
 
 def _intr(cap, i, w):
@@ -262,6 +284,14 @@ def _intr(cap, i, w):
     s = w / cap["color_w"]
     fx, fy, cx, cy = cap["K"][i]
     return fx * s, fy * s, (cx + 0.5) * s - 0.5, (cy + 0.5) * s - 0.5
+
+
+def _intr_map(cap, w, h):
+    """stray.py 가 키프레임 깊이를 고를 때 쓴 내부 파라미터: camera_matrix.csv 한 값을 깊이 크기 w×h 로 (가로 · 세로 따로, 화소 중심 기준)"""
+    W0, H0 = cap["color_size"]
+    sx, sy = w / W0, h / H0
+    fx, fy, cx, cy = cap["K_map"]
+    return fx * sx, fy * sy, (cx + 0.5) * sx - 0.5, (cy + 0.5) * sy - 0.5
 
 
 def _rays(cap, i, z, ok):
@@ -400,7 +430,8 @@ def measure(out_dir, n=30, seed=0, capture=None, min_conf=None, write=True, min_
     fix, fix_st = _pose_fix(mp, bd)
     if fix is not None:                                         # 맵을 고친 자세로 만들었음 → 안 쓴 프레임 자세에도 같은 보정
         cap["T"] = stray_fix.apply_fix(t, cap["T"], fix)
-    trunc, lim, min_conf = _limits(meta, bd, min_conf)
+    rule = _rule(meta, min_conf)                                # _limits 가 min_conf 를 채우기 전에 (주지 않았을 때만 맵의 규칙)
+    trunc, lim, min_conf = _limits(meta, bd, min_conf, rule)
     start = int(np.searchsorted(t, t[0] + sel.get("skip_s", 1.0)))
     cand = np.array([i for i in range(start, N) if i not in kf and cap["speed"][i] <= sel.get("max_speed_mps", 1.5)
                      and os.path.exists(os.path.join(src, "depth", f"{i:06d}.png"))], dtype=int)
@@ -431,7 +462,7 @@ def measure(out_dir, n=30, seed=0, capture=None, min_conf=None, write=True, min_
 
     R, NR, ZM, FR = [], [], [], []
     for i in picks:
-        z, ok = _depth(src, i, lim, min_conf)
+        z, ok = _depth(src, i, lim, min_conf, rule, cap)
         if z is None or not ok.any():
             continue
         r, nr, zm = _rays(cap, i, z, ok)
@@ -443,7 +474,7 @@ def measure(out_dir, n=30, seed=0, capture=None, min_conf=None, write=True, min_
     near_cm = [100 * float(np.linalg.norm(PK - P[i], axis=1).min()) for i in pk]   # 공간으로 가장 가까운 키프레임 (카메라 위치)
     res = dict(frames=len(FR), frames_picked=len(picks), frames_candidates=int(len(pool)), frames_candidates_all=int(len(cand)),
                keyframes=len(kf), frames_total=N, depth_limit_m=lim, depth_trunc_m=trunc, max_depth_m=sel.get("max_depth_m"),
-               min_conf=min_conf, min_conf_build=meta.get("min_confidence"),
+               min_conf=min_conf, min_conf_build=meta.get("min_confidence"), depth_rule=rule["name"] if rule else f"min_conf {min_conf}",
                intrinsics=k_source, intrinsics_build="camera_matrix",   # 맵(stray.py)은 camera_matrix.csv 한 값으로 만듦
                seed=seed, source=os.path.basename(os.path.normpath(src)),
                held_out=dict(method="time_grid", min_gap_s=float(min_gap_s), min_gap_s_used=round(used_gap, 3), relaxed=bool(n_relaxed),
@@ -458,8 +489,9 @@ def measure(out_dir, n=30, seed=0, capture=None, min_conf=None, write=True, min_
 
     if not FR:                                                  # 잴 깊이가 없음 → 실패로 돌려줌 (멈추지 않음)
         res.update({k: None for k in _MAIN_KEYS}, mesh=None, verdict="fail")
+        what = f"깊이 규칙 {rule['name']} 로 고른" if rule else f"신뢰도 {min_conf} 이상인"
         res["reasons"] = ([f"쓸 수 있는 깊이가 있는 안 쓴 프레임이 없음 — 고른 {len(picks)}장 모두 깊이 파일이 없거나 "
-                           f"신뢰도 {min_conf} 이상 · {lim:g} m 이하인 화소가 없음 (잴 수 없음)"] if picks else
+                           f"{what} {lim:g} m 이하 화소가 없음 (잴 수 없음)"] if picks else
                           ["비교할 안 쓴 프레임이 없음 — 키프레임 말고 쓸 수 있는 프레임(처음 1 초 · 너무 빠른 장 · 깊이 없는 장 제외)이 없음 (잴 수 없음)"])
         res["summary"] = "복원 정확도: 잴 수 없음 — " + res["reasons"][0]
         res["seconds"] = round(time.time() - t0, 1)
@@ -513,13 +545,15 @@ def drift(out_dir, capture=None, window_s=30.0, max_gap_m=1.0, max_turn_deg=30.0
     if fix is not None:                                         # 맵을 고친 자세로 만들었음 → 모든 프레임 자세에 같은 보정 (measure 와 같음)
         cap["T"] = stray_fix.apply_fix(cap["t"], cap["T"], fix)
     t, T, N = cap["t"], cap["T"], len(cap["t"])
-    _, trunc, min_conf = _limits(meta, bd, min_conf)
+    rule = _rule(meta, min_conf)
+    _, trunc, min_conf = _limits(meta, bd, min_conf, rule)
     a = int(np.searchsorted(t, t[0] + sel.get("skip_s", 1.0)))
     b = N - 1
     gap = float(np.linalg.norm(T[b, :3, 3] - T[a, :3, 3]))
     f0, f1 = T[a, :2, 2], T[b, :2, 2]                           # 바라보는 방향(광축)의 수평 성분
     turn = float(np.degrees(np.arccos(np.clip(f0 @ f1 / max(np.linalg.norm(f0) * np.linalg.norm(f1), 1e-9), -1, 1))))
-    res = dict(start_end_gap_m=round(gap, 2), start_end_turn_deg=round(turn, 1), depth_limit_m=trunc, min_conf=min_conf, intrinsics=k_source,
+    res = dict(start_end_gap_m=round(gap, 2), start_end_turn_deg=round(turn, 1), depth_limit_m=trunc, min_conf=min_conf,
+               depth_rule=rule["name"] if rule else f"min_conf {min_conf}", intrinsics=k_source,
                pose_fix=fix_st)
     if gap > max_gap_m or turn > max_turn_deg:
         res.update(applicable=False, reason=f"출발 자리로 돌아오지 않은 촬영 (처음과 끝 거리 {gap:.2f} m · 방향 차 {turn:.0f}° — 기준 {max_gap_m:g} m · {max_turn_deg:g}° 안)")
@@ -532,7 +566,7 @@ def drift(out_dir, capture=None, window_s=30.0, max_gap_m=1.0, max_turn_deg=30.0
         vol = o3d.pipelines.integration.ScalableTSDFVolume(voxel_length=voxel, sdf_trunc=4 * voxel, color_type=o3d.pipelines.integration.TSDFVolumeColorType.NoColor)
         used = 0
         for i in first:
-            z, ok = _depth(src, i, trunc, min_conf)
+            z, ok = _depth(src, i, trunc, min_conf, rule, cap)
             if z is None:
                 continue
             h, w = z.shape
@@ -547,7 +581,7 @@ def drift(out_dir, capture=None, window_s=30.0, max_gap_m=1.0, max_turn_deg=30.0
         lp = last[::max(1, len(last) // 30)]
         R_, NR, ZM, P = [], [], [], []
         for i in lp:
-            z, ok = _depth(src, i, trunc, min_conf)
+            z, ok = _depth(src, i, trunc, min_conf, rule, cap)
             if z is None or not ok.any():
                 continue
             r, nr, zm = _rays(cap, i, z, ok)
