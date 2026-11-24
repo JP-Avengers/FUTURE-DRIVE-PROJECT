@@ -8,7 +8,7 @@
 - 이 문서는 **지금 코드가 하는 일**을 적는다. 계획(`docs/implementation.md` 5장)과 다른 곳과 버그로 보이는 것은 8장에 모았다.
 - 근거 표시: 코드 위치는 `파일:줄`. 경로는 `recon/scan2sim/` 기준이고, `pipeline/` · `tools/` · `configs/` 는 `recon/` 아래다. 코드를 읽지 않고 짐작한 것은 **[추정]** 이라고 적었다.
 - 예시 JSON 은 실제 실행 결과에서 가져왔다. 긴 배열은 줄였다(`…`).
-  - `room` = 서버를 띄워 방 촬영본(Stray zip `6bc1ae021f.zip`, 118초 · 379 MB, E 가 찍음)을 API 로 올린 시험. 기준 코드에서 `tests/e2e.py` 로 돌림. 작업 `694ddc986821`, 결과 `~/webapp_runs/ref/`, 엔진 출력 `~/webapp_runs/ref/job/out/`. 15/15 통과 · `done` · 판정 `warn` · 82초.
+  - `room` = 서버를 띄워 방 촬영본(Stray zip `6bc1ae021f.zip`, 118초 · 379 MB, E 가 찍음)을 API 로 올린 시험. 기준 코드에서 `tests/e2e.py` 로 돌림. 작업 `694ddc986821`, 결과 · 엔진 출력은 B 노트북 작업 폴더(저장소 밖). 15/15 통과 · `done` · 판정 `warn` · 82초.
   - `e2e_glb` = 11/23 에 서버로 GLB(`corridor_v04.glb`)를 올린 시험 (작업 `b8ce80baff04`). 그때 환경에 `scikit-image` 가 없어 변환 단계에서 실패했다. 8장에서 고쳐진 항목을 설명할 때만 쓴다.
   - 11/23 판의 `stray1` · `e2e_stray` 예시는 Stray 를 맵 폴더 길로 돌린 결과라 지금 출력과 모양이 달라 뺐다 (1-2).
 
@@ -761,6 +761,15 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 - 요약은 `"아이폰 원본 → 형상 메쉬 · 천장 … · 바닥 … · 범위 …"` (`stages.py:65`). 11/23 까지는 `"아이폰 원본 → 맵 폴더 · …"` 였다.
 
 `input_map/trajectory_camera_optical.txt` 의 형식: `시각 x y z qx qy qz qw id` (카메라 광학 → 입력 세계, 첫 줄은 `#` 주석).
+
+### 6-4. 바닥 높이 보정과 새 결과 파일 (B `stray_fix.py`, 11/24 저녁)
+
+- `stray_mesh.build` 가 합치기 전에 키프레임 자세의 높이를 고친다 (`fix="floor"` 기본, `fix=None` 끔, CLI `--no-fix`). 방법: 키프레임마다 바닥 칸(20 cm) 높이 = 자세 높이 오류 + 칸의 실제 높이로 풀고(Huber · 시간 사전), 고친 카메라 z = z − dz. 틀어짐이 작으면(2~98% 폭 < 1.5 cm) 건너뜀. 바닥 근거 부족 · 보정 40 cm 초과 · 잔차 3 cm 초과면 거부하고 자세를 그대로 씀.
+- **`out/input_map/floor_fix.json`** (Stray 경로에서 늘 생김, 끄면 status "off"): `method, version, params, keyframes, applied, status(applied · skipped · refused · off · error · custom), reasons, flags, t, dz, dz_estimate, tilt, frames_supported(_pct), cells, observations(_dropped), resid_rms_cm, resid_med_cm, dz_range_cm, dz_p5_p95_cm, dz_max_abs_cm, max_unsupported_s, jump_frames, jump_times, levels{…}, seconds{observe, solve, total}`
+- **`build/tsdf_meta.json` 의 `pose_fix`**: 늘 요약 dict — `name, file, applied, status, method, reasons, flags, keyframes, frames_supported_pct, dz_p5_p95_cm, dz_max_abs_cm, resid_rms_cm, max_unsupported_s, stand_other_pct, jump_frames, seconds, moved_m, turned_deg`. `timing.pose_fix_s` 추가.
+- `trajectory_camera_optical.txt` 는 **보정 전** 자세다. 다른 프레임에 같은 보정이 필요하면 `stray_fix.apply_fix(times, poses, info)`.
+- **`input_map/stray_quality.json`**: 새 키 `pose_fix`, `held_out.method` ("time_grid"), `held_out.relaxed_cells`, `held_out.target_offset_s`, `drift.pose_fix`. 안 쓴 프레임은 촬영 시간을 n 구간으로 나눠 구간마다 하나 고른다(키프레임 수가 바뀌어도 덜 흔들림). 보정이 적용됐으면 안 쓴 프레임에도 같은 보정을 건다.
+- 엔진에 붙는 것은 C 가 R10 을 넣은 뒤다. 그 전까지 엔진은 `pipeline/tsdf.py` 를 부르고 보정이 없다.
 
 ---
 
