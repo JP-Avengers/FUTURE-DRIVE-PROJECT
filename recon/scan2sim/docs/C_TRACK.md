@@ -63,6 +63,53 @@ B 의 통합 기록(`integration_log.md`)에 대한 답도 여기에 적는다. 
 - 화면에서 방 촬영본의 책상 줄 · 벽 · 창이 전과 같이 알아볼 수 있게 보이고, 복도 GLB 의 텍스처와 결함 강조도 그대로다.
 - 텍스처 prim 은 삼각형을 줄이지 않는다. 텍스처가 있으면서 삼각형이 아주 많은 GLB 는 그대로 크다 [추정].
 
+### 2-4. D 의 Isaac Sim · Ubuntu 확인에 대한 답, R3 · R4 (11/24 오후)
+
+D 가 엔진 `98da703`(Stray 를 GLB 길로 바꾸기 전)으로 확인해 준 것에 대한 답이다.
+
+| D 가 본 것 | 답 |
+| --- | --- |
+| 같은 Stray 입력을 두 번 돌리면 결과가 다름 (`transform.json` 부터) | 그 판은 Stray 가 `build_usd.py`(무작위 평면 찾기)를 탔다. `0534d95` 부터는 `glb_to_usd.py` 를 타고, 이쪽은 `736eb68` 에서 무작위를 없앴다. 지금 판으로 다시 확인 필요 — C 쪽 결과는 아래 |
+| `scene_root.usda` 가 혼자 안 열림 | 고침. 아래 "씬 루트 파일" |
+| 조명이 파일에 없어 그대로 열면 검음 | 맵 파일(`usd/<이름>_scene.usda`)에는 지금도 조명이 없다. 새 `scene_root.usda` 를 열면 돔 조명 600 과 그림자 설정이 들어 있다 |
+| 책상 사이 바닥 구멍 | 그 판(맵 폴더 길)의 일. 지금 길은 스캔 바닥 아래에 받침 바닥(`FloorFill`)을 깐다. 진단의 "보이는 바닥 없음"은 그대로 알려 준다 |
+| 사람이 메쉬에 들어감 | 엔진은 사람을 지우지 않는다 (범위 밖). 충돌 메쉬에도 장애물로 들어간다. 촬영 안내(E)에서 막을 일 |
+
+**씬 루트 파일** — `CONTRACT.md` 2-4 에 반영 필요 (B 의 파일이라 C 가 고치지 않았음)
+
+| 파일 | 내용 |
+| --- | --- |
+| `bundle/scene_root.usda` | **묶음만으로 열린다.** subLayer 는 `./usd/<이름>_scene.usda` 하나. `/World/Lights/Dome`(DomeLight, 세기 600)을 직접 정의하고, `shadow_fix` 가 참이면 보이는 prim 에 `doNotCastShadows` 를 건다. 로봇 · 센서는 없다 |
+| `bundle/scene_root_sim.usda` (새 이름) | 11/24 전의 `scene_root.usda` 내용 그대로: `../proxy/*.usda` 와 `../../../data/usd/<이름>/…` 을 건다. 팀 시뮬 배치(`sim/scenes/<장소>/`)용이라 혼자서는 안 열린다 |
+
+- [측정] usd-core 로 `scene_root.usda` 를 열면 못 찾는 층 0 · 메쉬 6개 · 그림자 설정 4개 prim · 조명 `/World/Lights/Dome` 600 (복도 폴리캠 GLB). **Isaac Sim 에서는 열어 보지 않았다** — D 의 확인이 필요하다.
+- `bundle.json` 의 `files` 에 `scene_root_sim.usda` 가 하나 늘었다.
+
+**R4** (B 의 새 `stray.py` 가 main 에 들어와서 붙임)
+
+- 망가진 촬영본: 입력 단계가 `stray.CaptureError` 를 받아 **그 문장만** 요약에 넣는다. 전에는 "예외: CaptureError: …" 와 traceback 6줄이 나갔다. 종류 판별(`detect.kind_of`) 때 난 것도 같다.
+- `stray_meta.json` 의 `checks.warnings` 를 입력 단계의 주의로 내보낸다.
+
+**R3** (B 의 `stray_quality.py` 가 main 에 들어와서 붙임, B 가 통합 기록에 적어 준 코드 그대로)
+
+- Stray 입력이면 진단 단계가 `stray_quality.measure` 를 부른다. 진단 수치에 `stray_quality` = `{frames, median_cm, p90_cm, within_2cm_pct, hit_pct, verdict}`, 요약 문장은 `messages` 에, 통과가 아니면 이유가 주의로 나간다 (실패여도 주의 — 맵은 만들어짐).
+- `report.md` 에 "복원 정확도 (아이폰 원본)" 절이 생긴다.
+- `CONTRACT.md` 의 186 · 291 · 670~671 · 682 · 823 줄 근처가 "C 에게 요청 중"으로 적혀 있다. 반영 필요.
+
+**지금 엔진으로 같은 Stray 입력을 두 번** [측정, Windows, `tests/repeat.py`]
+
+- 실제 방 촬영본(`6bc1ae021f`): `build/mesh_raw.ply` · `build/transform.json` · `preview.glb` 의 md5 가 두 번 같고 결함 목록(6곳)도 같다. 각 173초 · 167초 (B 의 키프레임 상한이 들어온 뒤).
+- 복원 정확도(R3): 깊이 차이 중앙 2.17 cm · 2 cm 안 47.2% · 맵에 닿음 98.8% → 통과 (기준 3 cm).
+- Ubuntu 에서는 D 가 지금 main 으로 다시 돌려 봐야 한다.
+
+**자동 시험 `tests/run.sh`** [측정, Windows]
+
+- 검사 항목은 모두 통과: GLB e2e 18/18 (넣은 결함 0.01 · 0.02 · 0.00 m) · Stray e2e 18/18 (0.33 · 0.01 · 0.00 m) · 같은 입력 두 번(GLB · Stray) 같음 · 복원 정확도 중앙 0.39 cm.
+- **그런데 끝 줄은 `TESTS_FAIL e2e_glb e2e_stray` 로 나온다.** `tests/e2e.py` 의 `stop_server` 가 `signal.SIGKILL` · `os.killpg` 를 쓰는데 Windows 에는 둘 다 없어서, 검사를 다 통과한 뒤 서버를 끄는 자리에서 오류가 난다. 시험용 서버 프로세스도 꺼지지 않고 남는다(손으로 껐음). `tests/` 는 B 의 파일이라 고치지 않았다 — Windows 에서도 돌리려면 그 함수만 손보면 된다.
+- 깨진 zip 을 넣으면 입력 단계 요약이 "zip 파일을 열 수 없음 — …" 한 문장이고 `messages` 는 비어 있다 (R4 확인).
+
+**옛 경로(`build_usd.py`)의 무작위 평면 찾기는 그대로 두었다.** 리얼센스 맵 폴더 입력만 타는 길이고 웹앱 범위 밖이다. 평가에 쓴 맵들을 만든 코드라, 다시 만들어 견줘 보지 않고 바꾸지 않았다. 맵 폴더 입력은 실행마다 결과가 조금 다를 수 있다 (D 의 측정: 기울기 0.30° · 높이 2.5 mm).
+
 ## 3. Stray 결과의 모양이 바뀐 것 (`0534d95`)
 
 **왜 바꿨나.** 맵 폴더 경로는 바닥을 새로 깔아서 스캔에 있던 바닥 결함이 진단에 남지 않았다(R8). 스캔 형상을 그대로 두는 GLB 경로로 보내면 잡힌다.

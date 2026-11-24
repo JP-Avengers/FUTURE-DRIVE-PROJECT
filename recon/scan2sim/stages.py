@@ -29,9 +29,14 @@ def _call(cmd, log):
 
 def s_input(ctx):
     """무엇이 들어왔는지 판별하고 장면 형태를 재서 빌드 설정을 만든다."""
-    k = detect.kind_of(ctx["input"])
-    ctx["kind"] = k
+    from . import stray
     ctx["name"] = detect.safe_name(ctx["input"])
+    try:
+        k = detect.kind_of(ctx["input"])
+    except stray.CaptureError as e:                             # 망가진 촬영본 — B 의 입력 검사가 쓴 문장만 보임 (통합 기록 R4)
+        ctx["kind"] = None
+        return Result(FAIL, str(e))
+    ctx["kind"] = k
     if k is None:
         return Result(FAIL, "입력을 알아볼 수 없음", messages=["받는 입력: GLB 파일 · B 형식 맵 폴더(keyframes/ + trajectory_camera_optical.txt) · 아이폰 LiDAR 원본(Stray Scanner 폴더 또는 zip)"])
     if k == "bag":
@@ -43,13 +48,15 @@ def s_input(ctx):
         # 맵 폴더 경로(build_usd.py)로 보내지 않는 이유: 그 경로는 바닥을 새로 깔아서 스캔에 있던 바닥 결함(겹침 · 구멍 · 낮은 턱)이
         # 진단에 남지 않음 (B 통합 기록 R8, 가상의 방에서 3개 중 0개). 스캔 형상을 그대로 두는 GLB 경로는 3개 모두 잡음.
         # 메쉬 좌표는 맵 폴더 세계(Z 위) 그대로 — T_input_to_scene 의 입력 좌표가 전과 같게 (docs/CONTRACT.md 1장)
-        from . import stray
         mp = ctx.path("input_map", ".keep")[:-len(".keep")].rstrip("/\\")
         mj = os.path.join(mp, "stray_meta.json")
         if ctx.get("resume") and os.path.exists(mj):
             sm = json.load(open(mj, encoding="utf-8"))
         else:
-            sm = stray.convert(stray.find_capture(ctx["input"], os.path.join(mp, "_unzip")), mp)
+            try:
+                sm = stray.convert(stray.find_capture(ctx["input"], os.path.join(mp, "_unzip")), mp)
+            except stray.CaptureError as e:
+                return Result(FAIL, str(e))
         path = os.path.join(build, "mesh_raw.ply")
         if not (ctx.get("resume") and os.path.exists(path)):
             tc = os.path.join(build, "tsdf_config.yaml")
@@ -81,6 +88,8 @@ def s_input(ctx):
                 r.warn(f"쓸 수 있는 깊이가 적음 ({sm['valid_depth_pct']}%) — 멀리 있거나 반사 · 유리가 많은 장면")
             if sm["speed_median_mps"] > 0.8:
                 r.warn(f"촬영 속도가 빠름 (중앙값 {sm['speed_median_mps']} m/s) — 사진이 흐리고 깊이가 성김")
+            for w in (sm.get("checks") or {}).get("warnings") or []:
+                r.warn(w)
             r.warn("아이폰 자세에는 되돌아온 자리를 맞추는 보정이 없음 — 긴 구간은 틀어질 수 있음 (얼마나인지는 재지 않음)")
     else:
         root = ctx.get("map_root") or ctx["input"]
@@ -304,6 +313,17 @@ def s_diagnose(ctx):
         r.messages.append("천장이 있음 — 씬 루트에 그림자 설정을 넣음 (안 넣으면 Isaac Sim 화면 밝기 0)")
     elif p["shadow_fix"]:
         r.messages.append(f"천장이 일부만 찍힘 (빈 바닥 위 {cov:.0f}%) — 그 아래가 어두워지지 않게 씬 루트에 그림자 설정을 넣음")
+    if ctx.get("source") == "stray":                            # 아이폰 원본: 안 쓴 프레임 깊이 ↔ 맵 (B 의 stray_quality, 통합 기록 R3)
+        from . import stray_quality
+        try:
+            q = ctx.get("stray_quality") or stray_quality.measure(ctx["out"], capture=ctx["input"])
+            ctx["stray_quality"] = q
+            m["stray_quality"] = {k: q.get(k) for k in ("frames", "median_cm", "p90_cm", "within_2cm_pct", "hit_pct", "verdict")}
+            r.messages.append(q["summary"])
+            for w in q.get("reasons") or []:
+                r.warn(w)                                       # fail 이어도 주의로만 (맵은 만들어짐)
+        except (SystemExit, Exception) as e:                    # measure 는 SystemExit 을 냄
+            r.messages.append(f"복원 정확도를 재지 못함: {e}")
     m["defects"] = _defects(ctx, ground, xy, where, lay, ok, hi, two, h2)
     r.summary = f"빈 바닥 표본 {lay['samples']:,} · 바닥 한 겹 {lay['single_pct']}% · 두 겹 {lay['double_within_3cm']}" + (f" · 보이는 바닥 없음 {m['visible_floor_missing_pct']}%" if "visible_floor_missing_pct" in m else "")
     return r
@@ -375,7 +395,7 @@ def s_bundle(ctx):
         string lights = "돔 600 · 해 0{' · 천장이 있어 보이는 prim 에 doNotCastShadows (없으면 화면 밝기 0)' if shadow else ''}"
     }}
     defaultPrim = "World"
-    doc = "scan2sim 이 만든 씬 루트 제안 — sim/scenes/<장소>/ 에 두고, 맵 경로를 서버 위치에 맞출 것. Isaac Sim 에서 열어 본 것이 아님"
+    doc = "scan2sim 이 만든 씬 루트 제안 (팀 시뮬 배치용) — sim/scenes/<장소>/ 에 두고, 맵 경로를 서버 위치에 맞출 것. 묶음만으로는 안 열림 (묶음만으로 여는 것은 scene_root.usda)"
     metersPerUnit = 1
     subLayers = [
         @../proxy/sensors.usda@,
@@ -410,7 +430,38 @@ over "World"
     }}
 }}
 '''
-    open(os.path.join(b, "scene_root.usda"), "w", encoding="utf-8", newline="\n").write(usda)
+    # 팀 시뮬 배치용(sim/scenes/<장소>/ 에 두고 로봇 · 센서 · ROS 층을 함께 거는 것)은 이름을 따로 — 묶음 밖 파일을 가리켜 혼자서는 안 열림 (D 11.24)
+    open(os.path.join(b, "scene_root_sim.usda"), "w", encoding="utf-8", newline="\n").write(usda)
+    # scene_root.usda: 묶음만으로 열리는 것 — 맵 + 돔 조명 + (천장이 있으면) 그림자 설정. 로봇은 없음. 맵 파일에는 조명이 없어 그대로 열면 화면이 검음
+    over_map = (f'    over "{root}"' + chr(10) + '    {' + chr(10) + shadow.rstrip(chr(10)) + chr(10) + '    }' + chr(10) + chr(10)) if shadow else ""
+    alone = f'''#usda 1.0
+(
+    customLayerData = {{
+        string map = "scan2sim 자동 생성 — 입력 {os.path.basename(os.path.normpath(ctx['input']))}"
+        string lights = "돔 600{' · 보이는 prim 에 doNotCastShadows (천장이 빛을 가려 화면이 검어지지 않게)' if shadow else ''}"
+        string start_pose = "로봇을 놓을 자리는 start_pose.json ({pose['x']}, {pose['y']}, {pose['z']}) · {pose['yaw_deg']} 도"
+    }}
+    defaultPrim = "World"
+    doc = "scan2sim 이 만든 씬 — 이 묶음만으로 열림 (맵 + 조명). 로봇 · 센서는 들어 있지 않음"
+    metersPerUnit = 1
+    subLayers = [
+        @./usd/{os.path.basename(ctx['usd_scene'])}@
+    ]
+    upAxis = "Z"
+)
+
+over "World"
+{{
+{over_map}    def Xform "Lights"
+    {{
+        def DomeLight "Dome"
+        {{
+            float inputs:intensity = 600
+        }}
+    }}
+}}
+'''
+    open(os.path.join(b, "scene_root.usda"), "w", encoding="utf-8", newline="\n").write(alone)
     files = sorted(os.path.relpath(os.path.join(dp_, f), b).replace(os.sep, "/") for dp_, _, fs in os.walk(b) for f in fs if f != ".keep")
     json.dump(dict(name=ctx["name"], input=os.path.basename(os.path.normpath(ctx["input"])), kind=ctx["kind"], files=files), open(os.path.join(b, "bundle.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     ctx["bundle"] = b
@@ -463,6 +514,11 @@ def s_report(ctx):
             v = m["visible_minus_collision_cm"]
             L += [f"| 보이는 바닥 − 충돌 바닥 (5% / 중앙 / 95%) | {v['p5']} / {v['median']} / {v['p95']} cm | ±5 cm 안 |", f"| 보이는 바닥이 없는 빈 바닥 | {m.get('visible_floor_missing_pct')}% | 10% 아래 |"]
         L += [f"| 천장 | {'있음 → 그림자 설정 넣음' if m.get('has_ceiling') else '없음'} | — |"]
+    sq = ctx.get("stray_quality")
+    if sq and sq.get("median_cm") is not None:
+        L += ["", "## 복원 정확도 (아이폰 원본)", "", f"- {sq['summary']} · 90% {sq.get('p90_cm')} cm → {MARK.get(sq.get('verdict'), sq.get('verdict'))} (기준: 중앙 3 cm 이하)"]
+    elif sq:
+        L += ["", "## 복원 정확도 (아이폰 원본)", "", f"- {sq['summary']}"]
     if ctx.get("bundle"):
         L += ["", "## 묶음", "", f"- 위치: `bundle/` — `usd/` · `nav2/` · `scene_root.usda` · `start_pose.json` · `route.csv`", "- Isaac Sim 에서 열어 본 것이 아님. 주행 검증은 서버에서."]
     L += ["", "## 이 맵이 가정한 것과 바꾼 것", "",
