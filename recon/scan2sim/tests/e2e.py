@@ -4,7 +4,8 @@
     python -m scan2sim.tests.e2e <파일(zip · glb)> [--truth 정답.json] [--server http://… --code …] [--json 결과.json] [--allow-fail]
 
 --server 를 안 주면 빈 포트에 서버를 새로 띄우고(임시 작업 폴더 · 무작위 접속 코드) 끝나면 엔진까지 함께 끈다.
---truth 를 주면 (samples/make_room.py · make_stray.py 가 쓴 정답) 넣어 둔 결함마다 같은 종류의 결함이 정답 자리에서 --tol 안에 잡혔는지 본다.
+--truth 를 주면 (samples/make_room.py · make_stray.py 가 쓴 정답) 넣어 둔 결함마다 같은 종류의 결함이 잡혔는지 본다.
+  정답에 넓이(size_m)가 있으면 결함 자리가 넣은 넓이(씬의 사각형)에서 --tol-area 안(안이면 0)인지, 없으면 정답 가운데에서 --tol 안인지.
   정답 자리는 결함의 center_input(glTF 좌표, Y 위)을 이 작업의 T_input_to_scene 으로 옮겨 씬 좌표로 견준다.
   Stray 입력(zip)이면 그 앞에 stray.py 와 같은 Y_UP_TO_Z_UP 을 먼저 곱한다 (입력 좌표 = input_map 세계, docs/CONTRACT.md 1장).
   정답 하나에 잡힌 결함 하나만 짝지음(같은 결함이 정답 둘을 맞추지 못함). 정답이 있는데 견줄 것이 하나도 없으면 실패.
@@ -245,48 +246,78 @@ def check_files(api, jid, j, C):
     return names
 
 
+def _to_scene(p_in, T, stray_input):
+    p = list(p_in[:3]) + [1.0]
+    if stray_input:
+        p = [sum(Y_UP_TO_Z_UP[r][c] * p[c] for c in range(4)) for r in range(4)]
+    return [sum(T[r][c] * p[c] for c in range(4)) for r in range(2)]
+
+
 def truth_scene(t, T, stray_input):
-    """정답 결함의 씬 좌표 (x, y). center_input 이 있으면 이 작업의 T_input_to_scene 으로 옮김"""
+    """정답 결함의 씬 좌표 (x, y) · 넣은 넓이의 씬 네 모서리 (정답에 size_m 이 없으면 None) · 구한 방법.
+    center_input 이 있으면 이 작업의 T_input_to_scene 으로 옮김. size_m 은 씬 (x, y) 크기 — glTF 에서는 (x, −z) 방향 (make_room 좌표 규약)"""
+    hx, hy = (t["size_m"][0] / 2, t["size_m"][1] / 2) if "size_m" in t else (None, None)
+    corners = ((-1, -1), (1, -1), (1, 1), (-1, 1))
     if "center_input" in t and T is not None:
-        p = list(t["center_input"][:3]) + [1.0]
-        if stray_input:
-            p = [sum(Y_UP_TO_Z_UP[r][c] * p[c] for c in range(4)) for r in range(4)]
-        q = [sum(T[r][c] * p[c] for c in range(4)) for r in range(3)]
-        return q[:2], "center_input × T_input_to_scene" + (" (Y_UP_TO_Z_UP 먼저)" if stray_input else "")
+        c = t["center_input"]
+        quad = [_to_scene([c[0] + sx * hx, c[1], c[2] - sy * hy], T, stray_input) for sx, sy in corners] if hx is not None else None
+        return _to_scene(c, T, stray_input), quad, "center_input × T_input_to_scene" + (" (Y_UP_TO_Z_UP 먼저)" if stray_input else "")
     for k in ("center_scene", "center_scene_expected"):
         if k in t:
-            return list(t[k][:2]), k
-    return None, None
+            c = t[k]
+            quad = [[c[0] + sx * hx, c[1] + sy * hy] for sx, sy in corners] if hx is not None else None
+            return list(c[:2]), quad, k
+    return None, None, None
 
 
-def check_truth(defects, truth, T, stray_input, tol, C):
-    """정답마다 같은 종류의 결함 하나를 거리 순으로 1:1 짝지음."""
+def quad_dist(p, q):
+    """점 p 에서 볼록 사각형 q (모서리 네 개, 차례대로) 까지의 평면 거리 — 안이면 0"""
+    e = list(zip(q, q[1:] + q[:1]))
+    s = [(b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) for a, b in e]
+    if min(s) >= 0 or max(s) <= 0:
+        return 0.0
+
+    def seg(a, b):
+        ux, uy = b[0] - a[0], b[1] - a[1]
+        u = max(0.0, min(1.0, ((p[0] - a[0]) * ux + (p[1] - a[1]) * uy) / ((ux * ux + uy * uy) or 1.0)))
+        return math.dist(p, (a[0] + u * ux, a[1] + u * uy))
+    return min(seg(a, b) for a, b in e)
+
+
+def check_truth(defects, truth, T, stray_input, tol, tol_area, C):
+    """정답마다 같은 종류의 결함 하나를 1:1 짝지음. 정답에 넓이(size_m)가 있으면 결함 자리가 넣은 넓이에서 tol_area 안인지,
+    없으면 정답 가운데에서 tol 안인지 봄. 결함 자리(center_scene)는 걸린 표본의 평균이라 넓이 안의 어디든 맞음 —
+    얇은 판(double_floor)은 카메라를 향한 두 가장자리만 표본에 걸려 가운데에서 0.12~0.41 m 벗어남 (11/24, Stray 3 seed × 깊이 규칙 2개).
+    가운데까지 거리(dist_m)는 늘 함께 남김 (흐름 비교용)."""
     want = [t for t in truth.get("defects", []) if isinstance(t, dict) and "type" in t]
     pairs = []
     for i, t in enumerate(want):
-        xy, how = truth_scene(t, T, stray_input)
+        xy, quad, how = truth_scene(t, T, stray_input)
         if xy is None:
             C.add(f"정답 결함 {t['type']}", False, "정답에 자리(center_input · center_scene)가 없음")
             continue
         for k, d in enumerate(defects):
             if d["type"] == t["type"]:
-                pairs.append((math.dist(d["center_scene"][:2], xy), i, k))
-        t["_xy"], t["_how"] = xy, how
+                dc = math.dist(d["center_scene"][:2], xy)
+                pairs.append((quad_dist(d["center_scene"][:2], quad) if quad else dc, dc, i, k))
+        t["_xy"], t["_quad"], t["_how"] = xy, quad, how
     pairs.sort()
     used_t, used_d, match = set(), set(), {}
-    for dist, i, k in pairs:
+    for key, dc, i, k in pairs:
         if i not in used_t and k not in used_d:
             used_t.add(i), used_d.add(k)
-            match[i] = dist
+            match[i] = (key, dc)
     res = []
     for i, t in enumerate(want):
         if "_xy" not in t:
             continue
-        dist = match.get(i)
-        ok = dist is not None and dist <= tol
-        C.add(f"정답 결함 {t['type']} @({t['_xy'][0]:.2f}, {t['_xy'][1]:.2f})", ok,
-              (f"짝지은 결함까지 {dist:.2f} m" if dist is not None else "짝지을 같은 종류 결함이 없음") + f" · {t['_how']}")
-        res.append(dict(type=t["type"], truth_xy=[round(v, 3) for v in t["_xy"]], dist_m=None if dist is None else round(dist, 3), ok=ok))
+        m, lim = match.get(i), (tol_area if t["_quad"] else tol)
+        ok = m is not None and m[0] <= lim
+        what = ("짝지을 같은 종류 결함이 없음" if m is None else
+                f"넣은 넓이까지 {m[0]:.2f} m (허용 {lim:g}) · 가운데까지 {m[1]:.2f} m" if t["_quad"] else f"짝지은 결함까지 {m[1]:.2f} m (허용 {lim:g})")
+        C.add(f"정답 결함 {t['type']} @({t['_xy'][0]:.2f}, {t['_xy'][1]:.2f})", ok, what + f" · {t['_how']}")
+        res.append(dict(type=t["type"], truth_xy=[round(v, 3) for v in t["_xy"]], dist_m=None if m is None else round(m[1], 3),
+                        dist_area_m=None if m is None or not t["_quad"] else round(m[0], 3), ok=ok))
     if want and not res:
         C.add("정답과 견줌", False, "정답 결함이 있는데 견준 것이 없음")
     if not want:
@@ -298,7 +329,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input")
     ap.add_argument("--truth")
-    ap.add_argument("--tol", type=float, default=0.5, help="정답 자리와의 거리 허용 (m, 바닥 위 평면 거리)")
+    ap.add_argument("--tol", type=float, default=0.5, help="정답에 넓이가 없을 때: 정답 가운데와의 거리 허용 (m, 바닥 위 평면 거리)")
+    ap.add_argument("--tol-area", type=float, default=0.25, help="정답에 넓이(size_m)가 있을 때: 넣은 넓이와의 거리 허용 (m, 넓이 안이면 0)")
     ap.add_argument("--server", help="이미 떠 있는 서버 주소 (안 주면 새로 띄움)")
     ap.add_argument("--code", help="--server 의 접속 코드")
     ap.add_argument("--timeout", type=int, default=1200)
@@ -337,7 +369,7 @@ def main():
             check_files(api, jid, j, C)
             if a.truth:
                 T = (j.get("defects_before") or {}).get("T_input_to_scene")
-                out["truth"] = check_truth(defects, json.load(open(a.truth, encoding="utf-8")), T, a.input.lower().endswith(".zip"), a.tol, C)
+                out["truth"] = check_truth(defects, json.load(open(a.truth, encoding="utf-8")), T, a.input.lower().endswith(".zip"), a.tol, a.tol_area, C)
     except Broken as e:
         print(f"  중단 — {e}", flush=True)
         out["broken"], rc = str(e), 2

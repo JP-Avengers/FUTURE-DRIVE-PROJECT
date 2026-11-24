@@ -1,16 +1,19 @@
 # CONTRACT.md — scan2sim 약속 (엔진 · 서버 · 화면이 주고받는 것)
 
-**기준 코드: `b/yunseong` `d019a22`** (main 의 C · D 11/24 변경 `736eb68` ~ `ed7220e` 을 합친 `ed4ee25` + 시험 · 기록 커밋 하나). 이 문서의 `파일:줄` 은 모두 이 커밋 기준이다.
-**고침 11/24 저녁 (`ccaca39`, C 의 `620a2b0` 을 합침):** 씬 루트가 둘로 나뉜 것(2-4)과 R3 · R4 가 붙은 것을 반영했다. `620a2b0` 이 `stages.py` 에 줄을 더해, 이 문서의 `stages.py:줄` 가운데 진단 · 묶음 단계 쪽은 지금 코드보다 앞을 가리킬 수 있다 — 함수 이름으로 찾을 것.
+**기준 코드: `b/yunseong` `b900e76` + 작업 트리(커밋 전)** — B 의 `stray.py` · `stray_fix.py` · `stray_mesh.py` · `stray_quality.py` 는 `595d439` 위의 커밋 전 변경까지 반영했다. 이 네 파일은 줄 번호 대신 함수 · 상수 이름(`stray.convert`, `stray.MAX_KEYFRAMES` 등)으로 적는다.
+처음 판의 기준은 `d019a22` (main 의 C · D 11/24 변경 `736eb68` ~ `ed7220e` 을 합친 `ed4ee25` + 시험 · 기록 커밋 하나)이고, 다른 파일의 `파일:줄` 은 그 커밋 기준이다.
+**고침 11/24 저녁 (`ccaca39`, C 의 `620a2b0` 을 합침):** 씬 루트가 둘로 나뉜 것(2-4)과 R3 · R4 가 붙은 것을 반영했다. `620a2b0` 이 `stages.py` 에 줄을 더해, 이 문서의 `stages.py:줄` 가운데 입력(`s_input`, 5~7줄) · 진단 · 묶음 단계 쪽은 지금 코드보다 앞을 가리킬 수 있다 — 함수 이름으로 찾을 것.
+**고침 11/24 밤 (`b900e76` + 작업 트리):** B 의 Stray 깊이 규칙 · 깊이 파일 짝짓기 · zip 처리(6-1 ~ 6-3), 자세 보정과 그 결과 파일(6-4), 아직 C 가 넣지 않은 R10 · R11 과 `--resume` 제안(8장)을 반영했다.
 
-작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영)
+작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영 · B 의 Stray 깊이 규칙 · 자세 보정)
 
 - 이 문서는 **지금 코드가 하는 일**을 적는다. 계획(`docs/implementation.md` 5장)과 다른 곳과 버그로 보이는 것은 8장에 모았다.
 - 근거 표시: 코드 위치는 `파일:줄`. 경로는 `recon/scan2sim/` 기준이고, `pipeline/` · `tools/` · `configs/` 는 `recon/` 아래다. 코드를 읽지 않고 짐작한 것은 **[추정]** 이라고 적었다.
 - 예시 JSON 은 실제 실행 결과에서 가져왔다. 긴 배열은 줄였다(`…`).
-  - `room` = 서버를 띄워 방 촬영본(Stray zip `6bc1ae021f.zip`, 118초 · 379 MB, E 가 찍음)을 API 로 올린 시험. 기준 코드에서 `tests/e2e.py` 로 돌림. 작업 `694ddc986821`, 결과 `~/webapp_runs/ref/`, 엔진 출력 `~/webapp_runs/ref/job/out/`. 15/15 통과 · `done` · 판정 `warn` · 82초.
+  - `room` = 서버를 띄워 방 촬영본(Stray zip `6bc1ae021f.zip`, 118초 · 379 MB, E 가 찍음)을 API 로 올린 시험. 기준 코드에서 `tests/e2e.py` 로 돌림. 작업 `694ddc986821`, 결과 · 엔진 출력은 B 노트북 작업 폴더(저장소 밖). 15/15 통과 · `done` · 판정 `warn` · 82초.
   - `e2e_glb` = 11/23 에 서버로 GLB(`corridor_v04.glb`)를 올린 시험 (작업 `b8ce80baff04`). 그때 환경에 `scikit-image` 가 없어 변환 단계에서 실패했다. 8장에서 고쳐진 항목을 설명할 때만 쓴다.
   - 11/23 판의 `stray1` · `e2e_stray` 예시는 Stray 를 맵 폴더 길로 돌린 결과라 지금 출력과 모양이 달라 뺐다 (1-2).
+  - `ref` = B 가 `room` 과 같은 촬영본을 엔진 밖에서 11/24 밤 작업 트리의 `stray.convert` → `stray_mesh.build` (기본값) → `stray_quality.measure` 로 돌린 결과. R10 이 들어간 엔진의 Stray 중간 파일이 이 모양이 된다 [추정: R10 diff 대로 넣으면]. 6장에서만 쓴다.
 
 ---
 
@@ -61,6 +64,7 @@
   - `stray.py` 로 맵 폴더 형식(`out/input_map/`)을 만들고, `pipeline/tsdf.py` 로 깊이를 합쳐 형상 메쉬 `build/mesh_raw.ply` 를 만든다.
   - 그 메쉬를 GLB 처럼 `pipeline/glb_to_usd.py` 에 넣는다. 그래서 원점 · 바닥의 정의가 GLB 와 같다.
   - 11/23 까지는 맵 폴더 길(`build_usd.py`)이라 "x · y = 입력 그대로, z = 경로 아래 중앙값" 이었다.
+  - 형상 메쉬를 B 의 `stray_mesh.build` (깊이 5 m · 자세 보정, 6-4)로 만드는 것은 통합 기록 R10 이고, 아직 C 가 넣지 않았다. 넣어도 메쉬 파일 이름 · 좌표는 같다.
 - GLB · Stray 에서 바닥이 평평하지 않으면 스캔 바닥 높이 지도를 쓴다.
   - 평평함 판정: 바닥 근처 위 향한 면 높이의 5~95% 폭이 0.12 m 미만 (`detect.py:67`, `:75`).
   - 평평하지 않으면 자동 설정에 `collision.ground: scan` 이 붙고 (`detect.py:104-105`), `build/ground.npz` 를 만든다 (`pipeline/glb_to_usd.py:556`).
@@ -80,18 +84,19 @@
 |---|---|---|---|
 | GLB | 올린 GLB 의 glTF 좌표 그대로 (+Y 위) | `M(원점 · 수평 · 바닥) · Y_UP_TO_Z_UP · 배율` | `pipeline/glb_to_usd.py:630-632` |
 | B 형식 맵 폴더 (리얼센스) | 맵 폴더의 세계 좌표 = `trajectory_camera_optical.txt` 의 세계 (+Z 위) | 수평 맞춤 회전 + 바닥 높이 이동 | `pipeline/build_usd.py:248`, `:260` |
-| **Stray (아이폰)** | **`out/input_map/` 의 세계 좌표** = Stray 세계를 `Y_UP_TO_Z_UP` 으로 돌린 것 (+Z 위). 형상 메쉬 `build/mesh_raw.ply` 가 이 좌표다. **Stray 원본 세계(+Y 위)가 아님** | `M(원점 · 수평 · 바닥) · 배율`. 입력 메쉬가 이미 Z 위라 `Y_UP_TO_Z_UP` 을 곱하지 않음 (설정 `input: up: z`, `stages.py:59`, `detect.py:99`) | `pipeline/glb_to_usd.py:630-632` (메쉬를 만든 곳은 `stray.py:30`, `:335` + `pipeline/tsdf.py`) |
+| **Stray (아이폰)** | **`out/input_map/` 의 세계 좌표** = Stray 세계를 `Y_UP_TO_Z_UP` 으로 돌린 것 (+Z 위). 형상 메쉬 `build/mesh_raw.ply` 가 이 좌표다. **Stray 원본 세계(+Y 위)가 아님** | `M(원점 · 수평 · 바닥) · 배율`. 입력 메쉬가 이미 Z 위라 `Y_UP_TO_Z_UP` 을 곱하지 않음 (설정 `input: up: z`, `stages.py:59`, `detect.py:99`) | `pipeline/glb_to_usd.py:630-632` (메쉬를 만든 곳은 `stray.Y_UP_TO_Z_UP` · `stray.convert` 안의 `pose` + `pipeline/tsdf.py`, R10 뒤에는 `stray_mesh.build`) |
 
 - 11/24 에 Stray 의 길이 바뀌었지만 **Stray 의 "입력 좌표" 는 그대로**다 (`stages.py:45` 주석). 바뀐 것은 T 의 내용(x · y 원점이 범위 가운데로, z = 0 이 맞춘 바닥 평면으로)뿐이다.
 
 **Stray 의 입력 좌표 (자세히)**
 
-- Stray `odometry.csv` 의 자세 = 카메라 광학 좌표계(x 오른쪽 · y 아래 · z 앞) → Stray 세계. Stray 세계는 **+Y 가 위** (`stray.py:18-19`).
-- `stray.py` 는 카메라 쪽은 그대로 두고 세계만 돌린다: `T_맵폴더 = Y_UP_TO_Z_UP · T_stray` (`stray.py:335`).
-  - `Y_UP_TO_Z_UP = [[1,0,0,0],[0,0,-1,0],[0,1,0,0],[0,0,0,1]]` → `p_입력 = (x, −z, y)_stray` (`stray.py:30`)
+- Stray `odometry.csv` 의 자세 = 카메라 광학 좌표계(x 오른쪽 · y 아래 · z 앞) → Stray 세계. Stray 세계는 **+Y 가 위** (`stray.py` 머리말 "좌표").
+- `stray.py` 는 카메라 쪽은 그대로 두고 세계만 돌린다: `T_맵폴더 = Y_UP_TO_Z_UP · T_stray` (`stray.convert` 안의 `pose`).
+  - `Y_UP_TO_Z_UP = [[1,0,0,0],[0,0,-1,0],[0,1,0,0],[0,0,0,1]]` → `p_입력 = (x, −z, y)_stray` (`stray.Y_UP_TO_Z_UP`)
   - 거꾸로: `p_stray = (x, z, −y)_입력`
-- 이 돌린 세계로 `input_map/trajectory_camera_optical.txt` 를 쓴다 (`stray.py:341-344`).
+- 이 돌린 세계로 `input_map/trajectory_camera_optical.txt` 를 쓴다 (`stray.convert` 끝).
   `pipeline/tsdf.py` 가 이 자세로 깊이를 합쳐 `build/mesh_raw.ply` 를 같은 좌표로 만들고, 빌드 설정(`build/auto_config.yaml`)의 `input.mesh` 가 이 파일이다.
+  - R10 뒤의 `stray_mesh.build` 는 합치기 전에 키프레임 자세를 고친다 (6-4). 메쉬 좌표계(입력 좌표)는 같고, `trajectory_camera_optical.txt` 는 **보정 전 자세 그대로**다. 고친 자세는 `build/pose_fix.json` 으로 다시 만든다 (`stray_fix.apply_fix`).
 - 그래서 Stray 결함의 `center_input` 을 Stray 원본 좌표로 보려면 `(x, z, −y)` 를 한 번 더 해야 한다.
 
 실제 값 (`room` 의 `build/transform.json`) — 약 0.38° 기울기 보정, x · y 를 (+4.506, −2.313) 옮겨 범위 가운데를 원점으로, z 를 1.580 m 올림. 입력 좌표에서 바닥이 z ≈ −1.555 인 것은 입력 좌표의 원점이 촬영을 시작한 폰 자리이기 때문이다 [추정: ARKit 세계 원점].
@@ -182,9 +187,11 @@ out/
   input_map/                  Stray 입력일 때만 — Stray 를 맵 폴더 형식으로 바꾼 것 (6장)
     _unzip/                     zip 을 푼 원본 촬영 (rgb.mp4 · depth/ · odometry.csv …). 사람 얼굴이 든 영상이 그대로 남음
     keyframes/rgb/<n>.jpg · keyframes/depth/<n>.png · keyframes/calib/<n>.yaml
-    trajectory_camera_optical.txt
-    stray_meta.json
+    trajectory_camera_optical.txt   키프레임 자세 — 자세 보정 전 (6-4)
+    stray_meta.json             변환이 끝나면 맨 끝에 씀 (6-3)
     stray_quality.json          Stray 입력이면 진단 단계가 씀 (`stray_quality.measure`, 통합 기록 R3 — C `620a2b0`). 진단 수치의 `stray_quality` 와 같은 값
+    (R10 뒤) pose_fix.json      build/pose_fix.json 과 같은 바이트의 복사본. 없어도 됨 (6-4)
+    (예전 맵만) floor_fix.json   af65f1b 판 B 메쉬가 쓴 높이 보정 info. 지금 코드는 쓰지 않고 새로 만들 때 지움 (6-4)
   build/                      빌드 결과
     auto_config.yaml            엔진이 만든 빌드 설정
     auto_config_corrected.yaml  보정을 했을 때만 (stages.py:319)
@@ -196,7 +203,8 @@ out/
     ground.npz                  바닥 높이 지도. GLB · Stray 는 바닥이 평평하지 않을 때만 (1-2). 있으면 진단 · 시작 자세가 씀
     (GLB · Stray) drive_path.json   가상 주행 경로 → bundle/route.csv 의 재료
     (GLB · Stray) glb_tex/          GLB 텍스처를 풀어 두는 곳. Stray 는 빈 폴더
-    (Stray 만) tsdf_config.yaml · mesh_raw.ply · tsdf_meta.json   형상 메쉬와 그 설정 (stages.py:53-58, detect.config_tsdf)
+    (Stray 만) tsdf_config.yaml · mesh_raw.ply · tsdf_meta.json   형상 메쉬와 그 설정 (stages.s_input, detect.config_tsdf)
+    (Stray, R10 뒤) pose_fix.json   자세 보정 info (6-4). R10 diff 대로면 tsdf_config.yaml 은 더 생기지 않음
     (맵 폴더만) mesh_raw.ply · collider.ply · floor.ply · boundary.ply · check_input.json · tsdf_meta.json …
   defects_before.json         보정 전 결함 목록 (5장). 진단 단계가 돌면 항상
   defects_after.json          보정 뒤 다시 진단한 결함 목록. **보정이 돌았을 때만** (5-4)
@@ -289,6 +297,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
   - B 형식 맵 폴더 (`keyframes/` + `trajectory*camera_optical.txt`) — **폴더만**. 맵 폴더를 묶은 zip 은 알아보지 못함 (8장)
   - 녹화 파일(`.mcap` · `.db3` · `.bag`)은 알아보지만 입력 단계에서 실패시킴 (`stages.py:37-38`)
 - `--force`: 실패한 단계가 있어도 다음 단계를 함. `--resume`: `out/build` 에 결과가 있으면 변환을 건너뜀 (`__main__.py:20-23`). **서버는 둘 다 쓰지 않는다** (`web/server.py:146`).
+  - Stray 는 `--resume` 이면 `input_map/stray_meta.json` 이 있을 때 변환을, `build/mesh_raw.ply` 가 있을 때 형상 메쉬를 건너뛴다 (`stages.s_input`). 메쉬는 있는지만 본다 (8-3 의 11번).
 - 종료 코드 (`__main__.py:29`)
   - `0` = 어느 단계도 `fail` 이 아님 (통과 또는 주의)
   - `1` = 한 단계라도 `fail`
@@ -330,7 +339,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 | NN | `stage` | `label` | 하는 일 | 나올 수 있는 `status` |
 |---|---|---|---|---|
-| 00 | `input` | 입력 확인 | 입력 종류 판별, 형태 재기, 빌드 설정 만들기. Stray 면 맵 폴더로 바꾸고 형상 메쉬(`pipeline/tsdf.py`)까지 만듦 | pass · warn · fail (Stray 는 늘 warn 이상, 6-3) |
+| 00 | `input` | 입력 확인 | 입력 종류 판별, 형태 재기, 빌드 설정 만들기. Stray 면 맵 폴더로 바꾸고 형상 메쉬(`pipeline/tsdf.py`, R10 뒤 `stray_mesh.build`)까지 만듦 | pass · warn · fail (Stray 는 늘 warn 이상, 6-3) |
 | 01 | `convert` | 메쉬 · USD 만들기 | GLB · Stray: `pipeline/glb_to_usd.py`. 맵 폴더: `check_input.py` + `run.py --from tsdf` | pass · fail |
 | 02 | `nav2` | Nav2 지도 | `sim/nav2/make_map.py`. 빈 바닥 4 m² 미만이면 fail | pass · fail · skip(`make_map.py` 없음) |
 | 03 | `diagnose` | 진단 | 충돌 바닥 층수 · 보이는 바닥 · 보이는 바닥 두 높이 · 낮은 턱 · 물체 일치 · 천장. `defects_before.json` 씀 | pass · warn · fail |
@@ -666,11 +675,20 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 ### 6-1. 받는 것
 
-- 촬영 폴더에 `rgb.mp4` · `odometry.csv` · `camera_matrix.csv` · `depth/` 가 있어야 한다 (`stray.NEED`, `stray.py:49`). 넷 중 둘 이상이 있으면 촬영 폴더로 보고(`stray._looks_stray`), 빠진 것을 이름으로 알려 주며 실패한다.
+- 촬영 폴더에 `rgb.mp4` · `odometry.csv` · `camera_matrix.csv` · `depth/` 가 있어야 한다 (`stray.NEED`). 넷 중 둘 이상이 있으면 촬영 폴더로 보고(`stray._looks_stray`), 빠진 것을 이름으로 알려 주며 실패한다.
 - zip 은 풀지 않고 이름만 보고 촬영 폴더를 찾는다 (`stray._zip_captures`). macOS 가 넣는 `__MACOSX/` · `._*` 는 무시한다.
-- 처리할 때는 `out/input_map/_unzip/` 에 풀고 그 안의 촬영 폴더를 쓴다 (`stages.py:52`). 폴더가 몇 겹 아래에 있어도 된다.
-- 풀기 전에 막는 zip (`stray.find_capture`, `stray.py:85-117`): 깨진 zip, 촬영 폴더가 여러 개, 파일 10만 개 또는 풀면 6 GB 넘음(`ZIP_MAX_FILES` · `ZIP_MAX_BYTES`, `stray.py:55`), 폴더 밖을 가리키는 경로.
+  - zip 안 이름은 `stray._zip_parts` 로 나눈다. `\` 는 `/` 로 본다 (윈도우 PowerShell 5 의 `Compress-Archive` 등이 `\` 로 씀). 빈 조각과 `.` 은 뺀다 — `./rgb.mp4` = `rgb.mp4`, `./` 항목은 무시.
+- 처리할 때는 `out/input_map/_unzip/` 에 풀고 그 안의 촬영 폴더를 쓴다 (`stages.s_input`). 폴더가 몇 겹 아래에 있어도 된다. 풀 때도 `\` 를 `/` 로 고쳐 폴더를 만든다 (`stray._unzip`).
+- 풀기 전에 막는 zip (`stray.find_capture`): 깨진 zip, 촬영 폴더가 여러 개, 파일 10만 개 또는 풀면 6 GB 넘음(`stray.ZIP_MAX_FILES` · `ZIP_MAX_BYTES`), 폴더 밖을 가리키는 경로.
+  - 폴더 밖 경로: 모든 항목을 먼저 확인한 뒤 푼다. `../` 로 밖으로 나가거나 절대 경로인 항목이 하나라도 있으면 `CaptureError` 이고 **아무것도 풀지 않는다** (`os.path.commonpath` 로 확인, `stray._unzip`).
+  - 푸는 중에 압축이 깨졌거나 자리가 모자라면 `CaptureError` "zip 을 풀지 못함 — …".
   - 입력 판별(`detect.kind_of`, `detect.py:16`)도 이 함수를 부르므로, 깨진 zip 은 판별 때 이미 `CaptureError` 가 난다.
+- **깊이 · 신뢰도 파일 짝짓기** (`stray.frame_ids`)
+  - `odometry.csv` 의 `frame` 열이 0 이상 정수이고 차례대로 커지면, 줄마다 그 번호의 파일(`depth/<frame 6자리>.png` · `confidence/…`)과 짝짓는다. 자세 줄이 빠진 촬영에서 줄 순서로 짝지으면 그 뒤 깊이가 모두 밀리기 때문이다.
+  - 그렇지 않거나, frame 번호로 짝지을 때 없는 파일이 줄 순서로 짝지을 때보다 많으면 줄 순서로 짝짓는다.
+  - 영상(`rgb.mp4`)은 늘 줄 순서다.
+  - 어느 쪽인지는 `stray_meta.json` 의 `depth_pairing` (`"frame"` · `"row"`) 과 `checks.info.depth_pairing` (6-3). frame 열이 0, 1, 2 … 그대로면 `"frame"` 이다 (줄 순서와 같음).
+  - `stray_quality` 도 같은 함수로 짝짓는다.
 - **입력 검사** (`stray.validate`, `convert` 첫머리). 실패면 `stray.CaptureError` 를 낸다.
   - `input` 단계가 이 예외를 받아 `fail` 로 끝내고, **요약은 그 문장 하나**, `messages` 는 비어 있다 (`stages.s_input`, 통합 기록 R4 — C `620a2b0`). 종류 판별(`detect.kind_of`) 때 난 것도 같다.
   - [C 측정] 깨진 zip → 요약 "zip 파일을 열 수 없음 — …" 한 문장.
@@ -679,36 +697,69 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 |---|---|---|
 | 촬영 길이 | 2 초 또는 100 장보다 짧음 (`MIN_S` · `MIN_ROWS`) | — |
 | `odometry.csv` | 열이 13개보다 적음 · 숫자 아님 · NaN · 사원수 길이가 1 에서 1% 넘게 벗어남 · 시각이 커지지 않음 (줄 번호와 함께) | — |
-| `depth/` · `confidence/` 장 수 | 자세 줄 수와 3장 넘게 다름 | 1~2장 다름 (`COUNT_TOL`), `confidence/` 없음(신뢰도로 거르지 않음) |
+| `depth/` · `confidence/` 장 수 | 자세 줄 수와 3장 넘게 다름. frame 번호가 건너뛰는 촬영이면 그 번호의 파일이 3개 넘게 없음 | 1~2장 다름 (`COUNT_TOL`) · frame 번호가 0, 1, 2 … 로 이어지지 않음(어느 쪽으로 짝지었는지 적음) · `confidence/` 없음 또는 빔 |
+| 깊이 파일 | `depth/` 에 `.png` 가 없음 · 첫 장(짝지은 첫 번호)을 못 읽음 · 16비트 한 장이 아님 | — |
 | `rgb.mp4` | 열 수 없음 · 장 수가 자세 줄 수의 90% 미만 (`VIDEO_MIN`) · 4:3 이 아님 | — |
 | 내부 파라미터 | `camera_matrix.csv` 가 3×3 숫자가 아님 · fx · fy ≤ 0 · 주점이 영상 밖 | — |
 | 키프레임 수 | — | 2,000장을 넘어 간격을 넓힘 (6-2) |
+| 깊이 규칙 | — | 바닥 높이를 찾지 못해 `dist` 규칙으로 물러섬 (6-2) |
 
+- 변환 중에 걸리는 것 (`stray.convert`)
+  - 첫 깊이 파일(이름순)을 못 읽거나 16비트 한 장이 아님 → `CaptureError`.
+  - 키프레임 깊이의 크기 · 형식이 첫 장과 다름, 신뢰도 그림 크기가 깊이와 다름 → `CaptureError` ("… 깨졌거나 다른 촬영과 섞였음").
+  - 키프레임 깊이 파일 하나가 있는데 못 읽음 → 그 키프레임만 빼고 주의 ("깊이 파일 n개를 읽지 못해 그 키프레임을 뺌 …").
+  - 쓸 수 있는 장이 2장 미만 → `CaptureError`.
 - 주의는 `stray_meta.json` 의 `checks.warnings` 에 남고 (6-3), `input` 단계의 주의로도 나간다 (R4, C `620a2b0`).
 
-### 6-2. 변환 값 (`stray.convert` 기본값, `stray.py:272`; 엔진은 기본값만 씀)
+### 6-2. 변환 값 (`stray.convert` 기본값; 엔진은 기본값만 씀)
 
 | 항목 | 값 | 뜻 |
 |---|---|---|
 | `width` | 없음 = 깊이 원래 크기 | 키프레임을 깊이 원래 크기(아이폰 256×192)로 저장. 색은 1920 → 960 → 256 두 번에 나눠 줄임. 내부 파라미터는 `camera_matrix.csv` 를 화소 중심 기준으로 줄임: `c' = (c + 0.5)·s − 0.5`, `f' = f·s` (`stray_quality._intr` 와 같음). `--width 960` 을 주면 전처럼 960×720 (깊이는 최근접으로 키움) — 사진 텍스처를 구울 때만 필요. 11/24 B 측정: 960 과 메쉬 차이 중앙 0.4 mm, 합치기 약 2배 빠름 |
-| `min_conf` | 1 | 신뢰도(0 · 1 · 2) 1 미만 깊이는 0 으로 (`stray.py:326`) |
-| `max_depth_m` | 5.0 | 5 m 넘는 깊이는 0 으로 (`stray.py:327`) |
-| `move_m` · `turn_deg` | 0.05 · 5.0 | 앞에 고른 장에서 5 cm 넘게 움직였거나 5° 넘게 돌았을 때 키프레임으로 고름 (`stray.select`, `stray.py:256-269`) |
-| `max_keyframes` | 2000 (`MAX_KEYFRAMES`) | 고른 장이 이보다 많으면 `move_m` · `turn_deg` 를 함께 넓혀 상한에 가장 가깝게 다시 고름 (이분 탐색, 최대 32배). 넓히면 `checks.warnings` 에 주의. 11/24 전에는 800장 · 1.2배씩이었음 |
-| `max_speed` | 1.5 m/s | 5프레임 평균 속력(`stray.py:296`)이 이보다 빠른 장은 뺌 (흐림) |
-| `skip_s` | 1.0 | 촬영 첫 1초는 건너뜀 (시작 직후 자세가 튐, `stray.py:297`) |
-| 색 저장 | JPEG 품질 92, 영역 평균 축소 | (`stray.py:330`) |
-| 깊이 저장 | 16비트 PNG(mm) | 기본은 원래 크기 그대로. `--width` 로 키울 때만 **최근접** 확대 (섞으면 가장자리에 없는 점이 생김) |
-| 자세 | `Y_UP_TO_Z_UP · T_stray` | 1-3 (`stray.py:335`) |
+| `conf_rule` | `"hf"` | 깊이 고르기 규칙 (아래). `"min"` = 예전 규칙. CLI `--conf-rule hf\|min` |
+| `max_depth_m` | 5.0 | 신뢰도 2 깊이를 쓰는 한계. 넘는 깊이는 0 으로. CLI `--max-depth` |
+| `near_conf1_m` | 3.0 | 신뢰도 1 깊이를 쓰는 한계 (`hf` · `dist`). 함수 인자만 (CLI 없음) |
+| `floor_margin_m` | 0.10 | `hf`: 신뢰도 1 은 세계 높이가 바닥 + 10 cm 보다 높을 때만. 함수 인자만 |
+| `min_conf` | 1 | `conf_rule="min"` 일 때만: 신뢰도(0 · 1 · 2)가 이보다 낮은 깊이는 0 으로. CLI `--min-conf` |
+| `move_m` · `turn_deg` | 0.05 · 5.0 | 앞에 고른 장에서 5 cm 넘게 움직였거나 5° 넘게 돌았을 때 키프레임으로 고름 (`stray.select`) |
+| `max_keyframes` | 2000 (`stray.MAX_KEYFRAMES`) | 고른 장이 이보다 많으면 `move_m` · `turn_deg` 를 함께 넓혀 상한에 가장 가깝게 다시 고름 (이분 탐색, 최대 32배). 넓히면 `checks.warnings` 에 주의. 11/24 전에는 800장 · 1.2배씩이었음 |
+| `max_speed` | 1.5 m/s | 5프레임 평균 속력이 이보다 빠른 장은 뺌 (흐림) |
+| `skip_s` | 1.0 | 촬영 첫 1초는 건너뜀 (시작 직후 자세가 튐) |
+| 색 저장 | JPEG 품질 92, 영역 평균 축소 | |
+| 깊이 저장 | 16비트 PNG(mm) | 규칙으로 버린 화소는 0. 기본은 원래 크기 그대로. `--width` 로 키울 때만 **최근접** 확대 (섞으면 가장자리에 없는 점이 생김) |
+| 자세 | `Y_UP_TO_Z_UP · T_stray` | 1-3 (`stray.convert` 안의 `pose`) |
 
-- 형상 메쉬 (`detect.config_tsdf`, `detect.py:130-137` → `pipeline/tsdf.py`, `stages.py:53-58`)
+**깊이 고르기** (`stray.depth_rule` 이 규칙을 정하고, 키프레임마다 `stray.depth_keep` 이 화소를 고름)
+
+- `hf` (기본): 신뢰도 2 는 `max_depth_m`(5 m)까지 쓴다. 신뢰도 1 은 `near_conf1_m`(3 m) 안이고, 그 화소의 세계 높이가 바닥 + `floor_margin_m`(10 cm) 보다 높을 때만 쓴다. 신뢰도 0 은 버린다.
+  - 까닭: 멀리 · 비스듬히 본 바닥의 신뢰도 1 깊이가 바닥을 두 겹으로 만들었다 (1.5 m 넘는 곳부터). 신뢰도 2 만 쓰면 어두운 물체가 빠져서, 바닥보다 높은 신뢰도 1 은 남긴다 (`stray.py` 머리말 "깊이 고르기").
+  - 높이는 보정 전 자세(자세 보정보다 먼저 돎)와 `camera_matrix.csv` 를 깊이 크기로 줄인 내부 파라미터(화소 중심 기준)로 잰다.
+  - 바닥 높이는 촬영 전체에 하나다 (`depth_rule.floor_z_m`, 키프레임마다 따로 정하지 않음).
+- **바닥 높이 먼저 훑기** (`stray.depth_rule`)
+  - 고른 키프레임 10장마다 1장 (`FLOOR_EVERY`. 짧은 촬영은 30장 넘게 되게 촘촘히, `FLOOR_MIN_FRAMES`).
+  - 그 장들의 신뢰도 2 · `max_depth_m` 안 화소 중, 위를 향한 면(세계 법선 z > 0.9, `FLOOR_UP_NZ` — 높이 보정과 같은 법선 `stray_fix.frame_points`)이고 카메라 높이 중앙값보다 0.6~2.2 m 아래(`FLOOR_SEARCH_M`)인 것의 세계 높이를 2 cm 칸으로 센다.
+  - 가장 많은 칸의 30% 이상(`FLOOR_PEAK_FRAC`)인 가장 낮은 칸 → 그 위 10 cm 안의 봉우리 = 바닥 높이 (`pipeline/glb_to_usd.find_floor` 와 같은 생각).
+  - 바닥을 못 찾은 것으로 보는 경우 (하나라도): 신뢰도 2 깊이가 없음 · 그 띠 안에 위를 향한 신뢰도 2 면이 없음 · 바닥 ±5 cm 의 신뢰도 2 화소가 5,000개 미만(`FLOOR_MIN_PX`) · 띠 안 위를 향한 신뢰도 2 면 중 바닥 ±5 cm 몫이 30% 미만(`FLOOR_MIN_SHARE`) · 바닥이 카메라 높이 중앙값보다 0.6 m 넘게 낮지 않음(`FLOOR_BELOW_CAM_M`).
+- **물러서는 규칙** — 이유는 `checks.warnings` 에 남고 입력 단계 주의로도 나간다 (6-1).
+  - `dist`: `hf` 에서 바닥을 못 찾으면. 신뢰도 1 은 3 m 안이면 높이와 상관없이 쓴다. 이유는 `depth_rule.fallback_reason`. 주의 문장은 "바닥 높이를 찾지 못함 (…) — 신뢰도 1 깊이를 높이와 상관없이 3 m 안에서 씀. 멀리 본 바닥이 두 겹으로 찍힐 수 있음".
+  - `no_confidence`: `confidence/` 폴더가 없으면. 3 m(`near_conf1_m`) 안의 깊이를 모두 쓴다. `fallback_reason` 은 없고, 주의는 입력 검사의 "`confidence/` 가 없음 — 신뢰도로 거르지 않고 깊이를 모두 씀" (실제로는 3 m 까지).
+    - `confidence/` 가 있는데 비었으면 `no_confidence` 가 아니라 바닥을 못 찾아 `dist` 가 된다. 신뢰도 그림이 없는 장은 `min` 이 아닌 규칙이면 3 m 안 깊이를 모두 쓴다 (`min` 은 `max_depth_m` 까지 모두).
+  - `min`: `--conf-rule min` · `convert(conf_rule="min")` 로만. 예전 규칙 = 신뢰도 `min_conf` 이상 · `max_depth_m` 까지.
+- **엔진에서:** `stages.s_input` 이 `stray.convert` 를 기본값으로 부르므로 **`hf` 규칙 · 5 m 는 지금 엔진에서도 쓰인다.** 그러나 형상 메쉬는 아직 `pipeline/tsdf.py` (깊이 3 m)라 3~5 m 의 신뢰도 2 깊이(천장 · 먼 벽)는 메쉬에 들어가지 않는다. 5 m 까지 쓰려면 R10 (또는 R11 — `detect.config_tsdf` 의 `depth_trunc` 를 5.0 으로), 8-2.
+- B 측정 (기준 촬영본, R10 을 넣은 복사본 엔진, 통합 기록 11/24 저녁): 예전 규칙(신뢰도 1 이상) · 3 m 대비 `floor_two_levels` 15.8 → 3.2% (자세 보정 없이), 천장 덮음 28 → 56% (`has_ceiling` 참), 보이는 바닥 없음 0.8 → 6.9%.
+
+- 형상 메쉬 — 지금 엔진 (`detect.config_tsdf`, `detect.py:130-137` → `pipeline/tsdf.py`, `stages.s_input`)
   - TSDF 칸 2 cm, 깊이 3 m 까지, 키프레임 모두(`frame_step: 1`). 결과는 `build/mesh_raw.ply` · `build/tsdf_meta.json`.
-  - 변환은 5 m 까지 남기지만 메쉬에는 3 m 까지만 들어간다.
+  - 변환은 5 m 까지 남기지만 메쉬에는 3 m 까지만 들어간다. 자세 보정도 없다.
   - `pipeline/tsdf.py` 의 `tsdf.image_step`(그림을 줄여 읽기, C `39c02e6`)은 선택 사항이고 엔진은 쓰지 않는다.
   - 형상 메쉬를 못 만들면 입력 단계 `fail` · `"촬영본에서 형상을 만들지 못함"`.
-- 쓸 수 있는 장이 2장 미만이면 `CaptureError` (`stray.py:339-340`).
+- 형상 메쉬 — R10 뒤 (`stray_mesh.build` 기본값): 칸 2 cm · sdf 폭 칸 × 4 · 깊이 5 m · 키프레임 모두, 합치기 전에 자세 보정 (6-4). 못 만들면 `stray_mesh.MeshError` (`CaptureError` 의 한 종류)의 문장이 `messages` 에 들어간다 [R10 diff 대로면].
 
-### 6-3. `input_map/stray_meta.json` (`stray.convert` 끝, `stray.py:348-361`)
+### 6-3. `input_map/stray_meta.json` (`stray.convert` 끝)
+
+- **변환을 마친 표시다.** `stray.convert` 가 맨 끝에 쓴다. 엔진의 `--resume` 은 이 파일이 있으면 변환을 건너뛴다 (3-1).
+- `convert` 는 시작할 때 맵 폴더의 예전 `stray_meta.json` · `trajectory_camera_optical.txt` · `pose_fix.json` · `floor_fix.json` · `stray_quality.json` 을 지운다 (`stray.STALE`). 중간에 멈춘 변환이 끝난 것처럼 보이지 않게 하려는 것이다. `keyframes/rgb` · `depth` · `calib` 도 비우고 새로 쓴다.
+- `trajectory_camera_optical.txt` 와 `stray_meta.json` 은 임시 이름(`.writing`)으로 쓰고 바꿔 놓는다 (`stray._write_text`). `stray_meta.json` 이 마지막이다.
 
 | 필드 | 형 | 뜻 |
 |---|---|---|
@@ -726,41 +777,163 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `color_size` · `depth_size_in` · `keyframe_size` | [가로, 세로] | 원본 색 · 원본 깊이(첫 깊이 파일에서 잼) · 저장한 키프레임 (기본은 깊이와 같음) |
 | `intrinsics` | {fx, fy, cx, cy} | 키프레임 크기 기준 |
 | `focal_variation_pct` | 수 | 프레임별 초점거리의 변동 폭 (%) — 한 값으로 씀 |
-| `confidence_pct` | [3] 수 | 고른 장의 신뢰도 0 · 1 · 2 비율 (%) |
-| `min_confidence` | 정수 | `min_conf` |
-| `valid_depth_pct` | 수 | 걸러낸 뒤 남은 깊이 화소 비율의 평균 (%) |
+| `confidence_pct` | [3] 수 | 고른 키프레임 깊이 화소의 신뢰도 0 · 1 · 2 비율 (%) |
+| `confidence_used_pct` | [3] 수 | 신뢰도 0 · 1 · 2 화소 중 규칙으로 맵에 쓴 비율 (%) |
+| `min_confidence` | 정수 | 예전 키. `min` 규칙이면 `min_conf`, 그 밖은 1. 규칙은 `depth_rule` 을 볼 것 |
+| `depth_rule` | 객체 | 쓴 깊이 규칙 (6-2). `name` = `hf` · `dist` · `no_confidence` · `min`. `hf` · `dist` · `no_confidence` 는 `max_depth_m` · `near_conf1_m` · `floor_margin_m` · `floor_z_m` (`hf` 일 때만 값, 그 밖은 null). `min` 은 `min_confidence` · `max_depth_m`. `hf` · `dist` 는 바닥 훑기 결과 `floor` = `{frames, step, conf2_px, floor_px, floor_px_pct, floor_z_est_m, camera_above_floor_m, camera_z_median_m, search_below_camera_m, up_px, floor_up_px, floor_up_pct}` (`up_px` = 띠 안 위를 향한 신뢰도 2 화소, `floor_up_*` = 그중 바닥 ±5 cm). `dist` 는 `fallback_reason` (문장). `stray_quality` 가 안 쓴 프레임에 같은 규칙을 쓴다 |
+| `depth_pairing` | 문자열 | `"frame"` · `"row"` — 깊이 · 신뢰도 파일을 frame 번호로 짝지었나 (6-1, `stray.frame_ids`) |
+| `valid_depth_pct` | 수 | 쓸 수 있는 깊이 화소(깊이 > 0 · `max_depth_m` 안 · 신뢰도 1 이상 — 규칙과 상관없는 촬영 상태) 비율의 키프레임 평균 (%). `595d439` 전에는 "걸러낸 뒤 남은 비율" 이었다 (지금의 `used_depth_pct` 쪽) |
+| `used_depth_pct` | 수 | 규칙으로 실제로 남긴 화소 비율의 키프레임 평균 (%) |
 | `select` | 객체 | `{move_m, turn_deg, max_speed_mps, max_depth_m, skip_s, max_keyframes, widen, move_m_used, turn_deg_used}`. `widen` = 키프레임 상한 때문에 넓힌 배율 (1 = 안 넓힘), `*_used` = 실제로 쓴 간격 |
-| `checks` | 객체 | `{warnings: [문장], info: {odometry_rows, duration_s, depth_files, confidence_files, video_size, video_frames, video_fps}}` — 입력 검사 결과 |
+| `checks` | 객체 | `{warnings: [문장], info: {odometry_rows, duration_s, depth_pairing, depth_files, confidence_files, video_size, video_frames, video_fps}}` — 입력 검사 결과 + 변환 중 주의 (키프레임 간격 넓힘 · 깊이 규칙 물러섬 · 못 읽은 깊이 파일). `info` 의 키는 검사가 어디까지 갔는지에 따라 빠질 수 있음 |
 
-실제 파일 (`room`, `checks` 줄임):
+실제 파일 (`ref` — 지금 코드, `room` 과 같은 촬영본. 배열은 한 줄로 모음):
 
 ```json
-{"source": "6bc1ae021f", "format": "stray_scanner", "frames_total": 6611, "frames_read": 6610, "keyframes": 681,
- "dropped_fast": 3, "duration_s": 118.3, "path_length_m": 43.83, "extent_m": [9.41, 5.29, 0.89],
+{"source": "6bc1ae021f", "format": "stray_scanner", "frames_total": 6611, "frames_read": 6610, "keyframes": 1133,
+ "dropped_fast": 4, "duration_s": 118.3, "path_length_m": 43.83, "extent_m": [9.41, 5.29, 0.9],
  "camera_height_range_m": [-0.4, 0.5], "speed_median_mps": 0.37, "speed_max_mps": 3.41,
- "color_size": [1920, 1440], "depth_size_in": [256, 192], "keyframe_size": [960, 720],   ← 11/24 전 예시. 지금 기본은 [256, 192]
- "intrinsics": {"fx": 664.972, "fy": 664.972, "cx": 479.022, "cy": 362.739}, "focal_variation_pct": 1.56,
- "confidence_pct": [29.0, 26.7, 44.3], "min_confidence": 1, "valid_depth_pct": 66.0,
+ "color_size": [1920, 1440], "depth_size_in": [256, 192], "keyframe_size": [256, 192],
+ "intrinsics": {"fx": 177.326, "fy": 177.326, "cx": 127.306, "cy": 96.297}, "focal_variation_pct": 1.56,
+ "confidence_pct": [28.9, 26.8, 44.3], "confidence_used_pct": [0.0, 52.9, 92.1], "min_confidence": 1,
+ "depth_rule": {"name": "hf", "max_depth_m": 5.0, "near_conf1_m": 3.0, "floor_margin_m": 0.1, "floor_z_m": -1.547,
+                "floor": {"frames": 114, "step": 10, "conf2_px": 2311187, "floor_px": 893480, "floor_px_pct": 38.7,
+                          "floor_z_est_m": -1.547, "camera_above_floor_m": 1.44, "camera_z_median_m": -0.11,
+                          "search_below_camera_m": [0.6, 2.2], "up_px": 958621, "floor_up_px": 843768, "floor_up_pct": 88.0}},
+ "depth_pairing": "frame", "valid_depth_pct": 66.1, "used_depth_pct": 55.0,
  "select": {"move_m": 0.05, "turn_deg": 5.0, "max_speed_mps": 1.5, "max_depth_m": 5.0, "skip_s": 1.0,
-            "max_keyframes": 800, "widen": 1.728,   ← 11/24 전 예시. 지금은 상한 2,000 이라 이 촬영본은 넓히지 않고 1,133장 "move_m_used": 0.0864, "turn_deg_used": 8.64},
- "checks": {"warnings": ["촬영이 길어 키프레임 간격을 1.73배 넓힘 (9 cm · 8.6°, 상한 800장) — 처리 시간을 줄이려는 것"],
-            "info": {"odometry_rows": 6611, "duration_s": 118.33, "…": "…"}}}
+            "max_keyframes": 2000, "widen": 1.0, "move_m_used": 0.05, "turn_deg_used": 5.0},
+ "checks": {"warnings": [],
+            "info": {"odometry_rows": 6611, "duration_s": 118.33, "depth_pairing": "frame", "depth_files": 6611, "confidence_files": 6611,
+                     "video_size": [1920, 1440], "video_frames": 6611, "video_fps": 55.93}}}
 ```
 
-**입력 단계가 Stray 에 대해 내는 판정**
+- 바닥 높이 −1.547 m 는 입력 좌표(촬영을 시작한 폰 자리가 원점, 1-3)다. `room` 의 `floor_point_input` z (−1.5549, 5-2)와 1 cm 안이다.
+- 11/24 전의 `room` 은 키프레임 681장 · `keyframe_size` [960, 720] · 상한 800 에 걸려 간격 1.73배였다 (`checks.warnings` 에 주의 하나). 지금 코드로는 상한 2,000 안이라 넓히지 않는다.
 
-- Stray 만 붙는 주의 (`stages.py:78-84`)
+**입력 단계가 Stray 에 대해 내는 판정** (`stages.s_input`)
+
+- Stray 만 붙는 주의
   - 촬영 범위가 좁음: `path_length_m < 5` 또는 `max(extent_m[:2]) < 3`
-  - 깊이가 적음: `valid_depth_pct < 50`
+  - 깊이가 적음: `valid_depth_pct < 50` (규칙과 상관없는 촬영 상태로 봄, 위 표)
   - 촬영이 빠름: `speed_median_mps > 0.8`
-  - 되돌아온 자리 보정 없음: **항상** 붙음. 그래서 Stray 입력의 `input` 단계는 언제나 `warn` 이상이다.
+  - `checks.warnings` 의 문장 모두 (R4, C `620a2b0`)
+  - 되돌아온 자리 보정 없음: **항상** 붙음. 그래서 Stray 입력의 `input` 단계는 언제나 `warn` 이상이다. R10 뒤에는 수평 자세 보정(6-4)이 있어 이 문장이 맞지 않는다 — `tsdf_meta.json` 의 `pose_fix` (status · reasons · flags)를 보여 주자는 것이 R11 의 둘째 항목이다 (8-2).
 - GLB 와 같이 형상 메쉬를 보고 내는 판정 (`stages.py:66-73`, 11/24 부터 Stray 에도)
   - 실패: 범위가 1 m 미만 · 300 m 초과, 바닥(위 향한 면) 2 m² 미만.
   - 주의: 바닥이 평평하지 않음. 바닥 대부분(75% 이상)이 한 높이면 "바닥의 n% 가 다른 높이에 찍힘" 으로 적는다.
 - "사진 텍스처가 없음" 주의는 Stray 에는 붙지 않는다 (`stages.py:74`).
 - 요약은 `"아이폰 원본 → 형상 메쉬 · 천장 … · 바닥 … · 범위 …"` (`stages.py:65`). 11/23 까지는 `"아이폰 원본 → 맵 폴더 · …"` 였다.
 
-`input_map/trajectory_camera_optical.txt` 의 형식: `시각 x y z qx qy qz qw id` (카메라 광학 → 입력 세계, 첫 줄은 `#` 주석).
+`input_map/trajectory_camera_optical.txt` 의 형식: `시각 x y z qx qy qz qw id` (카메라 광학 → 입력 세계, 첫 줄은 `#` 주석). **자세 보정 전** 자세다 (6-4).
+
+### 6-4. 자세 보정과 그 결과 파일 (B `stray_fix.py` · `stray_mesh.py`)
+
+**지금 엔진은 이것을 쓰지 않는다.** 엔진(`stages.s_input`)은 Stray 형상 메쉬를 아직 `pipeline/tsdf.py` (깊이 3 m · 보정 없음)로 만든다. 아래는 C 가 통합 기록 R10 (Stray 분기에서 `stray_mesh.build` 를 부르게)을 넣은 뒤의 약속이다. 그 전까지 엔진 출력에는 `build/pose_fix.json` 이 없고, `build/tsdf_meta.json` 에 `pose_fix` 가 없으며, `stray_quality` 는 보정 없이 잰다.
+
+**하는 일** — `stray_mesh.build(map_root, build_dir, …, depth_trunc=5.0, fix=…)` 가 깊이를 합치기 전에 키프레임 자세를 고친다 (`stray_fix.fix_poses`).
+
+- `fix` 기본 `"xy"` (`stray_fix.DEFAULT_FIX`) = 수평만. `"floor+xy"` = 높이 → 수평 (수평 단계는 높이를 고친 자세를 받음). `"floor"` = 높이만. `None` = 끔 (자세 그대로 — 같은 설정이면 `pipeline/tsdf.py` 와 바이트까지 같은 메쉬, 통합 기록 11/24 저녁). 관문에서 모든 단계를 건너뛰어도 같다.
+- `depth_trunc` 기본 5.0 m (`stray.py` 가 키프레임 깊이를 이미 규칙대로 골라 둠, 6-2). 칸 2 cm · sdf 폭 칸 × 4 · 키프레임 모두는 `pipeline/tsdf.py` 와 같다.
+- CLI: `python -m scan2sim.stray_mesh <맵 폴더> --out <빌드 폴더> [--fix xy|floor+xy|floor|none] [--no-fix] [--tilt | --no-tilt] [--depth-trunc 5.0]`
+  - `--tilt` / `--no-tilt` 는 높이 단계의 설정이다. `--fix` 없이 주면 높이 단계를 더해 `floor+xy` 로 돌고 한 줄 남긴다. `--fix xy` 나 `--no-fix` (`--fix none`)와 같이 주면 오류로 멈춘다 (`stray_fix.tilt_fix`).
+  - `python -m scan2sim.stray_fix <맵 폴더> [--fix …] [--tilt] [--yaw] [--json <경로>]` 는 재기만 한다 (맵 · 메쉬는 그대로).
+- 단계마다 관문이 따로다. 관문에 걸린 단계는 자세를 그대로 두고 이유를 남긴다. 보정 중 오류가 나도 메쉬는 만든다 (그 단계 status `"error"`).
+- 같은 입력이면 같은 결과다 (난수 없음, 스레드 결과는 순서대로 모음).
+
+**수평 보정** (`stray_fix.xy_fix`, 단계 `kind "xy"` · `method "wall_cells"`) — 키프레임 자세의 수평 위치만 고친다 (높이 · 방향은 그대로).
+
+- 방의 벽 방향: 키프레임마다 수직 면(|법선 z| < 0.15 · 깊이 3 m 안)의 법선 각을 90° 로 접은 넓이 가중 막대그림 → 서로 직각인 두 축 u · v. 확신 값: `r4` (맨해튼이면 1 근처) · `aligned` (축 ±6° 안 넓이 비율) · `peak2` (축 ±10° 밖 가장 큰 봉우리 / 축 봉우리) · 축마다 넓이 몫 `share_u` · `share_v` (`stray_fix.manhattan`).
+- 벽 칸: 법선이 ±u (또는 ±v)에서 16° 안인 점을 (벽을 따라 20 cm · 높이 20 cm · 벽 앞뒤 25 cm) 칸으로 묶어 키프레임마다 벽 자리를 잰다 (`stray_fix.wall_obs`).
+- `벽 자리 = 키프레임 오차 + 칸의 실제 자리` 를 u · v 따로 푼다 (Huber 2 cm · 시간 이음 0.02 m/√s · 근거 있는 키프레임의 중앙 = 0). 고친 자세 = 카메라 위치 − (x_u·u + x_v·v).
+- 방향(yaw) 오차는 기본으로 풀지 않는다 (`yaw=False`, 기준 촬영본에서 이득 없음).
+- 관문 (`stray_fix.XY_GATES`)
+  - 전부 거부(`refused`): 벽이 직각인 두 방향으로 뚜렷하지 않음 — `r4 < 0.5` · `aligned < 0.5` · `peak2 > 0.5` 중 하나 (둥근 · 육각형 · 어수선한 방).
+  - 그 축만 그대로: 그 축 벽 넓이가 수직 면의 8% 미만 · 벽을 다른 키프레임과 10칸 넘게 같이 본 키프레임이 20% 미만 · 보정이 40 cm 넘음 · 고친 뒤 벽 자리 잔차 RMS 가 3 cm 넘음. 두 축 모두 걸리면 `refused`.
+  - 건너뜀(`skipped`): 쓴 축 모두 보정 폭(2~98%)이 2.5 cm 미만 — 고칠 것 없음.
+  - 표시(`flags`, 고치지는 않음): 벽을 못 본 구간 10 초 넘음 · 앞뒤와 10 cm 넘게 튀거나 1 초 안에 10 cm 넘게 건너뛴 키프레임.
+
+**높이 보정** (`stray_fix.floor_fix`, 단계 `kind "floor"` · `method "floor_cells"`) — `fix` 에 `floor` 가 있을 때만. 키프레임 자세의 높이만 고친다.
+
+- 키프레임마다 위를 향한 면(법선 z > 0.9 · 카메라보다 0.3~2.6 m 아래 · 깊이 3 m 안)을 20 cm 칸으로 나눠, `칸 높이 = 자세 높이 오차 + 칸의 실제 높이` 로 푼다 (Huber 2 cm · 시간 이음 0.02 m/√s). 고친 카메라 z = z − dz.
+- 기울기(`tilt`): 높이 단계를 쓸 때 기본 켬. 키프레임마다 바닥 기울기 오차 (gx, gy) 도 풀어 카메라 중심 둘레로 돌린다. 사전 σ 1° · 시간 이음 0.5°/√s — 키프레임 사이 시간의 제곱근에 비례한다. `595d439` 까지는 키프레임 사이마다 0.5° 라 키프레임이 촘촘하면 사전이 약했다.
+- 관문 (`stray_fix.GATES`): 거부 = 바닥을 다른 키프레임과 10칸 넘게 같이 본 키프레임이 30% 미만 · 보정이 40 cm 넘음 · 고친 뒤 잔차 RMS 3 cm 넘음. 건너뜀 = 보정 폭(2~98%) 1.5 cm 미만.
+- 기본에서 뺀 까닭: `hf` 규칙 · 5 m 로 다시 재 보니 바닥 이득이 작고 천장을 나쁘게 했다 (`stray_fix.py` 머리말 "측정"). 천장이 없거나 바닥 턱이 중요한 촬영은 `--fix floor+xy`.
+
+**결과 파일**
+
+- **`build/pose_fix.json`** — 주 info 파일. `stray_mesh.build` 가 늘 쓴다 (보정을 꺼도 status `"off"`). 묶음 info (`stray_fix.chain_info`):
+
+| 필드 | 뜻 |
+|---|---|
+| `method` · `version` | `"chain"` · 1 |
+| `fix` | `"xy"` · `"floor+xy"` · `"floor"` · 끄면 `"none"` |
+| `order` | 돈 단계 차례 (예: `["xy"]` · `["floor", "xy"]`, 끄면 `[]`) |
+| `applied` | 한 단계라도 자세를 고쳤나 |
+| `status` | `applied` · `skipped` · `refused` · `error` · `off`. 아무 단계도 고치지 않았으면 단계 status 중 error > refused > skipped > off 차례로 |
+| `reasons` · `flags` | 단계 이름("높이: " · "수평: ")을 앞에 붙여 모은 문장 |
+| `keyframes` | 키프레임 수 |
+| `seconds` | `{floor, xy, total}` (돈 단계만) |
+| `steps` | 단계 info 목록 (차례대로) |
+
+  - 단계 info 공통: `method` · `version` · `kind` · `params` · `keyframes` · `applied` · `status` · `reasons` · `flags` · `t` (키프레임 시각) · `seconds{observe, solve, total}`.
+  - 수평 (`kind "xy"`): `axes_applied` · `manhattan{yaw_deg, r4, aligned, peak2, share_u, share_v, vertical_area_m2, frame_yaw_deg_p5_p95, frame_yaw_noise_deg, frames_with_walls_pct}` · `axes{u, v: applied, share, supported_pct, cells, observations(_dropped), spread_before_cm, resid_rms_cm, resid_med_cm, range_cm, max_abs_cm, p5_p95_cm, max_unsupported_s, jump_frames, reasons}` · `dx` · `dy` (세계 m, 카메라 위치에서 뺀 값 — 고치지 않았으면 0) · `du` · `dv` (축 성분) · `du_estimate` · `dv_estimate` (풀었지만 고치지 않았을 때만) · `dyaw_deg` (yaw 를 쓸 때만, 아니면 null) · `yaw_fit` (yaw 를 쓸 때만) · `shift_cm_p50_p95`.
+  - 높이 (`kind "floor"`): `dz` (고치지 않았으면 0) · `dz_estimate` (고치지 않았을 때만) · `tilt` (키프레임마다 (gx, gy), 끄거나 고치지 않았으면 null) · `tilt_deg_p50_p95` · `tilt_max_deg` · `tilt_big_frames` · `frames_supported(_pct)` · `cells` · `observations(_dropped)` · `resid_rms_cm` · `resid_med_cm` · `dz_range_cm` · `dz_p5_p95_cm` · `dz_max_abs_cm` · `max_unsupported_s` · `jump_frames` · `jump_times` · `levels{…}`.
+  - 관문 전에 멈춘 단계(키프레임 2장 미만 · 시각이 차례대로가 아님 · 근거가 없음)는 수치 키 일부가 없다. 오류 단계는 `method · version · kind · applied false · status "error" · reasons · flags` 만 있다 (`stray_fix.not_applied`).
+- **`input_map/pose_fix.json`** — 같은 바이트의 복사본. 있어도 없어도 된다 (예전에 맵 폴더에서 읽던 곳을 위한 것). 맵 폴더에 쓸 수 없으면 건너뛰고 로그에 한 줄 남긴다. 쓸 때 맵 폴더의 `floor_fix.json` 을 지운다 (`stray_mesh._copy_to_map`).
+- **`input_map/floor_fix.json`** — `af65f1b` 판(높이 단계 하나의 info)으로 만든 예전 맵에만 있다. 지금 코드는 쓰지 않고, `stray_quality` 가 예전 빌드에서만 읽는다.
+- **쓰는 차례** (`stray_mesh.build`): 합치기 → `tsdf_meta.json` → `mesh_raw.ply` → `build/pose_fix.json` → (되면) `input_map/pose_fix.json`. 모두 임시 이름으로 쓰고 바꿔 놓는다. 합치기 전에는 아무것도 쓰지 않는다.
+  - 그래서 `mesh_raw.ply` 가 있으면 `tsdf_meta.json` 도 있다. 중간에 멈춰 `pose_fix.json` 이 예전 것으로 남으면 sha256 이 달라 `stray_quality` 가 적용하지 않는다.
+  - 예전 `build/mesh_far_raw.ply` 가 있으면 지운다 (원거리 볼륨 없음).
+
+**`build/tsdf_meta.json`** (`stray_mesh.build`) — `pipeline/tsdf.py` 와 같은 키 (`tsdf` 설정 · `frames_total` · `frames_used` · `seconds` · `vertices` · `triangles` · `far_triangles` · `up_hint_camera`, `config` 는 null) + `builder` (`"scan2sim.stray_mesh"`) · `map_root` · `poses_rows` · `frames_skipped` · `frame` · `timing{read_map_s, pose_fix_s, integrate_s, read_wait_s, extract_s, write_s, total_s}` · `peak_rss_mb` · `pose_fix`.
+
+- `tsdf.depth_trunc` = 5.0 (`stray_quality` 가 읽음).
+- `pose_fix` = 요약 (`stray_fix.summary` + 옮긴 양):
+  - `name` (보정 이름, 끄면 null) · `file` (`"pose_fix.json"` — 빌드 폴더 기준) · `sha256` (그 파일 바이트의 sha256) · `method` · `fix` · `order` · `applied` · `status` · `reasons` · `flags` · `keyframes` · `seconds` · `steps` (단계마다 요약 — 키프레임별 목록은 뺌).
+  - `moved_m` · `moved_xy_m` · `moved_z_m` = 카메라 위치가 옮겨진 거리 `{median, max}` (m), `turned_deg` = 방향이 돈 각 `{median, max}`.
+  - 높이 단계 요약: `method` · `kind` · `applied` · `status` · `reasons` · `flags` · `keyframes` · `frames_supported_pct` · `dz_p5_p95_cm` · `dz_max_abs_cm` · `resid_rms_cm` · `max_unsupported_s` · `stand_other_pct` · `jump_frames` · `tilt_deg_p50_p95` · `tilt_max_deg` · `tilt_big_frames` · `seconds`.
+  - 수평 단계 요약: `method` · `kind` · `applied` · `status` · `reasons` · `flags` · `keyframes` · `axes_applied` · `shift_cm_p50_p95` · `yaw_fit` · `seconds` · `manhattan{yaw_deg, r4, aligned, peak2, share_u, share_v}` · `axes{u, v: applied, share, supported_pct, p5_p95_cm, max_abs_cm, resid_rms_cm, max_unsupported_s, jumps}`.
+
+실제 값 (`ref` 의 `build/tsdf_meta.json` 의 `pose_fix`, 문장 · 단계 키 줄임):
+
+```json
+{"name": "xy", "file": "pose_fix.json", "sha256": "f86f42f6…", "method": "chain", "fix": "xy", "order": ["xy"],
+ "applied": true, "status": "applied", "reasons": [],
+ "flags": ["수평: u 축(벽 법선 90°): 벽을 못 본 구간이 최대 16 초 — …", "수평: v 축(벽 법선 180°): 자세가 앞뒤와 10 cm 넘게 튀거나 … 키프레임 5장 (첫 장 51.2 초, …) — …"],
+ "keyframes": 1133, "seconds": {"xy": 2.34, "total": 2.34},
+ "steps": [{"method": "wall_cells", "kind": "xy", "applied": true, "status": "applied", "axes_applied": ["u", "v"], "shift_cm_p50_p95": [5.5, 14.0],
+            "manhattan": {"yaw_deg": 89.551, "r4": 0.876, "aligned": 0.844, "peak2": 0.031, "share_u": 0.282, "share_v": 0.561},
+            "axes": {"u": {"applied": true, "supported_pct": 31.0, "p5_p95_cm": [-9.4, 3.8], "max_abs_cm": 15.3, "resid_rms_cm": 1.78, "…": "…"},
+                     "v": {"applied": true, "supported_pct": 50.6, "p5_p95_cm": [-13.1, 5.5], "max_abs_cm": 19.8, "resid_rms_cm": 1.35, "jumps": 5, "…": "…"}},
+            "…": "…"}],
+ "moved_m": {"median": 0.0547, "max": 0.224}, "moved_xy_m": {"median": 0.0547, "max": 0.224}, "moved_z_m": {"median": 0.0, "max": 0.0},
+ "turned_deg": {"median": 0.0, "max": 0.0}}
+```
+
+**보정 전 자세와 다시 적용하기**
+
+- `trajectory_camera_optical.txt` 는 **보정 전** 자세다. 고친 자세가 필요하면 `stray_fix.apply_fix(times, poses, info)` (info = `build/pose_fix.json` 내용).
+  - 단계 차례대로, applied 인 단계만 적용한다. 키프레임 시각 사이는 선형으로 이으므로 키프레임이 아닌 프레임에도 쓸 수 있다 (키프레임 시각 밖은 처음 · 끝 값).
+  - 예전 `floor_fix.json` (단계 하나의 info)도 받는다. applied 인데 어떤 보정인지 모르는 info 면 `ValueError`.
+
+**`stray_quality` 와의 관계** (`stray_quality._pose_fix` · `_rule` · `_depth`, `measure` · `drift` 같음)
+
+- 보정 info 찾기
+  - 새 빌드 (`tsdf_meta.json` 의 `pose_fix` 에 `sha256` 이 있음): `pose_fix.applied` 가 거짓이면 읽지 않는다. 참이면 `build/<file>` → `input_map/<같은 이름>` 차례로 찾아 **파일 sha256 이 같은 것만** 적용한다. 같은 것이 없으면 적용하지 않고 `notes` 에 문장을 남긴다.
+  - `sha256` 이 없는 예전 빌드 (`595d439` 까지의 `stray_mesh` 와 `af65f1b` 판): `input_map/pose_fix.json` → `input_map/floor_fix.json` 차례. `tsdf_meta.json` 이 보정 없이 만든 맵이면 (`pipeline/tsdf.py` · `--no-fix`) 적용하지 않는다.
+  - 적용하면 안 쓴 프레임 자세에도 같은 보정을 건다 (`apply_fix`).
+- 안 쓴 프레임의 깊이는 맵의 `depth_rule` 을 그대로 쓴다 (`stray.depth_keep`). `hf` 의 높이 조건은 **보정 전 자세**와 `camera_matrix.csv` 한 값을 깊이 크기로 줄인 내부 파라미터로 잰다 (`stray.py` 와 같게 — `--k-source` 와 상관없음). `no_confidence` 맵은 3 m 까지. `depth_rule` 이 없는 예전 맵이나 `min_conf` 를 주면 신뢰도 기준만 쓴다.
+  - 깊이 한계 = min(`tsdf_meta.json` 의 `tsdf.depth_trunc`, `select.max_depth_m`). `tsdf_meta.json` 이 없으면 5 m (`depth_rule` 이 없는 예전 맵은 3 m). 지금 엔진(`pipeline/tsdf.py`)은 3 m.
+- 안 쓴 프레임 고르기 (`held_out.method "time_grid"`): 촬영 시간(처음 1 초 뒤 ~ 끝)을 n 구간으로 나눠 구간마다 목표 시각(seed 0 = 가운데)에 가장 가까운, 가장 가까운 키프레임에서 0.1 초 넘게 떨어진 장. 그런 장이 없는 구간만 기준을 낮춘다 (`held_out.relaxed_cells`, `notes`). 키프레임 수가 바뀌어도 같은 구간 · 거의 같은 시각을 잰다.
+- **`input_map/stray_quality.json`** 의 관련 키
+  - `pose_fix`: `{applied, status, file, steps: [{kind, applied, status}], (높이) dz_p5_p95_cm · dz_max_abs_cm, (수평) xy_axes · xy_shift_cm_p50_p95 · xy_shift_max_cm, (적용 못 했으면) note}`. 새 빌드면 `file` = `"build/pose_fix.json"`.
+  - `depth_rule` (규칙 이름, 규칙 없이 재면 `"min_conf N"`) · `depth_limit_m` · `depth_trunc_m` · `max_depth_m` · `min_conf` · `min_conf_build` · `intrinsics` · `intrinsics_build`.
+  - `held_out`: `{method "time_grid", min_gap_s, min_gap_s_used, relaxed, relaxed_cells, candidates_gap_s, gap_s, gap_frames, target_offset_s, nearest_keyframe_cm}`.
+  - `drift` 결과(따로 부를 때만)도 `pose_fix` · `depth_rule` 을 가진다.
+  - 실제 (`ref`): `"pose_fix": {"applied": true, "status": "applied", "file": "build/pose_fix.json", "steps": [{"kind": "xy", "applied": true, "status": "applied"}], "xy_axes": ["u", "v"], "xy_shift_cm_p50_p95": [5.5, 14.0], "xy_shift_max_cm": 22.4}` · 안 쓴 프레임 30장 중앙 1.78 cm · 90% 8.21 cm · 맵에 닿음 99.2% → `pass`.
+
+B 측정 (기준 촬영본, 통합 기록 11/24 저녁 · R10): 자세 보정 조합 비교(공통 안 쓴 프레임 60장)에서 수평만 = 바닥 두 겹 3.97% · 천장 두 겹 4.0% · 안 쓴 프레임 중앙 / 90% 1.64 / 8.01 cm, 높이(기울기, `595d439` 의 사전) + 수평 = 6.01% · 14.6% · 1.33 / 6.92 cm → 기본은 수평만. R10 을 넣은 복사본 엔진 전체: `floor_two_levels` 15.8 → 2.7% · 결함 6 → 1 · 복원 정확도 중앙 2.69 → 1.78 cm.
 
 ---
 
@@ -779,7 +952,9 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | 화면 폴링 | 1.5초 | `index.html:202` |
 | 화면용 GLB | 정점 색 삼각형 30만 · 텍스처 긴 변 2048 화소 | `preview.py:46` |
 | Stray 키프레임 | 최대 2,000장 (넘으면 간격을 넓힘) | `stray.MAX_KEYFRAMES` |
-| Stray zip | 파일 10만 개 · 풀면 6 GB | `stray.py:55` |
+| Stray 깊이 거리 | 신뢰도 2 는 5 m · 신뢰도 1 은 3 m (`hf`). 지금 엔진 메쉬는 3 m 까지 (R10 뒤 5 m) | `stray.convert` 기본값 · `detect.py:136` · `stray_mesh.build` |
+| Stray 자세 보정 | 키프레임 보정이 40 cm 넘으면 그 단계 · 축을 거부 (R10 뒤) | `stray_fix.GATES` · `XY_GATES` |
+| Stray zip | 파일 10만 개 · 풀면 6 GB | `stray.ZIP_MAX_FILES` · `ZIP_MAX_BYTES` |
 | 엔진 쪽 실패 기준 (참고) | GLB · Stray 범위 1 m 미만 · 300 m 초과, 바닥 2 m² 미만 · 빈 바닥 4 m² 미만 · 진단 표본 50개 미만 | `stages.py:66-69`, `:142-143`, `:221-222` |
 | 처리 시간 제한 | 없음 (엔진이 끝날 때까지 기다림) | `web/server.py:146` |
 
@@ -825,6 +1000,11 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 - `GET /api/samples`, `POST /api/samples/<name>/jobs`, `GET /api/health` (계획 5-6 "추가하기로 한 것", D 담당) — 서버에 없다. 지금 경로는 4-2 표가 전부다.
 - 화면의 이어 올리기. 서버는 같은 프로세스 안에서만 된다 (`received` 를 `job.json` 에 조각마다 저장하지 않음).
 - `bundle/` 을 D 의 `sim/add_site.py` 형식에 맞추기 (계획 3-2 · 5-2). 아직 지금 형식 그대로다.
+- **B 의 Stray 형상 메쉬 단계가 엔진에 아직 없다** (통합 기록 R10 · R11, C, 둘 다 열림).
+  - 지금 엔진은 `stray.convert` (`hf` 규칙 · 5 m)를 쓰지만, 메쉬는 `pipeline/tsdf.py` (3 m · 자세 보정 없음)로 만든다 (6-2, 6-4).
+  - R10: `stages.s_input` 의 Stray 분기에서 `pipeline/tsdf.py` 대신 `stray_mesh.build` 를 부르기. 파일 이름 · 좌표는 그대로다.
+  - R11 (R10 을 바로 못 넣을 때만): `detect.config_tsdf` 의 `depth_trunc: 3.0` → `5.0`. 그리고 입력 단계의 "아이폰 자세에는 되돌아온 자리를 맞추는 보정이 없음" 주의를 `build/tsdf_meta.json` 의 `pose_fix` (status · reasons · flags)로 바꾸기.
+  - R10 이 들어가면 B 가 이 문서에서 `build/tsdf_config.yaml` 을 지우고 "R10 뒤" 표시를 정리한다.
 - ~~Stray 복원 정확도를 진단 · 보고서에 붙이기~~ — 붙음 (R3, C `620a2b0`). 진단 수치 `stray_quality` = `{frames, median_cm, p90_cm, within_2cm_pct, hit_pct, verdict}`, 요약 문장은 `messages`, 통과가 아니면 이유가 주의(실패여도 주의). `report.md` 에 "복원 정확도 (아이폰 원본)" 절. [C 측정] 방 촬영본 중앙 2.17 cm · 2 cm 안 47.2% · 맵에 닿음 98.8% → 통과
 - **[고침 — C `736eb68`]** "같은 입력에 같은 결과" (계획 5-3). 11/23 판에는 "아직 보장하지 않음" 이었다.
   - GLB · Stray 의 바닥 평면 찾기에서 무작위 표본(RANSAC)을 없앴다. 화면용 GLB 도 무작위를 쓰지 않는다.
@@ -845,3 +1025,4 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | 8 | 상태 응답의 `status` (`web/server.py:149-150`) | 엔진 단계가 실패해도 `done` 이었다 (8-1 의 7번) | **고침** (D `98da703`, R2) |
 | 9 | `stages.py:52` · `core.py:53-54` | Stray 촬영본 오류가 `"예외: CaptureError: <문장>"` 요약과 traceback 6줄로 나간다. 사용자 문장만 보이고, `checks.warnings` 도 입력 단계 주의로 보이게 해 달라고 요청함 (통합 기록 R4, C) | **고침** C `620a2b0` |
 | 10 | `web/static/index.html:311-312` | 화면이 "천장이 있는가" 를 진단 `messages` 의 문장(`"천장이 있음"`)으로 판단해 3D 위쪽을 자른다. 문장이 바뀌면 깨지고, 지금도 천장이 일부만 찍힌 경우(`room`: 덮음 27%, 문장 "천장이 일부만 찍힘")는 자르지 않는다. 상태 응답의 `metrics.before.has_ceiling` · `shadow_fix` 를 보는 편이 약속에 맞다 [추정: 화면에서 직접 확인하지 않음] | 열림 (A) |
+| 11 | `stages.s_input` (Stray 분기, `--resume`) | `--resume` 이면 `input_map/stray_meta.json` 이 있을 때 변환을, `build/mesh_raw.ply` 가 **있기만 하면** 형상 메쉬를 건너뛴다. 앞 실행이 변환 중에 멈췄다면 `stray.convert` 가 `stray_meta.json` 을 지운 채라 다시 변환하지만, 예전 `mesh_raw.ply` 는 남아 있어 새 키프레임 · 자세와 맞지 않는 메쉬를 그대로 쓸 수 있다 [추정: 그렇게 멈춰 본 적은 없음, 코드로만 봄]. 제안: 이번 실행에서 변환을 했으면 메쉬도 다시 만들기 (또는 `mesh_raw.ply` 가 `stray_meta.json` 보다 새것일 때만 건너뛰기). 서버는 `--resume` 을 쓰지 않아 웹 작업에는 닿지 않는다 | 제안 (C) |
