@@ -20,8 +20,11 @@
       실제로 떨어진 시간 · 장 수 · 거리 · 목표 시각과의 차이 분포는 결과 held_out 에
     - 자세 보정: 맵을 stray_mesh 가 고친 자세로 만들었으면 (보정 info 의 applied · build/tsdf_meta.json 의 pose_fix.applied 둘 다 참)
       안 쓴 프레임 자세에도 같은 보정을 시각으로 이어 적용 (stray_fix.apply_fix — 높이 → 수평, applied 인 단계만).
-      info 파일 = tsdf_meta.json 의 pose_fix.file (없으면 input_map/pose_fix.json → floor_fix.json — 11/24 af65f1b 판으로 만든 맵).
-      결과 pose_fix 에 적용 여부 · 파일 · 단계(steps) · 높이 dz_p5_p95_cm · 수평 xy_shift_cm_p50_p95 · 적용 못 한 이유(note)
+      info 파일 = build/pose_fix.json (tsdf_meta.json 의 pose_fix.file · 없으면 input_map/ 의 같은 이름) — 파일 sha256 이 tsdf_meta.json 의
+      pose_fix.sha256 과 같을 때만 씀 (다르면 이 메쉬와 다른 보정 — 적용하지 않고 note). sha256 이 없는 예전 빌드는 input_map/pose_fix.json →
+      floor_fix.json (11/24 af65f1b 판). 결과 pose_fix 에 적용 여부 · 파일 · 단계(steps) · 높이 dz_p5_p95_cm · 수평 xy_shift_cm_p50_p95 ·
+      적용 못 한 이유(note)
+    - 짝짓기: 깊이 · 신뢰도 파일은 stray.frame_ids 로 (odometry.csv 의 frame 번호 — stray.py 와 같음). 신뢰도 크기가 깊이와 다른 장은 재지 않음
     - 깊이: 맵을 만들 때와 같은 규칙 (stray_meta.json 의 depth_rule → stray.depth_keep). hf 면 바닥 높이 조건은 stray.py 와 똑같이 —
       보정 전 자세(stray.py 는 stray_fix 보다 먼저 돎) · camera_matrix.csv 한 값을 깊이 크기로 줄인 내부 파라미터 (아래 '내부 파라미터' 와 상관없이).
       기준 촬영본 키프레임 120장에 적용하면 stray.py 가 남긴 화소와 100% 같음. no_confidence 맵(신뢰도 그림 없음)은 near_conf1_m(3 m)까지.
@@ -137,7 +140,14 @@ def _load(src, meta, k_source="odometry"):
     if k_source == "camera_matrix":
         K = np.tile(K_map, (len(od), 1))
     cs = meta.get("color_size") or [1920, 1440]
-    return dict(t=t, T=T, T_raw=T, K=K, K_map=K_map, speed=speed, color_w=cs[0], color_size=cs)   # T_raw = 보정 전 자세 (apply_fix 는 새 배열)
+    fid, _ = stray.frame_ids(src, od[:, 1])                     # 줄 번호 → 깊이 · 신뢰도 파일 번호 (stray.py 와 같은 짝짓기)
+    return dict(t=t, T=T, T_raw=T, K=K, K_map=K_map, speed=speed, color_w=cs[0], color_size=cs,   # T_raw = 보정 전 자세 (apply_fix 는 새 배열)
+                fid=fid)
+
+
+def _dname(cap, i):
+    """줄 i 의 깊이 · 신뢰도 파일 이름 (frame 번호 — stray.frame_ids)"""
+    return f"{int(cap['fid'][i]):06d}.png"
 
 
 def _keyframe_rows(mp, t, src=None, frames_total=None):
@@ -177,7 +187,13 @@ def _limits(meta, bd, min_conf, rule=None):
     return trunc, lim, int(min_conf)
 
 
-FIX_FILES = ("pose_fix.json", "floor_fix.json")                 # 자세 보정 info — 새 판(단계 묶음) · 11/24 af65f1b 판(높이 하나)
+FIX_FILES = ("pose_fix.json", "floor_fix.json")                 # input_map 의 자세 보정 info — 예전 판(단계 묶음) · 11/24 af65f1b 판(높이 하나)
+
+
+def _sha256(path):
+    import hashlib
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
 
 
 def _fix_step_ok(s):
@@ -197,8 +213,11 @@ def _fix_step_ok(s):
 
 def _pose_fix(mp, bd):
     """맵을 고친 자세로 만들었으면 그 보정 info → (info 또는 None, 결과에 남길 요약).
-    파일: build/tsdf_meta.json 의 pose_fix.file (이 메쉬를 만들 때 쓴 것) — 없으면 input_map/pose_fix.json → floor_fix.json (예전 맵) 차례.
-    info 가 applied 라도 build/tsdf_meta.json 이 보정 없이 만든 맵이면 (pipeline/tsdf.py · --no-fix · 예전 파일) 적용하지 않음.
+    새 빌드 (build/tsdf_meta.json 의 pose_fix 에 sha256 이 있음 — 11/25 stray_mesh): pose_fix.applied 가 거짓이면 아무것도 읽지 않음.
+      참이면 build/<pose_fix.file> → input_map/<같은 이름> 차례로 찾아 파일 sha256 이 같은 것만 씀. 같은 것이 없으면 (다른 보정으로 다시 만들다
+      멈춘 빌드 · 손으로 고친 파일 · 지운 파일) 적용하지 않고 note 에 남김 — 이 메쉬와 다른 보정을 조용히 적용하지 않게.
+    예전 빌드 (sha256 없음): input_map/<pose_fix.file> — file 이 없으면 input_map/pose_fix.json → floor_fix.json (11/24 af65f1b 판) 차례.
+      info 가 applied 라도 build/tsdf_meta.json 이 보정 없이 만든 맵이면 (pipeline/tsdf.py · --no-fix · 예전 파일) 적용하지 않음.
     단계 묶음이면 applied 인 단계만 차례대로 (stray_fix.apply_fix)"""
     pf, tp = None, os.path.join(bd, "tsdf_meta.json")
     if os.path.exists(tp):
@@ -206,16 +225,34 @@ def _pose_fix(mp, bd):
             pf = json.load(open(tp, encoding="utf-8")).get("pose_fix")
         except (OSError, ValueError, AttributeError):
             pf = None
-    named = os.path.basename(str(pf.get("file"))) if isinstance(pf, dict) and pf.get("file") else None
-    names = [named] if named else [f for f in FIX_FILES if os.path.exists(os.path.join(mp, f))][:1]
-    if not names or not os.path.exists(os.path.join(mp, names[0])):
-        st = dict(applied=False, status=None)
-        if isinstance(pf, dict) and pf.get("applied"):
-            st["note"] = f"맵은 고친 자세로 만들었는데 보정 info(input_map/{names[0] if names else FIX_FILES[0]})가 없음 — 안 쓴 프레임 자세를 그대로 씀"
-        return None, st
-    rel = f"input_map/{names[0]}"
+    pf = pf if isinstance(pf, dict) else None
+    named = os.path.basename(str(pf.get("file"))) if pf and pf.get("file") else None
+    want = str(pf["sha256"]) if pf and pf.get("sha256") else None
+    if want:                                                    # 새 빌드: 메쉬와 같이 쓴 info 만 (sha256)
+        name = named or FIX_FILES[0]
+        if not pf.get("applied"):
+            return None, dict(applied=False, status=pf.get("status"), file=f"build/{name}",
+                              steps=[dict(kind=s.get("kind"), applied=bool(s.get("applied")), status=s.get("status")) for s in pf.get("steps") or []
+                                     if isinstance(s, dict)])
+        tries = [(os.path.join(bd, name), f"build/{name}"), (os.path.join(mp, name), f"input_map/{name}")]
+        found = [(p, rel) for p, rel in tries if os.path.exists(p)]
+        hit = next(((p, rel) for p, rel in found if _sha256(p) == want), None)
+        if hit is None:
+            return None, dict(applied=False, status=None, file=found[0][1] if found else None, note=(
+                f"맵은 고친 자세로 만들었는데 {' · '.join(rel for _, rel in found)} 이 그 보정과 다름 (sha256 이 build/tsdf_meta.json 과 다름 — "
+                "다른 보정으로 다시 만들다 멈춘 빌드 · 고친 파일일 수 있음) — 안 쓴 프레임 자세를 그대로 씀" if found else
+                f"맵은 고친 자세로 만들었는데 보정 info({' · '.join(rel for _, rel in tries)})가 없음 — 안 쓴 프레임 자세를 그대로 씀"))
+        path, rel = hit
+    else:                                                       # 예전 빌드
+        names = [named] if named else [f for f in FIX_FILES if os.path.exists(os.path.join(mp, f))][:1]
+        if not names or not os.path.exists(os.path.join(mp, names[0])):
+            st = dict(applied=False, status=None)
+            if pf and pf.get("applied"):
+                st["note"] = f"맵은 고친 자세로 만들었는데 보정 info(input_map/{names[0] if names else FIX_FILES[0]})가 없음 — 안 쓴 프레임 자세를 그대로 씀"
+            return None, st
+        path, rel = os.path.join(mp, names[0]), f"input_map/{names[0]}"
     try:
-        info = json.load(open(os.path.join(mp, names[0]), encoding="utf-8"))
+        info = json.load(open(path, encoding="utf-8"))
     except (OSError, ValueError) as e:
         return None, dict(applied=False, status=None, note=f"{rel} 을 읽지 못함 — 자세 그대로 잼 ({e})")
     if not isinstance(info, dict):
@@ -225,12 +262,12 @@ def _pose_fix(mp, bd):
               steps=[dict(kind=stray_fix.step_kind(s), applied=bool(s.get("applied")), status=s.get("status")) for s in steps if isinstance(s, dict)])
     if not info.get("applied"):
         return None, st
-    if os.path.exists(tp) and not (isinstance(pf, dict) and pf.get("applied")):
-        st["note"] = f"{names[0]} 은 고쳤다고 하지만 맵(build/tsdf_meta.json)은 자세를 고치지 않고 만들어짐 — 안 쓴 프레임 자세를 그대로 씀"
+    if os.path.exists(tp) and not (pf and pf.get("applied")):
+        st["note"] = f"{rel} 은 고쳤다고 하지만 맵(build/tsdf_meta.json)은 자세를 고치지 않고 만들어짐 — 안 쓴 프레임 자세를 그대로 씀"
         return None, st
     bad = [why for s in steps if isinstance(s, dict) and s.get("applied") for why in [_fix_step_ok(s)] if why]
     if bad or not all(isinstance(s, dict) for s in steps):
-        st["note"] = f"{names[0]}: {'; '.join(bad) or '단계 info 가 dict 가 아님'} — 안 쓴 프레임 자세를 그대로 씀"
+        st["note"] = f"{rel}: {'; '.join(bad) or '단계 info 가 dict 가 아님'} — 안 쓴 프레임 자세를 그대로 씀"
         return None, st
     st["applied"] = True
     for s in steps:
@@ -263,14 +300,17 @@ def _rule(meta, min_conf):
 
 
 def _depth(src, i, trunc, min_conf, rule=None, cap=None):
-    """원본 깊이(m) · 쓸 수 있는 화소. 없으면 None. rule 이 있으면 stray.py 와 같은 규칙
-    (높이 조건은 cap 의 보정 전 자세 · stray.py 와 같은 내부 파라미터 _intr_map)"""
+    """원본 깊이(m) · 쓸 수 있는 화소. 없거나 깨졌으면 (신뢰도 크기가 다름 등) None. rule 이 있으면 stray.py 와 같은 규칙
+    (높이 조건은 cap 의 보정 전 자세 · stray.py 와 같은 내부 파라미터 _intr_map). 파일은 frame 번호로 (cap 이 없으면 줄 번호)"""
     import cv2
-    z = cv2.imread(os.path.join(src, "depth", f"{i:06d}.png"), cv2.IMREAD_UNCHANGED)
-    if z is None:
+    name = _dname(cap, i) if cap is not None and "fid" in cap else f"{i:06d}.png"
+    z = cv2.imread(os.path.join(src, "depth", name), cv2.IMREAD_UNCHANGED)
+    if z is None or z.ndim != 2:
         return None, None
-    cp = os.path.join(src, "confidence", f"{i:06d}.png")
+    cp = os.path.join(src, "confidence", name)
     c = cv2.imread(cp, cv2.IMREAD_UNCHANGED) if os.path.exists(cp) else None
+    if c is not None and c.shape != z.shape:                    # 깨졌거나 섞인 파일 — 이 장은 재지 않음 (stray.py 는 키프레임이면 멈춤)
+        return None, None
     ok = (z > 0) & (z <= trunc * 1000)
     if rule is not None:
         ok &= stray.depth_keep(z, c, rule, cap["T_raw"][i], _intr_map(cap, z.shape[1], z.shape[0]))
@@ -434,7 +474,7 @@ def measure(out_dir, n=30, seed=0, capture=None, min_conf=None, write=True, min_
     trunc, lim, min_conf = _limits(meta, bd, min_conf, rule)
     start = int(np.searchsorted(t, t[0] + sel.get("skip_s", 1.0)))
     cand = np.array([i for i in range(start, N) if i not in kf and cap["speed"][i] <= sel.get("max_speed_mps", 1.5)
-                     and os.path.exists(os.path.join(src, "depth", f"{i:06d}.png"))], dtype=int)
+                     and os.path.exists(os.path.join(src, "depth", _dname(cap, i)))], dtype=int)
 
     # 안 쓴 프레임: 촬영 시간을 n 구간으로 나눠 구간마다 목표 시각에 가장 가까운, 키프레임에서 min_gap_s 넘게 떨어진 후보
     # (그런 장이 없는 구간만 기준을 낮춤) — 키프레임 설정이 바뀌어도 같은 구간 · 거의 같은 시각을 잼

@@ -1,8 +1,8 @@
 """아이폰(Stray) 키프레임 자세의 틀어짐을 바닥(높이) · 벽(수평)으로 바로잡음 — 깊이를 합치기(stray_mesh) 전에. B 의 단계.
 
     cd recon
-    python -m scan2sim.stray_fix <맵 폴더> [--fix floor+xy|floor] [--tilt | --no-tilt] [--yaw] [--json <경로>]
-        # 재기만 함 (맵 폴더 · 메쉬는 그대로). 고쳐서 합치기는 stray_mesh 가 함
+    python -m scan2sim.stray_fix <맵 폴더> [--fix xy|floor+xy|floor] [--tilt | --no-tilt] [--yaw] [--json <경로>]
+        # 재기만 함 (맵 폴더 · 메쉬는 그대로). 고쳐서 합치기는 stray_mesh 가 함. 기본 xy (DEFAULT_FIX) — --tilt 만 주면 floor+xy
 
 왜
     아이폰 자세(VIO)에는 되돌아온 자리를 맞추는 보정이 없어 긴 촬영에서 카메라 자리가 조금씩 틀어진다. 그대로 합치면 같은 바닥이
@@ -11,6 +11,7 @@
 
 차례 (fix_poses)
     높이(floor_fix) → 수평(xy_fix). 수평 보정은 높이를 고친 자세를 받음. 단계마다 관문이 따로 — 한 단계가 거부 · 오류여도 다른 단계는 돎.
+    기본(DEFAULT_FIX)은 수평만 "xy" — 높이 단계는 hf 깊이 규칙 · 5 m 에서 천장을 나쁘게 해서 뺌 (아래 "측정")
     info 는 하나로 묶음: {method "chain", steps: [높이 info, 수평 info], applied, status, …} (아래 "info")
 
 높이 보정 floor_fix (키프레임 자세의 높이만 고침 — 수평 위치 · 방향은 그대로)
@@ -22,8 +23,9 @@
        희소 가중 최소제곱 + Huber (2 cm, 6회, 3회째부터 10 cm 넘게 어긋난 관측은 버림 — 움직인 물체 · 가구 가장자리).
        e 는 시간으로 이어지게 (무작위 걸음 사전 q = 0.02 m/√s — 바닥을 못 본 키프레임은 앞뒤를 이어 메움), 바닥 근거가 있는 키프레임의
        e 중앙값 = 0 (가장 적게 옮김)
-    3. 고친 자세 = 카메라 높이 − e_k. tilt 면 키프레임마다 바닥 기울기 오차 (gx, gy) 도 같이 풀어 (사전 σ 1° · 시간 이음 0.5°/√s)
-       카메라 중심 둘레로 돌림 (기본 켬 — 아래 "측정")
+    3. 고친 자세 = 카메라 높이 − e_k. tilt 면 키프레임마다 바닥 기울기 오차 (gx, gy) 도 같이 풀어 (사전 σ 1° · 시간 이음 0.5°/√s —
+       11/25 전에는 √s 없이 키프레임 사이마다 0.5° 라 키프레임이 촘촘하면 사전이 약했음) 카메라 중심 둘레로 돌림
+       (높이 단계를 쓸 때 기본 켬 — 아래 "예전 측정")
     관문 — 걸리면 자세를 그대로 둠 (info.applied = False)
       refused  바닥을 다른 키프레임과 10칸 넘게 같이 본 키프레임이 30% 미만 · 보정이 40 cm 넘음(틀어짐이 아니라 추적이 깨진 것) ·
                고친 뒤에도 바닥 높이 잔차 RMS 가 3 cm 넘음 (이 모델로 못 고침)
@@ -49,7 +51,7 @@
     표시: 벽을 못 본 구간이 10 초 넘음 · 앞뒤와 10 cm 넘게 튀거나 1 초 안에 10 cm 넘게 건너뛴 키프레임 (추적이 깨졌다 이어진 것 — 목록만)
     같은 입력이면 같은 결과 (난수 없음 · 스레드는 장마다 따로 계산하고 순서대로 모음) — 두 단계 모두
 
-info (stray_mesh 가 <맵 폴더>/pose_fix.json 으로 씀 · tsdf_meta.json 의 pose_fix 에 단계별 요약)
+info (stray_mesh 가 <빌드 폴더>/pose_fix.json 으로 씀 (되면 맵 폴더에도 같은 바이트) · tsdf_meta.json 의 pose_fix 에 단계별 요약과 그 파일의 sha256)
     묶음: method "chain" · version · fix ("floor+xy" 등) · order · applied (한 단계라도 고침) · status (applied | skipped | refused | error | off) ·
           reasons · flags (단계 이름 "높이: " · "수평: " 을 앞에 붙여 모음) · keyframes · seconds{floor, xy, total} · steps
     높이 단계 (kind "floor", method "floor_cells"): params · keyframes · applied · status · reasons · flags · t (키프레임 시각) ·
@@ -66,9 +68,26 @@ info (stray_mesh 가 <맵 폴더>/pose_fix.json 으로 씀 · tsdf_meta.json 의
     apply_fix(시각, 자세, info) = 같은 보정을 키프레임이 아닌 프레임에도 (시각으로 이어 붙임, steps 차례대로) — stray_quality 가 안 쓴 프레임에 씀.
     예전 floor_fix.json (높이 info 하나) 도 같은 함수로 적용됨
 
-측정 (11/24 B, 이 코드 그대로. 키프레임 깊이 256×192 · TSDF 2 cm · 3 m. 바닥 = 메쉬에서 바닥 근처 위를 향한 면 · C 띠 = 바닥 10~25 cm 아래 ·
-      5~10 cm 위 넓이, 두 겹 = 10 cm 칸에 4 cm 넘게 떨어진 두 층. 벽 두 겹 = 맨해튼 벽 10 cm 칸. 천장 = 두 보정 모두 안 쓴 면.
-      안 쓴 프레임 = stray_quality n=60 중앙 · 90% (변형마다 같은 60장, 그 변형의 보정을 그 장에도 적용) — seed 0 / seed 2)
+측정 (11/24 밤 · 11/25 B — 지금 기본값의 근거. 깊이 규칙 hf · TSDF 2 cm · 5 m (stray.py · stray_mesh 기본), 키프레임 깊이 256×192.
+      바닥 = 메쉬에서 바닥 근처 위를 향한 면 · C 띠 = 바닥 10~25 cm 아래 · 5~10 cm 위 넓이, 두 겹 = 10 cm 칸에 4 cm 넘게 떨어진 두 층.
+      벽 두 겹 = 맨해튼 벽 10 cm 칸. 천장 = 두 보정 모두 안 쓴 면 — 메쉬 두 겹 칸 · 쌍 = 10 초 넘게 떨어져 같은 천장 칸(20 cm)을 본 키프레임 쌍의
+      높이 차가 5 cm 넘는 비율 (키프레임 깊이 5 m 까지). 안 쓴 프레임 = stray_quality n=60 중앙 · 90% (같은 60장, 그 변형의 보정을 그 장에도
+      적용) — seed 0 / seed 2. 엔진 = scan2sim 이 그 메쉬로 낸 floor_two_levels · visible_floor_missing (%, R10 과 같은 길))
+    기준 촬영본 118 초 · 키프레임 1133장
+                                바닥 두 겹 · >5 cm · C 띠 | 벽 두 겹 | 천장 두 겹 · 쌍 | 안 쓴 프레임 중앙 · 90%       | 엔진     | 보정 초
+      끔                         4.3 · 3.8 · 2.6          | 29.1     |  4.3 · 21.3     | 2.10 · 11.9 / 2.07 · 12.4    | 3.2 · 6.9 | 0
+      xy 만 (기본)               4.0 · 3.4 · 2.3          | 17.3     |  4.0 · 21.7     | 1.64 · 8.0  / 1.66 · 8.6     | 2.7 · 6.2 | 2.5
+      floor+xy (tilt 끔)         5.0 · 3.2 · 1.6          | 17.3     | 10.3 · 40.3     | 1.57 · 7.0  / 1.58 · 7.2     | 2.7 · 7.1 | 7.2
+      floor+xy (tilt, 예전 사전) 6.0 · 3.5 · 1.8          | 17.1     | 14.6 · 55.4     | 1.33 · 6.9  / 1.36 · 7.0     | 2.1 · 6.7 | 9.2
+      floor+xy (tilt, √s 사전)   4.8 · 3.0 · 1.5          | 17.3     | 12.9 · 46.7     | 1.31 · 6.9  / 1.34 · 6.9     | 0.6 · 6.9 | 7.8
+      장마다 (seed 0, 같은 장, 중앙 차이가 0.05 cm 넘게 좋아진 장 : 나빠진 장, xy 대비): 끔 8:35 · floor+xy (tilt 끔) 31:18 · (tilt, 예전) 38:17 ·
+      (tilt, √s) 43:12. √s 사전: 기울기 중앙 · 95% 0.65 · 1.52° · 최대 2.7° (예전 사전 0.74 · 1.96° · 4.7°), 높이 5~95% −6.2~+5.1 cm · 잔차 1.27 cm.
+      결론 → 기본 xy: 수평 보정은 벽 두 겹 29 → 17% · 안 쓴 프레임 2.10 → 1.64 cm 로 좋게 하고 천장을 바꾸지 않음. 높이 단계는 hf 규칙이 먼 바닥의
+      신뢰도 1 깊이를 이미 걸러 바닥 두 겹이 4% 근처라 이득이 작고 (>3 cm 10.9 → 6.2% · 안 쓴 프레임 −0.3 cm), 천장을 나쁘게 함 (메쉬 두 겹
+      4.0 → 10~15% · 쌍 21.7 → 40~55%, 까닭은 아래 예전 측정의 천장 문단). 천장이 없거나 바닥 턱이 중요한 촬영은 --fix floor+xy (tilt 는 높이
+      단계를 쓸 때 기본 켬 — √s 사전에서 tilt 끔보다 바닥 · 안 쓴 프레임 · 엔진 두 높이가 낫고 천장은 조금 더 나쁨)
+예전 측정 (11/24 저녁 B — 예전 깊이 규칙 (신뢰도 1 이상 · 3 m) · TSDF 3 m · tilt 예전 사전. 이것으로 floor+xy (tilt) 를 기본으로 정했었음. 정의는 위와 같고
+      천장 >5 cm = 메쉬 천장이 주 높이에서 5 cm 넘게 벗어난 넓이)
     기준 촬영본 118 초 · 키프레임 1133장
                            바닥 두 겹 · >5 cm · C 띠 | 벽 두 겹 | 천장 두 겹 · >5 cm | 안 쓴 프레임 중앙 · 90%         | 보정 초
       끔                    19.8 · 17.8 · 14.6      | 22.7     | 5.2 · 50.7         | 2.03 · 13.2 / 1.99 · 13.9      | 0
@@ -76,9 +95,9 @@ info (stray_mesh 가 <맵 폴더>/pose_fix.json 으로 씀 · tsdf_meta.json 의
       floor (tilt 끔)       12.9 · 11.2 ·  7.8      | 21.9     | 10.3 · 37.4        | 1.89 · 12.2 / 1.85 · 12.2      | 5.2
       floor+xy (tilt 끔)    12.4 · 11.2 ·  7.8      | 15.9     | 10.3 · 37.6        | 1.48 · 8.3  / 1.52 · 8.2       | 8.0
       floor (tilt)           5.0 ·  5.0 ·  3.0      | 21.7     | 10.1 · 31.7        | 1.78 · 12.7 / 1.74 · 12.8      | 6.3
-      floor+xy (tilt) 기본   4.8 ·  4.8 ·  3.0      | 15.5     |  9.4 · 32.2        | 1.38 · 8.2  / 1.42 · 8.1       | 8.4
+      floor+xy (tilt) 그때 기본 4.8 · 4.8 · 3.0     | 15.5     |  9.4 · 32.2        | 1.38 · 8.2  / 1.42 · 8.1       | 8.4
       장마다 (같은 장, 중앙 차이가 0.05 cm 넘게 좋아진 장 : 나빠진 장): floor → floor+xy 34:6 · 35:7 / tilt 끔 → 켬 (floor+xy) 30:19 · 29:21 /
-      끔 → 기본 48:9. 수평 보정은 천장을 바꾸지 않고 안 쓴 프레임을 늘 좋게 함 → 켬. tilt 는 안 쓴 프레임 · 천장 두 겹 · >5 cm 가 조금씩 좋아짐 → 켬
+      끔 → 그때 기본 48:9. 수평 보정은 천장을 바꾸지 않고 안 쓴 프레임을 늘 좋게 함 → 켬. tilt 는 안 쓴 프레임 · 천장 두 겹 · >5 cm 가 조금씩 좋아짐 → 켬
       수평 단계: 벽 방향 89.6° · r4 0.87 · aligned 0.84 · peak2 0.03 · 벽 몫 u 27% · v 57% → 근거 u 32% · v 52%, 보정 5~95% u −10.7~+3.9 ·
       v −12.5~+5.4 cm, 잔차 1.85 · 1.51 cm, 2.2 초 (깊이 읽기 포함 — 읽기는 0.3~0.6 초뿐이라 두 단계가 따로 읽음). 표시: u 벽을 못 본 구간 최대 16 초 ·
       51 초 근처 튀거나 건너뛴 키프레임. 높이 단계 (tilt): 근거 89.7% · 5~95% −10.1~+6.0 cm · 잔차 1.53 cm · 기울기 중앙 0.93° · 95% 3.07° ·
@@ -86,9 +105,10 @@ info (stray_mesh 가 <맵 폴더>/pose_fix.json 으로 씀 · tsdf_meta.json 의
       메쉬 꺼내기 1.3), 최대 메모리 1.82 GB (끔 1.65)
       천장 (안 쓴 면) — 높이 보정은 tilt 와 상관없이 천장을 나쁘게 함 (메쉬 두 겹 5.2 → 9.4~10.3%). 메쉬를 거치지 않고 다시 잼: 10 초 넘게 떨어져
       같은 천장 칸(20 cm)을 본 키프레임 쌍 (천장을 본 112장)의 높이 차가 5 cm 넘는 쌍 끔 10.6% · xy 만 10.8% → floor 24.5% · floor+xy 24.4% ·
-      기본 25.1% (중앙 1.65 → 1.95 · 2.29 cm, 90% 5.2 → 10.8 · 9.7 cm). 그 쌍에서 높이 보정량은 고치기 전 천장 높이 차와 상관이 없음 (+0.08) —
+      그때 기본 25.1% (중앙 1.65 → 1.95 · 2.29 cm, 90% 5.2 → 10.8 · 9.7 cm). 그 쌍에서 높이 보정량은 고치기 전 천장 높이 차와 상관이 없음 (+0.08) —
       천장을 보려고 위로 든 장에서는 바닥으로 잰 보정이 카메라 높이 오차가 아님 (원인 모름: 그동안 바닥을 못 봐 앞뒤를 이은 값이거나, 자세 방향에 따라
-      달라지는 깊이 오차를 바닥 보정이 받아 낸 것). 바닥 · 안 쓴 프레임 이득이 커서 높이 보정은 켠 채 두고, 천장이 중요한 촬영은 fix="xy"
+      달라지는 깊이 오차를 바닥 보정이 받아 낸 것). 그때 결론은 "바닥 · 안 쓴 프레임 이득이 커서 높이 보정은 켬" — hf · 5 m 에서는 바닥 이득이
+      작아져 위 "측정" 대로 기본에서 뺌
     가상의 방 (자세가 정확, 193장): 높이 폭 0.3 cm (tilt 0.8 cm) · 수평 폭 u 0.8 · v 1.7 cm → 모두 건너뜀, mesh_raw.ply 가 바이트까지 같음
         (끔 · floor · floor+xy · tilt). 턱 4.38 · 판 1.40 cm 그대로.
         높이 (8 cm 사인 + 12 초에 6 cm 계단) + 수평 (x 8 cm 사인 + 12 초에 6 cm 계단 · y −6 cm 기울기 + 4 cm 사인) 을 넣으면: 턱 2.65 → 4.39 (tilt 4.40) ·
@@ -112,7 +132,7 @@ NATIVE_W = 256                                                  # 아이폰 깊�
 WORKERS = 2                                                     # 깊이를 읽고 칸으로 나누는 스레드 (cv2 · numpy 가 GIL 을 놓음)
 DEFAULTS = dict(step=None, max_depth=3.0, cell=0.20, nz_min=0.9, band=(0.3, 2.6), min_views=2,
                 q=0.02, sig0=0.01, sig_r=0.005, huber=0.02, iters=6,
-                tilt=True, tilt_sigma_deg=1.0, tilt_q_deg=0.5)  # tilt 기본 켬 (11/24 저녁부터 — 근거: 머리말 "측정")
+                tilt=True, tilt_sigma_deg=1.0, tilt_q_deg=0.5)  # tilt: 높이 단계를 쓸 때 기본 켬 (근거: 머리말 "측정" · "예전 측정"). tilt_q_deg 는 °/√s
 GATES = dict(min_frames_frac=0.3, min_shared=10, max_abs_m=0.40, max_resid_cm=3.0, noop_range_m=0.015,
              level_step_m=0.08, level_flag_pct=5.0, gap_flag_s=10.0, jump_m=0.10, tilt_flag_deg=5.0)
 XY_DEFAULTS = dict(step=None, nb=2, max_depth=3.0, vert_nz=0.15, axis_cos=0.96, cell=0.20, hcell=0.20, pbin=0.25, gap=0.30, min_views=2,
@@ -123,7 +143,7 @@ XY_GATES = dict(min_r4=0.5, min_aligned=0.5, max_peak2=0.5, min_axis_share=0.08,
 STEPS = ("floor", "xy")                                         # 단계와 차례 (높이 → 수평)
 STEP_NAMES = dict(floor="높이", xy="수평")
 FIXES = {"floor+xy": ("floor", "xy"), "floor": ("floor",), "xy": ("xy",)}   # stray_mesh.build(fix=…) 이름 → 단계
-DEFAULT_FIX = "xy"                                              # 11/24 밤 hf 깊이 규칙 · 5 m 로 다시 잼 — 높이 단계는 천장을 나쁘게 하고 바닥 이득이 작아 끔 (머리말 "측정" 은 예전 규칙 · 3 m)
+DEFAULT_FIX = "xy"                                              # 11/24 밤 hf 깊이 규칙 · 5 m 로 다시 잼 — 높이 단계는 천장을 나쁘게 하고 바닥 이득이 작아 끔 (머리말 "측정")
 SUMMARY_KEYS = ("method", "applied", "status", "reasons", "flags", "keyframes", "frames_supported_pct", "dz_p5_p95_cm", "dz_max_abs_cm",
                 "resid_rms_cm", "max_unsupported_s", "stand_other_pct", "jump_frames", "tilt_deg_p50_p95", "tilt_max_deg", "tilt_big_frames", "seconds")
 XY_SUMMARY_KEYS = ("method", "applied", "status", "reasons", "flags", "keyframes", "axes_applied", "shift_cm_p50_p95", "yaw_fit", "seconds")
@@ -262,11 +282,11 @@ def solve(t, n_frames, obs, cell=0.2, min_views=2, q=0.02, sig0=0.01, sig_r=0.00
     P_rows = [sparse.csr_matrix((np.r_[-sw, sw], (np.r_[i, i], np.r_[i, i + 1])), shape=(N - 1, nx)),
               sparse.csr_matrix((np.full(N, 1.0), (np.arange(N), np.arange(N))), shape=(N, nx))]
     if tilt:
-        sg, sq = np.radians(tilt_sigma_deg), np.radians(tilt_q_deg)
+        sg = np.radians(tilt_sigma_deg)
+        sq = np.radians(tilt_q_deg) * np.sqrt(dt) + np.radians(0.01)   # 무작위 걸음 tilt_q_deg °/√s (높이 · yaw 사전과 같은 꼴). 11/25 전에는 √dt 없이 장마다 tilt_q_deg
         for a in (0, 1):
             P_rows.append(sparse.csr_matrix((np.full(N, 1 / sg), (np.arange(N), N + 2 * np.arange(N) + a)), shape=(N, nx)))
-            P_rows.append(sparse.csr_matrix((np.r_[-np.full(N - 1, 1 / sq), np.full(N - 1, 1 / sq)],
-                                             (np.r_[i, i], N + 2 * np.r_[i, i + 1] + a)), shape=(N - 1, nx)))
+            P_rows.append(sparse.csr_matrix((np.r_[-1 / sq, 1 / sq], (np.r_[i, i], N + 2 * np.r_[i, i + 1] + a)), shape=(N - 1, nx)))
     A_p = sparse.vstack(P_rows).tocsr()
     ApA = (A_p.T @ A_p + sparse.eye(nx) * 1e-4).tocsc()        # 아주 약한 0 사전 — 관측이 모두 버려진 칸도 풀리게
     w = w0.copy()
@@ -458,6 +478,30 @@ def check_opts(kw, kind="floor"):
     bad = sorted(set(kw) - set(d) - set(g) - {"workers"})
     if bad:
         raise ValueError(f"{fn} 에 없는 설정: {bad} (설정: {sorted(d)} · 관문: {sorted(g)})")
+
+
+def with_floor(fix):
+    """보정 이름 → 높이(floor) 단계를 더한 이름 ("xy" → "floor+xy"). 이미 있으면 그대로 · FIXES 에 없는 이름이면 None"""
+    if fix not in FIXES:
+        return None
+    steps = tuple(s for s in STEPS if s == "floor" or s in FIXES[fix])
+    return next((k for k, v in FIXES.items() if v == steps), None)
+
+
+def tilt_fix(fix, tilt, explicit=False, log=print, who="pose_fix"):
+    """CLI 의 --tilt / --no-tilt (높이 단계의 설정) → 쓸 보정 이름. tilt 를 주지 않았거나 fix 에 높이 단계가 있으면 그대로.
+    --fix 를 주지 않았으면 (explicit 거짓) 높이 단계를 더하고 한 줄 남김 (기본 xy → floor+xy). --fix 로 높이 단계가 없는 보정을 줬거나
+    보정을 껐으면 (fix None) ValueError — 예전에는 split_opts 의 "보정 설정에 이 보정(xy)에 없는 단계 'floor' 의 설정이 있음" 으로 멈췄음"""
+    if tilt is None or (fix and "floor" in FIXES.get(fix, ())):
+        return fix
+    flag = "--tilt" if tilt else "--no-tilt"
+    if not fix:
+        raise ValueError(f"{flag} 는 높이 보정의 설정 — 자세 보정을 끄면(--no-fix · --fix none) 쓸 데가 없음")
+    wf = with_floor(fix)
+    if explicit or wf is None:
+        raise ValueError(f"{flag} 는 높이(floor) 단계의 설정인데 --fix {fix} 에는 높이 단계가 없음 — --fix {wf or 'floor+xy'} 와 같이 줄 것")
+    log(f"[{who}] {flag} → 높이 단계를 더해 {wf} 로 돎 (기본 {fix} 에는 높이 단계가 없음)")
+    return wf
 
 
 def split_opts(steps, opts=None):
@@ -1004,27 +1048,33 @@ def make_pose_fix(map_root, log=print, fix="floor", **kw):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("map", help="맵 폴더 (stray.py 출력: keyframes/ · trajectory_camera_optical.txt)")
-    ap.add_argument("--fix", choices=sorted(FIXES), default=DEFAULT_FIX, help=f"보정 단계 (기본 {DEFAULT_FIX})")
+    ap.add_argument("--fix", choices=sorted(FIXES), default=None,
+                    help=f"보정 단계 (기본 {DEFAULT_FIX}). xy = 수평(벽)만 · floor = 높이(바닥)만 · floor+xy = 높이 → 수평")
     ap.add_argument("--tilt", action=argparse.BooleanOptionalAction, default=None,
-                    help=f"높이 보정에서 바닥 기울기 오차도 풂 (기본 {'켬' if DEFAULTS['tilt'] else '끔'})")
+                    help=f"높이 보정에서 바닥 기울기 오차도 풂 (높이 단계의 기본 {'켬' if DEFAULTS['tilt'] else '끔'}). "
+                         f"--fix 없이 주면 높이 단계를 더함 ({DEFAULT_FIX} → {with_floor(DEFAULT_FIX)})")
     ap.add_argument("--yaw", action=argparse.BooleanOptionalAction, default=None,
                     help=f"수평 보정에서 방향(yaw) 오차도 풂 (기본 {'켬' if XY_DEFAULTS['yaw'] else '끔'})")
-    ap.add_argument("--json", help="info 를 이 경로에 씀 (맵 폴더의 pose_fix.json 은 건드리지 않음)")
+    ap.add_argument("--json", help="info 를 이 경로에 씀 (맵 · 빌드 폴더의 pose_fix.json 은 건드리지 않음)")
     a = ap.parse_args()
     from . import stray
     from .stray_mesh import read_map
+    try:
+        fix = tilt_fix(a.fix or DEFAULT_FIX, a.tilt, explicit=a.fix is not None)
+    except ValueError as e:
+        ap.error(str(e))
     opts = {}
     if a.tilt is not None:
         opts["floor"] = dict(tilt=a.tilt)
     if a.yaw is not None:
         opts["xy"] = dict(yaw=a.yaw)
     try:
-        per = split_opts(FIXES[a.fix], opts)
+        per = split_opts(FIXES[fix], opts)
         fr = read_map(a.map)
     except (ValueError, stray.CaptureError) as e:
         sys.exit(f"[pose_fix] 실패: {e}")
-    _, info = fix_poses(fr["times"], fr["poses"], fr["depth"], fr["intrinsic"][2:], FIXES[a.fix], per, fix=a.fix)
-    print(f"[pose_fix] {a.fix}: {info['status']} | " + " · ".join(f"{STEP_NAMES[s['kind']]} {s['status']}" for s in info["steps"])
+    _, info = fix_poses(fr["times"], fr["poses"], fr["depth"], fr["intrinsic"][2:], FIXES[fix], per, fix=fix)
+    print(f"[pose_fix] {fix}: {info['status']} | " + " · ".join(f"{STEP_NAMES[s['kind']]} {s['status']}" for s in info["steps"])
           + f" | {info['seconds'].get('total')} s")
     if a.json:
         json.dump(info, open(a.json, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
