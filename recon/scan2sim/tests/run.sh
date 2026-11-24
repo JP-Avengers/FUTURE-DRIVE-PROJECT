@@ -34,9 +34,9 @@ step "GLB: 같은 입력 두 번"
 run repeat_glb $PY -m scan2sim.tests.repeat "$D/room/room.glb" --json "$D/repeat_glb.json"
 
 if [ "$QUICK" = 0 ]; then
-    step "Stray: 서버로 올려 끝까지"
-    # 결함 위치는 견주지 않음 — Stray(맵 폴더) 경로는 바닥을 새로 깔아 넣어 둔 바닥 결함이 진단에 남지 않음 (docs/integration_log.md R8)
-    run e2e_stray $PY -m scan2sim.tests.e2e "$D/room/synth_room_s0.zip" --json "$D/e2e_stray.json"
+    step "Stray: 서버로 올려 끝까지 + 넣어 둔 결함 3개가 제자리(0.5 m 안)에 잡히는지"
+    # 11/24 C 의 0534d95 부터 Stray 도 GLB 와 같은 길이라 바닥 결함이 남음 (integration_log R8)
+    run e2e_stray $PY -m scan2sim.tests.e2e "$D/room/synth_room_s0.zip" --truth "$D/room/stray_truth.json" --json "$D/e2e_stray.json"
 
     step "Stray: 같은 입력 두 번 + 복원 정확도(안 쓴 프레임 깊이 ↔ 맵, 중앙 3 cm 이하)"
     run repeat_stray $PY -m scan2sim.tests.repeat "$D/room/synth_room_s0.zip" --work "$D/repeat_stray" --json "$D/repeat_stray.json"

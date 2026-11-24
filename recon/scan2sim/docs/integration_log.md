@@ -6,14 +6,14 @@
 
 | 번호 | 받는 사람 | 내용 | 근거 | 상태 |
 |---|---|---|---|---|
-| R1 | D | `recon/requirements.txt`에 `opencv-python-headless`, `scikit-image`, `flask`, `Pillow`를 버전 고정해 더하기. 없으면 새 환경에서 Stray 입력은 `input` 단계(`stray.py`의 `import cv2`), GLB 입력은 `convert` 단계(`pipeline/glb_to_usd.py`의 `skeletonize`)에서 실패함. `flask` · `Pillow`는 지금 open3d에 딸려 우연히 설치됨 | 11/23 새 환경 시험 | 열림 |
-| R2 | D | 서버가 엔진의 단계 실패를 `done`으로 표시함. `web/server.py` worker가 `report.md`가 있으면 `done`으로 두는데, `report` 단계는 앞 단계가 실패해도 항상 씀. 화면이 판정(`verdict`)으로 실패를 보여 주는지 A와 확인하거나, 실패 단계가 있으면 `failed`로 두기 | 11/23 복도 GLB e2e | 열림 |
-| R3 | C | `stages.py`에서 B의 `stray_quality.measure`를 불러 복원 정확도를 진단 결과와 보고서에 넣기. 아래 "R3 붙이는 자리" | 6-B4의 1번 | 열림 |
-| R4 | C | `s_input`에서 `stray.CaptureError`를 받아 그 문장만 실패 이유로 보여 주기(`except stray.CaptureError as e: return Result(FAIL, str(e))`). 지금은 `core.run`이 예외로 잡아 요약이 "예외: CaptureError: …"이고 보고서에 traceback 6줄이 나감. 그리고 `stray_meta.json`의 `checks.warnings`를 `r.warn`으로 보여 주기(예: 깊이 파일 1장 모자람, confidence/ 없음) | 11/23 B의 `stray.py` 입력 검사 | 열림 |
-| R5 | C · D | 화면용 `preview.glb`가 너무 큼: 복도 GLB(삼각형 619만 개)에서 129.7 MB. 폰에서 못 열 수 있고 터널로 받는 데 오래 걸림. 삼각형 수를 줄이고(예: 30만 개), 작업이 끝날 때 미리 만들기(implementation 6-C 3번 · 6-D 4번) | 11/23 복도 GLB e2e | 열림 |
-| R6 | C | 손에 든 폰 촬영에서 바닥 높이 지도가 깨질 수 있음. `pipeline/build_usd.py:113-117`이 카메라 높이를 "아래로 쏜 광선이 처음 닿는 거리의 중앙값"으로 잡는데, 폰 아래에 책상 · 의자가 있으면 값이 흔들림(예시 촬영 136장: 0.285 m). 같은 촬영을 키프레임 66장으로 줄이자 바닥 후보가 0개가 되어 `Ground.from_mesh`에서 `ValueError: No points given`으로 convert 실패. 제안: Stray 입력은 바닥 평면(RANSAC) 높이를 쓰거나, 후보가 없으면 band를 넓혀 다시 찾기 | 11/23 키프레임 상한 시험 | 열림 |
-| R7 | C | Stray 입력의 처리 시간 대부분이 `build_usd`의 텍스처 굽기임(아래 "처리 시간"). 바닥과 벽마다 모든 키프레임을 따로 한 바퀴씩 돌며 960×720 깊이 버퍼를 다시 만듦. 키프레임마다 깊이 버퍼를 한 번만 만들어 바닥 · 모든 벽에 함께 쓰면 5분 촬영 기준 build 약 −50%(추정). 설정만으로는 `walls.max_walls` · `walls.max_dist_m`을 줄이는 방법 | 11/23 시간 측정 | 열림 |
-| R8 | C | **Stray(맵 폴더) 입력에서는 바닥 결함 진단이 사실상 동작하지 않음.** 가상의 방에 넣은 두 겹 바닥(1.5 cm 판) · 보이는 바닥 구멍(1 m²) · 낮은 턱(4.5 cm)이 TSDF 메쉬(`mesh_raw.ply`)에는 모두 제대로 있는데, 진단 결과는 0곳. `ground.npz`(띠 5 cm)가 턱과 판을 따라가 바닥을 그 높이로 다시 깔고, `build_usd.py:312-325`가 구멍 위에 보이는 바닥을 새로 깔아서, 진단이 엔진이 다시 깐 바닥끼리 견주게 됨. 같은 방을 GLB로 넣으면 3곳 모두 2 cm 안에서 잡힘. 주 입력이 Stray라 시연 핵심 기능에 걸림. 턱 8 cm 판에서는 Stray도 턱을 잡음(2.8 cm 안). 또 Stray 결과의 `visual.ply` · `collider.ply` 바닥이 벽 밖으로 0.6~0.7 m 뻗어 나감(보이는 면의 15%, TSDF 메쉬에는 없음) — Nav2 빈 바닥이 GLB 45 m² vs Stray 58 m² | 11/23 가상의 방(`samples/`) | 열림 |
+| R1 | D | `recon/requirements.txt`에 `opencv-python-headless`, `scikit-image`, `flask`, `Pillow`를 버전 고정해 더하기. 없으면 새 환경에서 Stray 입력은 `input` 단계(`stray.py`의 `import cv2`), GLB 입력은 `convert` 단계(`pipeline/glb_to_usd.py`의 `skeletonize`)에서 실패함. `flask` · `Pillow`는 지금 open3d에 딸려 우연히 설치됨 | 11/23 새 환경 시험 | 고침 `98da703`(D) |
+| R2 | D | 서버가 엔진의 단계 실패를 `done`으로 표시함. `web/server.py` worker가 `report.md`가 있으면 `done`으로 두는데, `report` 단계는 앞 단계가 실패해도 항상 씀. 화면이 판정(`verdict`)으로 실패를 보여 주는지 A와 확인하거나, 실패 단계가 있으면 `failed`로 두기 | 11/23 복도 GLB e2e | 고침 `98da703`(D) |
+| R3 | C | `stages.py`에서 B의 `stray_quality.measure`를 불러 복원 정확도를 진단 결과와 보고서에 넣기. 아래 "R3 붙이는 자리" | 6-B4의 1번 | 대기 — B 가 main 에 올리면 C 가 붙임 |
+| R4 | C | `s_input`에서 `stray.CaptureError`를 받아 그 문장만 실패 이유로 보여 주기(`except stray.CaptureError as e: return Result(FAIL, str(e))`). 지금은 `core.run`이 예외로 잡아 요약이 "예외: CaptureError: …"이고 보고서에 traceback 6줄이 나감. 그리고 `stray_meta.json`의 `checks.warnings`를 `r.warn`으로 보여 주기(예: 깊이 파일 1장 모자람, confidence/ 없음) | 11/23 B의 `stray.py` 입력 검사 | 대기 — B 가 main 에 올리면 C 가 붙임 |
+| R5 | C · D | 화면용 `preview.glb`가 너무 큼: 복도 GLB(삼각형 619만 개)에서 129.7 MB. 폰에서 못 열 수 있고 터널로 받는 데 오래 걸림. 삼각형 수를 줄이고(예: 30만 개), 작업이 끝날 때 미리 만들기(implementation 6-C 3번 · 6-D 4번) | 11/23 복도 GLB e2e | 고침 `2a6e89f`(C) · `ed7220e`(D) |
+| R6 | C | 손에 든 폰 촬영에서 바닥 높이 지도가 깨질 수 있음. `pipeline/build_usd.py:113-117`이 카메라 높이를 "아래로 쏜 광선이 처음 닿는 거리의 중앙값"으로 잡는데, 폰 아래에 책상 · 의자가 있으면 값이 흔들림(예시 촬영 136장: 0.285 m). 같은 촬영을 키프레임 66장으로 줄이자 바닥 후보가 0개가 되어 `Ground.from_mesh`에서 `ValueError: No points given`으로 convert 실패. 제안: Stray 입력은 바닥 평면(RANSAC) 높이를 쓰거나, 후보가 없으면 band를 넓혀 다시 찾기 | 11/23 키프레임 상한 시험 | 해당 코드를 더 타지 않음 `0534d95`(C) |
+| R7 | C | Stray 입력의 처리 시간 대부분이 `build_usd`의 텍스처 굽기임(아래 "처리 시간"). 바닥과 벽마다 모든 키프레임을 따로 한 바퀴씩 돌며 960×720 깊이 버퍼를 다시 만듦. 키프레임마다 깊이 버퍼를 한 번만 만들어 바닥 · 모든 벽에 함께 쓰면 5분 촬영 기준 build 약 −50%(추정). 설정만으로는 `walls.max_walls` · `walls.max_dist_m`을 줄이는 방법 | 11/23 시간 측정 | 굽지 않음 `0534d95`(C) |
+| R8 | C | **Stray(맵 폴더) 입력에서는 바닥 결함 진단이 사실상 동작하지 않음.** 가상의 방에 넣은 두 겹 바닥(1.5 cm 판) · 보이는 바닥 구멍(1 m²) · 낮은 턱(4.5 cm)이 TSDF 메쉬(`mesh_raw.ply`)에는 모두 제대로 있는데, 진단 결과는 0곳. `ground.npz`(띠 5 cm)가 턱과 판을 따라가 바닥을 그 높이로 다시 깔고, `build_usd.py:312-325`가 구멍 위에 보이는 바닥을 새로 깔아서, 진단이 엔진이 다시 깐 바닥끼리 견주게 됨. 같은 방을 GLB로 넣으면 3곳 모두 2 cm 안에서 잡힘. 주 입력이 Stray라 시연 핵심 기능에 걸림. 턱 8 cm 판에서는 Stray도 턱을 잡음(2.8 cm 안). 또 Stray 결과의 `visual.ply` · `collider.ply` 바닥이 벽 밖으로 0.6~0.7 m 뻗어 나감(보이는 면의 15%, TSDF 메쉬에는 없음) — Nav2 빈 바닥이 GLB 45 m² vs Stray 58 m² | 11/23 가상의 방(`samples/`) | 고침 `0534d95`(C) — B 가 run.sh 정답 비교로 확인(11/24) |
 
 ### R3 붙이는 자리 (제안, 약 1초 더 걸림)
 
@@ -83,3 +83,13 @@
 1. 키프레임 상한(B, 적용함): `stray.py`의 `MAX_KEYFRAMES = 800`. 넘으면 움직임 · 회전 간격을 같이 넓혀 800장 안으로(`stray_meta.json`의 `select.widen`, 입력 단계 주의). 800장보다 적은 촬영은 그대로(예시는 키프레임 파일까지 같음). 예시를 70장 상한으로 돌리면 품질 수치 중앙 1.19 cm(상한 없이 1.23 cm)로 차이가 없었지만, R6 때문에 convert가 실패함.
 2. 텍스처 굽기를 키프레임당 한 번으로(C, R7).
 3. 색 크기 640×480: 예시 build 34 → 30 s. 바닥 사진 한 화소가 1.9 → 2.9 cm로 커짐. 2번이 같은 효과를 손실 없이 냄.
+
+## 11/24 (B 노트북, WSL Ubuntu 24.04)
+
+- 코드: `b/yunseong` = main `ed7220e`(C · D 의 11/24 변경) + B 의 시험 도구.
+- C · D 가 R1 · R2 · R5 · R6 · R7 · R8 을 처리함(위 표). R3 · R4 는 B 의 파일이 main 에 들어가면 C 가 붙임.
+
+| 입력 | 방법 | 결과 | 걸린 시간 | 메모 |
+|---|---|---|---|---|
+| `tests/run.sh` 전체(Stray 도 정답 비교 켬) | — | **TESTS_OK**. Stray 에서 넣은 결함 3개를 두 겹 0.33 m · 구멍 0.01 m · 턱 0.00 m 안에서 잡음(R8 고쳐짐 확인). 복원 정확도 중앙 0.39 cm | 329초 | |
+| 기준 장소 촬영본 `6bc1ae021f`(118초 · 6,611장 · 379 MB, E 가 찍음) | `tests/e2e.py`(서버 + API) | 15/15 통과 · 주의 · 결함 후보 6곳 · 보정 안 함 | 78~85초 · 최대 메모리 2.2 GB | C 의 Windows(바쁜 PC) 측정 334초와 큰 차이 — 같은 코드 기준인지는 확인 필요 |
