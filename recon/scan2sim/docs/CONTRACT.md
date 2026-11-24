@@ -1,6 +1,7 @@
 # CONTRACT.md — scan2sim 약속 (엔진 · 서버 · 화면이 주고받는 것)
 
 **기준 코드: `b/yunseong` `d019a22`** (main 의 C · D 11/24 변경 `736eb68` ~ `ed7220e` 을 합친 `ed4ee25` + 시험 · 기록 커밋 하나). 이 문서의 `파일:줄` 은 모두 이 커밋 기준이다.
+**고침 11/24 저녁 (`ccaca39`, C 의 `620a2b0` 을 합침):** 씬 루트가 둘로 나뉜 것(2-4)과 R3 · R4 가 붙은 것을 반영했다. `620a2b0` 이 `stages.py` 에 줄을 더해, 이 문서의 `stages.py:줄` 가운데 진단 · 묶음 단계 쪽은 지금 코드보다 앞을 가리킬 수 있다 — 함수 이름으로 찾을 것.
 
 작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영)
 
@@ -183,7 +184,7 @@ out/
     keyframes/rgb/<n>.jpg · keyframes/depth/<n>.png · keyframes/calib/<n>.yaml
     trajectory_camera_optical.txt
     stray_meta.json
-    stray_quality.json          엔진이 만들지 않음. `python -m scan2sim.stray_quality` 를 따로 돌렸을 때만 (진단에 붙이는 것은 C 에게 요청 중, 통합 기록 R3)
+    stray_quality.json          Stray 입력이면 진단 단계가 씀 (`stray_quality.measure`, 통합 기록 R3 — C `620a2b0`). 진단 수치의 `stray_quality` 와 같은 값
   build/                      빌드 결과
     auto_config.yaml            엔진이 만든 빌드 설정
     auto_config_corrected.yaml  보정을 했을 때만 (stages.py:319)
@@ -233,7 +234,8 @@ bundle/
   usd/input_scene.usda
   usd/textures/…                   사진 텍스처가 있을 때만 (GLB). room 은 없음
   nav2/map.pgm · map.yaml · preview.png    sim/nav2/make_map.py 출력 (stages.py:131)
-  scene_root.usda                  씬 루트 제안 (Isaac Sim 에서 열어 보지 않음)
+  scene_root.usda                  묶음만으로 열리는 씬 루트 — 맵 + 돔 조명 600 + (shadow_fix 면) 그림자 설정. 로봇 · 센서 없음
+  scene_root_sim.usda              팀 시뮬 배치용 씬 루트 (11/24 전의 scene_root.usda) — 혼자서는 안 열림
   start_pose.json                  시작 자세 (장면 좌표)
   route.csv                        GLB · Stray (build/drive_path.json 이 있을 때, stages.py:357-363). 맵 폴더는 없음
   bundle.json                      {name, input, kind, files}. files 에 bundle.json 자신은 없음
@@ -242,7 +244,7 @@ bundle/
 ```json
 // bundle/bundle.json (room)
 {"name": "input", "input": "input.zip", "kind": "glb",
- "files": ["nav2/map.pgm", "nav2/map.yaml", "nav2/preview.png", "route.csv", "scene_root.usda", "start_pose.json",
+ "files": ["nav2/map.pgm", "nav2/map.yaml", "nav2/preview.png", "route.csv", "scene_root.usda", "scene_root_sim.usda", "start_pose.json",
            "usd/input_mesh.usdc", "usd/input_scene.usda"]}
 
 // bundle/start_pose.json (room) — z = 바닥 + 0.022, yaw 는 도
@@ -263,7 +265,10 @@ free_thresh: 0.25
 
 - `kind` 는 빌드가 간 길이다. **Stray 도 `glb`** 로 적힌다 (`stages.py:59` 에서 GLB 길로 바꿈, C `0534d95`). 11/23 까지 Stray 는 `map_folder` 였다. Stray 인지는 `input` 의 확장자(`.zip`)로만 알 수 있다.
 - `route.csv` 는 머리줄 `x,y` + 장면 좌표 점들이다. 바닥 빈 곳의 뼈대로 만든 **가상 경로**이고, 촬영 경로가 아니다 (`pipeline/glb_to_usd.py:614`, `:622-624`). `room` 은 285점.
-- `scene_root.usda` 는 `../proxy/*.usda` 와 `../../../data/usd/<이름>/usd/<이름>_scene.usda` 를 subLayer 로 건다 (`stages.py:380-386`). 즉 `sim/scenes/<장소>/` 에 두는 것을 가정한다. 웹 작업은 `<이름>` 이 모두 `input` 이다.
+- **씬 루트가 둘이다** (C `620a2b0`, `stages.s_bundle`).
+  - `scene_root.usda`: **묶음만으로 열린다.** subLayer 는 `./usd/<이름>_scene.usda` 하나. `/World/Lights/Dome`(DomeLight, 세기 600)을 직접 정의한다. 로봇 · 센서는 없다. [C 측정] usd-core 로 열면 못 찾는 층 0. Isaac Sim 에서는 아직 열어 보지 않았다.
+  - `scene_root_sim.usda`: 11/24 전의 `scene_root.usda` 그대로 — `../proxy/*.usda` 와 `../../../data/usd/<이름>/usd/<이름>_scene.usda` 를 subLayer 로 건다. `sim/scenes/<장소>/` 에 두는 것을 가정하고, 혼자서는 안 열린다. 웹 작업은 `<이름>` 이 모두 `input` 이다.
+  - 맵 파일(`usd/<이름>_scene.usda`)에는 조명이 없다. 맵만 열면 검게 보인다.
 - 그림자 설정: 진단의 `shadow_fix` 가 참이면(3-5) 보이는 prim 마다 `primvars:doNotCastShadows = 1` 을 건다 (`stages.py:367-369`). `room` 은 `Visual` · `FloorFill` 2개.
 - `bundle/` 구조는 D 의 `sim/add_site.py` 가 받는 형식에 **아직 맞추지 않았다** (8장).
 
@@ -288,7 +293,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
   - `0` = 어느 단계도 `fail` 이 아님 (통과 또는 주의)
   - `1` = 한 단계라도 `fail`
   - 단계 안의 `Exception` 은 그 단계의 `fail` 로 바뀐다 (`core.py:53-54`). 요약은 `"예외: <예외 이름>: <문장>"`, `messages` 는 traceback 마지막 6줄.
-    - `stray.py` 의 `CaptureError` 도 이렇게 된다 (6-1).
+    - 단, `stray.py` 의 `CaptureError` 는 `input` 단계가 직접 받아 **그 문장만** 요약에 넣고 `messages` 는 비운다 (R4, C `620a2b0`; 6-1).
     - 단, `SystemExit` 은 잡히지 않아 단계 파일 없이 엔진이 끝난다 (종료 코드 1, 8-3 의 1번).
   - 인자가 틀리면 argparse 의 `2` [추정: argparse 기본 동작].
 
@@ -667,8 +672,8 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 - 풀기 전에 막는 zip (`stray.find_capture`, `stray.py:85-117`): 깨진 zip, 촬영 폴더가 여러 개, 파일 10만 개 또는 풀면 6 GB 넘음(`ZIP_MAX_FILES` · `ZIP_MAX_BYTES`, `stray.py:55`), 폴더 밖을 가리키는 경로.
   - 입력 판별(`detect.kind_of`, `detect.py:16`)도 이 함수를 부르므로, 깨진 zip 은 판별 때 이미 `CaptureError` 가 난다.
 - **입력 검사** (`stray.validate`, `convert` 첫머리). 실패면 `stray.CaptureError` 를 낸다.
-  - `core.run` 이 예외로 잡아 `input` 단계가 `fail` 이 된다. 요약은 `"예외: CaptureError: <문장>"`, `messages` 는 traceback 마지막 6줄이다 (`core.py:53-54`).
-  - 문장만 보이게 하는 것은 C 에게 요청 중이다 (통합 기록 R4, 8-3).
+  - `input` 단계가 이 예외를 받아 `fail` 로 끝내고, **요약은 그 문장 하나**, `messages` 는 비어 있다 (`stages.s_input`, 통합 기록 R4 — C `620a2b0`). 종류 판별(`detect.kind_of`) 때 난 것도 같다.
+  - [C 측정] 깨진 zip → 요약 "zip 파일을 열 수 없음 — …" 한 문장.
 
 | 검사 | 실패 | 주의만 |
 |---|---|---|
@@ -677,23 +682,23 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `depth/` · `confidence/` 장 수 | 자세 줄 수와 3장 넘게 다름 | 1~2장 다름 (`COUNT_TOL`), `confidence/` 없음(신뢰도로 거르지 않음) |
 | `rgb.mp4` | 열 수 없음 · 장 수가 자세 줄 수의 90% 미만 (`VIDEO_MIN`) · 4:3 이 아님 | — |
 | 내부 파라미터 | `camera_matrix.csv` 가 3×3 숫자가 아님 · fx · fy ≤ 0 · 주점이 영상 밖 | — |
-| 키프레임 수 | — | 800장을 넘어 간격을 넓힘 (6-2) |
+| 키프레임 수 | — | 2,000장을 넘어 간격을 넓힘 (6-2) |
 
-- 주의는 `stray_meta.json` 의 `checks.warnings` 에 남는다 (6-3). 입력 단계의 `messages` 에는 아직 나오지 않는다 (R4).
+- 주의는 `stray_meta.json` 의 `checks.warnings` 에 남고 (6-3), `input` 단계의 주의로도 나간다 (R4, C `620a2b0`).
 
 ### 6-2. 변환 값 (`stray.convert` 기본값, `stray.py:272`; 엔진은 기본값만 씀)
 
 | 항목 | 값 | 뜻 |
 |---|---|---|
-| `width` | 960 | 키프레임 가로 (색 1920×1440 → 960×720). 내부 파라미터는 `camera_matrix.csv` 값에 같은 비율을 곱함 |
+| `width` | 없음 = 깊이 원래 크기 | 키프레임을 깊이 원래 크기(아이폰 256×192)로 저장. 색은 1920 → 960 → 256 두 번에 나눠 줄임. 내부 파라미터는 `camera_matrix.csv` 를 화소 중심 기준으로 줄임: `c' = (c + 0.5)·s − 0.5`, `f' = f·s` (`stray_quality._intr` 와 같음). `--width 960` 을 주면 전처럼 960×720 (깊이는 최근접으로 키움) — 사진 텍스처를 구울 때만 필요. 11/24 B 측정: 960 과 메쉬 차이 중앙 0.4 mm, 합치기 약 2배 빠름 |
 | `min_conf` | 1 | 신뢰도(0 · 1 · 2) 1 미만 깊이는 0 으로 (`stray.py:326`) |
 | `max_depth_m` | 5.0 | 5 m 넘는 깊이는 0 으로 (`stray.py:327`) |
 | `move_m` · `turn_deg` | 0.05 · 5.0 | 앞에 고른 장에서 5 cm 넘게 움직였거나 5° 넘게 돌았을 때 키프레임으로 고름 (`stray.select`, `stray.py:256-269`) |
-| `max_keyframes` | 800 (`MAX_KEYFRAMES`, `stray.py:54`) | 고른 장이 이보다 많으면 `move_m` · `turn_deg` 를 함께 1.2배씩 넓혀 다시 고름 (최대 32배, `stray.py:299-305`). 넓히면 `checks.warnings` 에 주의. `room`: 6,611장 → 681장 (1.73배, 9 cm · 8.6°) |
+| `max_keyframes` | 2000 (`MAX_KEYFRAMES`) | 고른 장이 이보다 많으면 `move_m` · `turn_deg` 를 함께 넓혀 상한에 가장 가깝게 다시 고름 (이분 탐색, 최대 32배). 넓히면 `checks.warnings` 에 주의. 11/24 전에는 800장 · 1.2배씩이었음 |
 | `max_speed` | 1.5 m/s | 5프레임 평균 속력(`stray.py:296`)이 이보다 빠른 장은 뺌 (흐림) |
 | `skip_s` | 1.0 | 촬영 첫 1초는 건너뜀 (시작 직후 자세가 튐, `stray.py:297`) |
 | 색 저장 | JPEG 품질 92, 영역 평균 축소 | (`stray.py:330`) |
-| 깊이 저장 | 16비트 PNG(mm), 색 크기로 **최근접** 확대 | 섞으면 가장자리에 없는 점이 생김 (`stray.py:331`) |
+| 깊이 저장 | 16비트 PNG(mm) | 기본은 원래 크기 그대로. `--width` 로 키울 때만 **최근접** 확대 (섞으면 가장자리에 없는 점이 생김) |
 | 자세 | `Y_UP_TO_Z_UP · T_stray` | 1-3 (`stray.py:335`) |
 
 - 형상 메쉬 (`detect.config_tsdf`, `detect.py:130-137` → `pipeline/tsdf.py`, `stages.py:53-58`)
@@ -718,7 +723,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `extent_m` | [3] 수 | 고른 카메라 위치의 x · y · z 범위 (입력 좌표, Z 위) |
 | `camera_height_range_m` | [2] 수 | 고른 카메라 위치의 z 최소 · 최대 (입력 좌표. 바닥 기준이 아님) |
 | `speed_median_mps` · `speed_max_mps` | 수 | 5프레임 평균 속력의 중앙값 · 최댓값 |
-| `color_size` · `depth_size_in` · `keyframe_size` | [가로, 세로] | 원본 색 · 원본 깊이 (고정 [256, 192]) · 저장한 키프레임 |
+| `color_size` · `depth_size_in` · `keyframe_size` | [가로, 세로] | 원본 색 · 원본 깊이(첫 깊이 파일에서 잼) · 저장한 키프레임 (기본은 깊이와 같음) |
 | `intrinsics` | {fx, fy, cx, cy} | 키프레임 크기 기준 |
 | `focal_variation_pct` | 수 | 프레임별 초점거리의 변동 폭 (%) — 한 값으로 씀 |
 | `confidence_pct` | [3] 수 | 고른 장의 신뢰도 0 · 1 · 2 비율 (%) |
@@ -733,11 +738,11 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 {"source": "6bc1ae021f", "format": "stray_scanner", "frames_total": 6611, "frames_read": 6610, "keyframes": 681,
  "dropped_fast": 3, "duration_s": 118.3, "path_length_m": 43.83, "extent_m": [9.41, 5.29, 0.89],
  "camera_height_range_m": [-0.4, 0.5], "speed_median_mps": 0.37, "speed_max_mps": 3.41,
- "color_size": [1920, 1440], "depth_size_in": [256, 192], "keyframe_size": [960, 720],
+ "color_size": [1920, 1440], "depth_size_in": [256, 192], "keyframe_size": [960, 720],   ← 11/24 전 예시. 지금 기본은 [256, 192]
  "intrinsics": {"fx": 664.972, "fy": 664.972, "cx": 479.022, "cy": 362.739}, "focal_variation_pct": 1.56,
  "confidence_pct": [29.0, 26.7, 44.3], "min_confidence": 1, "valid_depth_pct": 66.0,
  "select": {"move_m": 0.05, "turn_deg": 5.0, "max_speed_mps": 1.5, "max_depth_m": 5.0, "skip_s": 1.0,
-            "max_keyframes": 800, "widen": 1.728, "move_m_used": 0.0864, "turn_deg_used": 8.64},
+            "max_keyframes": 800, "widen": 1.728,   ← 11/24 전 예시. 지금은 상한 2,000 이라 이 촬영본은 넓히지 않고 1,133장 "move_m_used": 0.0864, "turn_deg_used": 8.64},
  "checks": {"warnings": ["촬영이 길어 키프레임 간격을 1.73배 넓힘 (9 cm · 8.6°, 상한 800장) — 처리 시간을 줄이려는 것"],
             "info": {"odometry_rows": 6611, "duration_s": 118.33, "…": "…"}}}
 ```
@@ -773,7 +778,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | 결함 수 | 파일마다 최대 30 | `stages.py:158` |
 | 화면 폴링 | 1.5초 | `index.html:202` |
 | 화면용 GLB | 정점 색 삼각형 30만 · 텍스처 긴 변 2048 화소 | `preview.py:46` |
-| Stray 키프레임 | 최대 800장 (넘으면 간격을 넓힘) | `stray.py:54` |
+| Stray 키프레임 | 최대 2,000장 (넘으면 간격을 넓힘) | `stray.MAX_KEYFRAMES` |
 | Stray zip | 파일 10만 개 · 풀면 6 GB | `stray.py:55` |
 | 엔진 쪽 실패 기준 (참고) | GLB · Stray 범위 1 m 미만 · 300 m 초과, 바닥 2 m² 미만 · 빈 바닥 4 m² 미만 · 진단 표본 50개 미만 | `stages.py:66-69`, `:142-143`, `:221-222` |
 | 처리 시간 제한 | 없음 (엔진이 끝날 때까지 기다림) | `web/server.py:146` |
@@ -820,7 +825,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 - `GET /api/samples`, `POST /api/samples/<name>/jobs`, `GET /api/health` (계획 5-6 "추가하기로 한 것", D 담당) — 서버에 없다. 지금 경로는 4-2 표가 전부다.
 - 화면의 이어 올리기. 서버는 같은 프로세스 안에서만 된다 (`received` 를 `job.json` 에 조각마다 저장하지 않음).
 - `bundle/` 을 D 의 `sim/add_site.py` 형식에 맞추기 (계획 3-2 · 5-2). 아직 지금 형식 그대로다.
-- Stray 복원 정확도(`stray_quality.py`)를 진단 · 보고서에 붙이기 (통합 기록 R3, C). 아직 엔진이 부르지 않는다.
+- ~~Stray 복원 정확도를 진단 · 보고서에 붙이기~~ — 붙음 (R3, C `620a2b0`). 진단 수치 `stray_quality` = `{frames, median_cm, p90_cm, within_2cm_pct, hit_pct, verdict}`, 요약 문장은 `messages`, 통과가 아니면 이유가 주의(실패여도 주의). `report.md` 에 "복원 정확도 (아이폰 원본)" 절. [C 측정] 방 촬영본 중앙 2.17 cm · 2 cm 안 47.2% · 맵에 닿음 98.8% → 통과
 - **[고침 — C `736eb68`]** "같은 입력에 같은 결과" (계획 5-3). 11/23 판에는 "아직 보장하지 않음" 이었다.
   - GLB · Stray 의 바닥 평면 찾기에서 무작위 표본(RANSAC)을 없앴다. 화면용 GLB 도 무작위를 쓰지 않는다.
   - C 측정 (Windows): 복도 GLB 4번 · 가상의 방 Stray 2번에서 변환 행렬 차이 0 · 결함 목록 같음 (`C_TRACK.md` 1장).
@@ -838,5 +843,5 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | 6 | `web/server.py:6` vs `detect.py:13-20` | 맵 폴더 zip 을 받는다는 설명과 실제 동작이 다르다 (8-1 의 10번) | 열림 |
 | 7 | `recon/requirements.txt` | GLB 빌드가 쓰는 `scikit-image`, Stray 의 `opencv`, 서버의 `flask` · `pillow` 가 목록에 없었다 (`e2e_glb` 가 `ModuleNotFoundError: No module named 'skimage'` 로 `convert` 실패) | **고침** (D `98da703`, R1): `opencv-python-headless==5.1.0.95` · `scikit-image==0.26.0` · `Flask==3.1.3` · `pillow==13.0.0` |
 | 8 | 상태 응답의 `status` (`web/server.py:149-150`) | 엔진 단계가 실패해도 `done` 이었다 (8-1 의 7번) | **고침** (D `98da703`, R2) |
-| 9 | `stages.py:52` · `core.py:53-54` | Stray 촬영본 오류가 `"예외: CaptureError: <문장>"` 요약과 traceback 6줄로 나간다. 사용자 문장만 보이고, `checks.warnings` 도 입력 단계 주의로 보이게 해 달라고 요청함 (통합 기록 R4, C) | 열림 |
+| 9 | `stages.py:52` · `core.py:53-54` | Stray 촬영본 오류가 `"예외: CaptureError: <문장>"` 요약과 traceback 6줄로 나간다. 사용자 문장만 보이고, `checks.warnings` 도 입력 단계 주의로 보이게 해 달라고 요청함 (통합 기록 R4, C) | **고침** C `620a2b0` |
 | 10 | `web/static/index.html:311-312` | 화면이 "천장이 있는가" 를 진단 `messages` 의 문장(`"천장이 있음"`)으로 판단해 3D 위쪽을 자른다. 문장이 바뀌면 깨지고, 지금도 천장이 일부만 찍힌 경우(`room`: 덮음 27%, 문장 "천장이 일부만 찍힘")는 자르지 않는다. 상태 응답의 `metrics.before.has_ceiling` · `shadow_fix` 를 보는 편이 약속에 맞다 [추정: 화면에서 직접 확인하지 않음] | 열림 (A) |

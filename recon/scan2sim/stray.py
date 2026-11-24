@@ -51,7 +51,7 @@ ZIP_HINT = "Stray Scanner 의 촬영 폴더 하나(rgb.mp4 · odometry.csv · ca
 MIN_ROWS, MIN_S = 100, 2.0                                      # 이보다 짧은 촬영은 맵이 안 됨
 COUNT_TOL, VIDEO_MIN = 2, 0.9                                   # 깊이 · 영상 장 수가 자세 줄 수와 다를 때: 2장까지는 주의, 영상은 90 % 밑이면 실패
 QUAT_TOL = 0.01                                                 # 자세 사원수 길이가 1 에서 벗어나도 되는 정도
-MAX_KEYFRAMES = 800                                             # 긴 촬영은 간격을 넓혀 이 수 안으로 — 맵 빌드 시간이 키프레임 수 × (바닥 + 벽 수)에 비례 (11/23 시간 측정)
+MAX_KEYFRAMES = 2000                                            # 긴 촬영은 간격을 넓혀 이 수 안으로 — 맵 빌드 시간이 키프레임 수 × (바닥 + 벽 수)에 비례 (11/23 시간 측정)
 ZIP_MAX_FILES, ZIP_MAX_BYTES = 100_000, 6 * 1024 ** 3           # zip 폭탄 막기 (샘플 17 초 = 1682개 · 50 MB)
 
 
@@ -269,7 +269,7 @@ def select(pos, R, speed, move_m, turn_deg, max_speed, start=0):
     return keep, fast
 
 
-def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_speed=1.5, max_depth_m=5.0, skip_s=1.0, log=print, max_keyframes=None):
+def convert(src, out, width=None, min_conf=1, move_m=0.05, turn_deg=5.0, max_speed=1.5, max_depth_m=5.0, skip_s=1.0, log=print, max_keyframes=None):
     """촬영 폴더 src → 맵 폴더 out. → 요약 dict (stray_meta.json 과 같음). 자료가 잘못됐으면 CaptureError (무엇이 잘못됐는지 한국어로)"""
     import cv2
     if not src or not os.path.isdir(src):
@@ -285,9 +285,17 @@ def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_spee
     W0, H0 = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     if len(od) < 2 or W0 == 0:
         raise CaptureError("촬영 자료를 읽지 못함 (odometry.csv 가 비었거나 rgb.mp4 를 열 수 없음)")
-    s = width / W0
-    W, H = width, int(round(H0 * s))
-    fx, fy, cx, cy = K[0, 0] * s, K[1, 1] * s, K[0, 2] * s, K[1, 2] * s
+    dfirst = sorted(f for f in os.listdir(os.path.join(src, "depth")) if f.endswith(".png"))[0]
+    z0 = cv2.imread(os.path.join(src, "depth", dfirst), cv2.IMREAD_UNCHANGED)
+    DW, DH = z0.shape[1], z0.shape[0]                              # 깊이 원래 크기 (아이폰 256×192)
+    if width is None:                                              # 기본: 깊이 원래 크기로 저장 — 깊이 정보가 이 크기라 키워도 형상은 같고 합치기만 느려짐 (11/24 측정: 메쉬 차이 중앙 0.4 mm, 합치기 약 2배 빠름)
+        W, H = DW, DH
+    else:
+        W, H = width, int(round(H0 * width / W0))
+    sx, sy = W / W0, H / H0
+    fx, fy = K[0, 0] * sx, K[1, 1] * sy
+    cx, cy = (K[0, 2] + 0.5) * sx - 0.5, (K[1, 2] + 0.5) * sy - 0.5   # 화소 중심 기준 (stray_quality._intr 와 같음). 256 에서 c·s 로 하면 0.4 px 어긋남
+    MID = (960, int(round(H0 * 960 / W0)))                         # 색을 크게 줄일 때는 두 번에 나눠 줄임 (한 번에 1920 → 256 보다 2배 빠르고 색 차이 0.2/255)
 
     t, pos = od[:, 0], od[:, 2:5]
     R = np.array([_rot(q) for q in od[:, 5:9]])
@@ -297,9 +305,22 @@ def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_spee
     start = int(min(np.searchsorted(t, t[0] + skip_s), len(od) - 2))
     keep, fast = select(pos, R, speed, move_m, turn_deg, max_speed, start)
     cap_n, widen = MAX_KEYFRAMES if max_keyframes is None else max_keyframes, 1.0
-    while cap_n and len(keep) > cap_n and widen < 32:              # 긴 촬영: 움직임 · 회전 간격을 같이 넓혀 상한 안으로
-        widen *= 1.2
-        keep, fast = select(pos, R, speed, move_m * widen, turn_deg * widen, max_speed, start)
+    if cap_n and len(keep) > cap_n:                                # 긴 촬영: 움직임 · 회전 간격을 같이 넓혀 상한에 가장 가깝게 (이분 탐색 — 1.2배씩 넓히면 상한보다 15% 넘게 적게 고를 수 있었음)
+        lo, hi = 1.0, 1.0
+        while hi < 32:
+            hi *= 1.5
+            k2, f2 = select(pos, R, speed, move_m * hi, turn_deg * hi, max_speed, start)
+            if len(k2) <= cap_n:
+                break
+        best = (hi, k2, f2)
+        for _ in range(12):
+            mid = (lo + hi) / 2
+            k2, f2 = select(pos, R, speed, move_m * mid, turn_deg * mid, max_speed, start)
+            if len(k2) <= cap_n:
+                hi, best = mid, (mid, k2, f2)
+            else:
+                lo = mid
+        widen, keep, fast = best
     if widen > 1:
         warns.append(f"촬영이 길어 키프레임 간격을 {widen:.2f}배 넓힘 ({move_m * widen * 100:.0f} cm · {turn_deg * widen:.1f}°, 상한 {cap_n}장) — 처리 시간을 줄이려는 것")
         log(f"[stray] {warns[-1]}")
@@ -327,8 +348,12 @@ def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_spee
                 z = np.where(z > max_depth_m * 1000, 0, z).astype(np.uint16)
                 valid.append(float((z > 0).mean()))
                 kid = len(rows) + 1
+                if W < MID[0] < bgr.shape[1]:
+                    bgr = cv2.resize(bgr, MID, interpolation=cv2.INTER_AREA)
                 cv2.imwrite(os.path.join(out, "keyframes", "rgb", f"{kid}.jpg"), cv2.resize(bgr, (W, H), interpolation=cv2.INTER_AREA), [cv2.IMWRITE_JPEG_QUALITY, 92])
-                cv2.imwrite(os.path.join(out, "keyframes", "depth", f"{kid}.png"), cv2.resize(z, (W, H), interpolation=cv2.INTER_NEAREST))   # 가까운 값 그대로 — 섞으면 물체 가장자리에 없는 점이 생김
+                if z.shape[1] != W or z.shape[0] != H:                 # 키울 때는 가까운 값 그대로 — 섞으면 물체 가장자리에 없는 점이 생김
+                    z = cv2.resize(z, (W, H), interpolation=cv2.INTER_NEAREST)
+                cv2.imwrite(os.path.join(out, "keyframes", "depth", f"{kid}.png"), z)
                 open(os.path.join(out, "keyframes", "calib", f"{kid}.yaml"), "w", encoding="utf-8").write(CALIB.format(id=kid, w=W, h=H, fx=fx, fy=fy, cx=cx, cy=cy))
                 T = np.eye(4)
                 T[:3, :3], T[:3, 3] = R[i], pos[i]
@@ -350,7 +375,7 @@ def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_spee
                 duration_s=round(float(t[-1] - t[0]), 1), path_length_m=round(float(step.sum()), 2),
                 extent_m=np.round(np.ptp(P, axis=0), 2).tolist(), camera_height_range_m=[round(float(P[:, 2].min()), 2), round(float(P[:, 2].max()), 2)],
                 speed_median_mps=round(float(np.median(speed)), 2), speed_max_mps=round(float(speed.max()), 2),
-                color_size=[W0, H0], depth_size_in=[256, 192], keyframe_size=[W, H],
+                color_size=[W0, H0], depth_size_in=[DW, DH], keyframe_size=[W, H],
                 intrinsics=dict(fx=round(fx, 3), fy=round(fy, 3), cx=round(cx, 3), cy=round(cy, 3)),
                 focal_variation_pct=round(float(100 * np.ptp(fl) / np.median(fl)), 2),   # 프레임마다 초점거리가 조금 다름 — 한 값(camera_matrix.csv)으로 씀
                 confidence_pct=np.round(100 * conf_hist / max(conf_hist.sum(), 1), 1).tolist(), min_confidence=min_conf,
@@ -368,7 +393,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--width", type=int, default=960, help="키프레임 가로 크기 (세로는 비율대로)")
+    ap.add_argument("--width", type=int, default=None, help="키프레임 가로 크기 (세로는 비율대로). 기본은 깊이 원래 크기(256×192). 사진 텍스처를 구울 때만 960 등으로")
     ap.add_argument("--min-conf", type=int, default=1, choices=[0, 1, 2], help="이 신뢰도 밑의 깊이는 버림")
     ap.add_argument("--move-m", type=float, default=0.05)
     ap.add_argument("--turn-deg", type=float, default=5.0)
