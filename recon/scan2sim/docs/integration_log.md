@@ -14,6 +14,27 @@
 | R6 | C | 손에 든 폰 촬영에서 바닥 높이 지도가 깨질 수 있음. `pipeline/build_usd.py:113-117`이 카메라 높이를 "아래로 쏜 광선이 처음 닿는 거리의 중앙값"으로 잡는데, 폰 아래에 책상 · 의자가 있으면 값이 흔들림(예시 촬영 136장: 0.285 m). 같은 촬영을 키프레임 66장으로 줄이자 바닥 후보가 0개가 되어 `Ground.from_mesh`에서 `ValueError: No points given`으로 convert 실패. 제안: Stray 입력은 바닥 평면(RANSAC) 높이를 쓰거나, 후보가 없으면 band를 넓혀 다시 찾기 | 11/23 키프레임 상한 시험 | 해당 코드를 더 타지 않음 `0534d95`(C) |
 | R7 | C | Stray 입력의 처리 시간 대부분이 `build_usd`의 텍스처 굽기임(아래 "처리 시간"). 바닥과 벽마다 모든 키프레임을 따로 한 바퀴씩 돌며 960×720 깊이 버퍼를 다시 만듦. 키프레임마다 깊이 버퍼를 한 번만 만들어 바닥 · 모든 벽에 함께 쓰면 5분 촬영 기준 build 약 −50%(추정). 설정만으로는 `walls.max_walls` · `walls.max_dist_m`을 줄이는 방법 | 11/23 시간 측정 | 굽지 않음 `0534d95`(C) |
 | R8 | C | **Stray(맵 폴더) 입력에서는 바닥 결함 진단이 사실상 동작하지 않음.** 가상의 방에 넣은 두 겹 바닥(1.5 cm 판) · 보이는 바닥 구멍(1 m²) · 낮은 턱(4.5 cm)이 TSDF 메쉬(`mesh_raw.ply`)에는 모두 제대로 있는데, 진단 결과는 0곳. `ground.npz`(띠 5 cm)가 턱과 판을 따라가 바닥을 그 높이로 다시 깔고, `build_usd.py:312-325`가 구멍 위에 보이는 바닥을 새로 깔아서, 진단이 엔진이 다시 깐 바닥끼리 견주게 됨. 같은 방을 GLB로 넣으면 3곳 모두 2 cm 안에서 잡힘. 주 입력이 Stray라 시연 핵심 기능에 걸림. 턱 8 cm 판에서는 Stray도 턱을 잡음(2.8 cm 안). 또 Stray 결과의 `visual.ply` · `collider.ply` 바닥이 벽 밖으로 0.6~0.7 m 뻗어 나감(보이는 면의 15%, TSDF 메쉬에는 없음) — Nav2 빈 바닥이 GLB 45 m² vs Stray 58 m² | 11/23 가상의 방(`samples/`) | 고침 `0534d95`(C) — B 가 run.sh 정답 비교로 확인(11/24) |
+| R10 | C | **Stray 형상 메쉬를 B 의 `stray_mesh.build` 로** (11/24 팀 결정: 형상 메쉬는 B 가 만들어 넘김). `stages.s_input` 의 Stray 분기에서 `pipeline/tsdf.py` 를 부르는 4줄을 아래 "R10 바꿀 자리"로. 결과 파일 이름 · 좌표 · 내용은 그대로(가상의 방 · 기준 촬영본 모두 `mesh_raw.ply` 가 바이트까지 같음). 넣을 때 B 가 같은 커밋 쪽에서 `CONTRACT.md` 의 `build/tsdf_config.yaml` 을 지움 | 11/24 B `stray_mesh.py` | 열림 |
+
+### R10 바꿀 자리 (`stages.py`, `ccaca39` 기준 61~65행)
+
+```diff
+         if not (ctx.get("resume") and os.path.exists(path)):
+-            tc = os.path.join(build, "tsdf_config.yaml")
+-            open(tc, "w", encoding="utf-8", newline=chr(10)).write(detect.config_tsdf(mp, ctx["name"], build))
+-            if _call([sys.executable, os.path.join(PIPE, "tsdf.py"), "--config", tc, "--out", build], ctx.path("log.txt")) or not os.path.exists(path):
+-                return Result(FAIL, "촬영본에서 형상을 만들지 못함", metrics=dict(stray=sm), messages=["자세한 내용: log.txt"])
++            from . import stray_mesh                            # B 의 형상 메쉬 (pipeline/tsdf.py 와 같은 설정 · 같은 파일 이름 · 같은 좌표)
++            try:
++                with open(ctx.path("log.txt"), "a", encoding="utf-8") as fh:
++                    stray_mesh.build(mp, build, log=lambda s: print(s, file=fh, flush=True))
++            except stray.CaptureError as e:                     # stray_mesh.MeshError 도 여기로 — 쓸 장 없음 · 해상도 불일치 · 메쉬 빔
++                return Result(FAIL, "촬영본에서 형상을 만들지 못함", metrics=dict(stray=sm), messages=[str(e)])
+```
+
+- B 가 저장소 복사본에 이 패치를 넣어 가상 Stray 촬영본을 끝까지 돌림: 8단계 모두 돌고 `mesh_raw.ply` sha 가 tsdf.py 결과와 같음, 복원 정확도 0.39 cm, 보정 두 겹 18 → 0.
+- `detect.config_tsdf` 는 부르는 곳이 없어짐 — 지울지는 C 가 정함. `pipeline/tsdf.py` 는 맵 폴더 길(run.py)이 계속 씀.
+- 앞으로 B 가 이 단계에 넣을 것: 바닥 높이 틀어짐 보정(`pose_fix`), 처리 시간 줄이기, 깊이 범위 · 신뢰도 기준 — 모두 `stray_mesh.build` 안에서 바뀌므로 `stages.py` 를 다시 고칠 일은 없음.
 
 ### R3 붙이는 자리 (제안, 약 1초 더 걸림)
 
@@ -93,3 +114,9 @@
 |---|---|---|---|---|
 | `tests/run.sh` 전체(Stray 도 정답 비교 켬) | — | **TESTS_OK**. Stray 에서 넣은 결함 3개를 두 겹 0.33 m · 구멍 0.01 m · 턱 0.00 m 안에서 잡음(R8 고쳐짐 확인). 복원 정확도 중앙 0.39 cm | 329초 | |
 | 기준 장소 촬영본 `6bc1ae021f`(118초 · 6,611장 · 379 MB, E 가 찍음) | `tests/e2e.py`(서버 + API) | 15/15 통과 · 주의 · 결함 후보 6곳 · 보정 안 함 | 78~85초 · 최대 메모리 2.2 GB | C 의 Windows(바쁜 PC) 측정 334초와 큰 차이 — 같은 코드 기준인지는 확인 필요 |
+
+### 11/24 저녁
+
+| 입력 | 방법 | 결과 | 걸린 시간 | 메모 |
+|---|---|---|---|---|
+| B 의 형상 메쉬 `stray_mesh.py` vs `pipeline/tsdf.py` (같은 설정 2 cm · 3 m) | 가상의 방(193장) · 기준 촬영본(681장) 각 2번 | `mesh_raw.ply` **바이트까지 같음**(정점 · 삼각형 · 색 모두) | 기준 촬영본 22~23 s → 16~18 s, 가상의 방 7.7 s → 6.1 s · 최대 메모리 +1.5% | 그림을 cv2 로 읽고 스레드 2개로 미리 읽음. 다른 에이전트와 CPU 를 나눠 쓴 상태의 측정 |
