@@ -28,6 +28,11 @@ def main():
 
     fr = io_rgbd.load(cfg["input"])
     used = list(range(0, len(fr.poses), p["frame_step"]))
+    step = int(p.get("image_step", 1))                           # 그림을 step 화소마다 하나씩만 읽음 (2 = 절반 크기). 깊이를 키워서 저장한 입력(폰 LiDAR: 256×192 → 960×720)은 다 읽어도 얻는 것이 없음
+    intr = fr.intrinsic
+    if step > 1:
+        K = intr.intrinsic_matrix
+        intr = o3d.camera.PinholeCameraIntrinsic(len(range(0, intr.width, step)), len(range(0, intr.height, step)), K[0, 0] / step, K[1, 1] / step, K[0, 2] / step, K[1, 2] / step)
     print(f"[tsdf] 프레임 {len(fr.poses)}장 중 {len(used)}장 사용 | voxel {p['voxel'] * 100:g} cm | 깊이 {p['depth_trunc']} m 까지")
 
     def volume(voxel):
@@ -48,14 +53,17 @@ def main():
             got_c, got_d = np.asarray(color).shape[:2], np.asarray(depth).shape[:2]
             if got_c != want or got_d != want:
                 raise SystemExit(f"해상도 불일치: intrinsic {want}, 컬러 {got_c}, 깊이 {got_d} — 깊이를 컬러에 정렬(align)했는지 확인")
+        if step > 1:
+            color = o3d.geometry.Image(np.ascontiguousarray(np.asarray(color)[::step, ::step]))
+            depth = o3d.geometry.Image(np.ascontiguousarray(np.asarray(depth)[::step, ::step]))
         rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
             color, depth, depth_scale=fr.depth_scale, depth_trunc=p["depth_trunc"], convert_rgb_to_intensity=False)
         extrinsic = np.linalg.inv(fr.poses[i])                           # pose(카메라→world)의 역 = extrinsic
-        vol.integrate(rgbd, fr.intrinsic, extrinsic)
+        vol.integrate(rgbd, intr, extrinsic)
         if vol_far:
             vol_far.integrate(o3d.geometry.RGBDImage.create_from_color_and_depth(
                 color, depth, depth_scale=fr.depth_scale, depth_trunc=far_trunc, convert_rgb_to_intensity=False),
-                fr.intrinsic, extrinsic)
+                intr, extrinsic)
         if (k + 1) % 100 == 0:
             print(f"  {k + 1}/{len(used)} ({time.time() - t:.0f}s)", flush=True)
 

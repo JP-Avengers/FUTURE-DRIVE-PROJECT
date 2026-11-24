@@ -94,10 +94,25 @@ def find_floor(mesh, c):
     k = k + int(np.argmax(h[k:k + 5]))                          # 그 근처 봉우리
     z0 = 0.5 * (e[k] + e[k + 1])
     sel = up & (np.abs(cen[:, 2] - z0) < 0.05)
-    pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(cen[sel]))
-    (a, b, cc, d), inl = pc.segment_plane(0.02, 3, 1000)
-    n = np.array([a, b, cc]) * np.sign(cc)
-    d = d * np.sign(cc)
+    # 바닥 평면: 넓이 가중 최소제곱을 되풀이 (2 cm 넘게 벗어난 면은 빼고 다시). 무작위 표본(RANSAC)을 쓰지 않음 —
+    # 실행마다 평면이 1 cm 안팎 달라져 진단 수치 · 결함 수가 흔들렸고, Open3D 의 RANSAC 은 씨앗을 줘도 스레드 때문에 같지 않았음 (11.23)
+    P, wgt = cen[sel], area[sel]
+    c0 = np.average(P, axis=0, weights=wgt)
+    Q = P - c0
+    keep = np.ones(len(Q), bool)
+    coef = np.zeros(3)
+    for _ in range(8):
+        A = np.c_[Q[keep, 0], Q[keep, 1], np.ones(int(keep.sum()))] * np.sqrt(wgt[keep])[:, None]
+        coef = np.linalg.lstsq(A, Q[keep, 2] * np.sqrt(wgt[keep]), rcond=None)[0]
+        res = np.abs(Q[:, 2] - (coef[0] * Q[:, 0] + coef[1] * Q[:, 1] + coef[2])) / np.sqrt(1 + coef[0] ** 2 + coef[1] ** 2)
+        new = res < 0.02
+        if new.sum() < 3 or np.array_equal(new, keep):
+            break
+        keep = new
+    n = np.array([-coef[0], -coef[1], 1.0])
+    n /= np.linalg.norm(n)
+    d = -float(n @ (c0 + [0, 0, coef[2]]))                      # n·p + d = 0
+    inl = np.nonzero(keep)[0]
     ax = np.cross(n, [0, 0, 1.0])
     s, co = np.linalg.norm(ax), n[2]
     R = np.eye(3)
@@ -566,7 +581,16 @@ def main():
         col.remove_triangles_by_mask(np.asarray(n_c)[np.asarray(tri_c)] < cc["min_cluster_tris_after"])
         col.remove_unreferenced_vertices()
     if cc.get("tris") and len(col.triangles) > cc["tris"]:
-        col = col.simplify_quadric_decimation(target_number_of_triangles=cc["tris"])
+        # 목표의 5배를 넘는 큰 메쉬(폰 LiDAR 로 방 하나 = 140만)는 먼저 3 cm 칸으로 정점을 모아 줄인 뒤 마무리 — 방 촬영본에서 이 단계가 41초였음.
+        # 5배 안쪽(지금까지 확인한 GLB 들)은 전과 같은 결과
+        pre = cc.get("pre_cluster_m", 0.03)
+        if pre and len(col.triangles) > 5 * cc["tris"]:
+            col = col.simplify_vertex_clustering(pre, contraction=o3d.geometry.SimplificationContraction.Average)
+            col.remove_degenerate_triangles()
+            col.remove_duplicated_triangles()
+            col.remove_unreferenced_vertices()
+        if len(col.triangles) > cc["tris"]:
+            col = col.simplify_quadric_decimation(target_number_of_triangles=cc["tris"])
     if ground is not None:                                      # 편 것을 다시 바닥 높이로
         cv = np.asarray(col.vertices).copy()
         cv[:, 2] += ground.height(cv[:, :2])
@@ -604,7 +628,7 @@ def main():
 
     o3d.io.write_triangle_mesh(os.path.join(out, "visual.ply"), whole)
     T = M @ (Y_UP_TO_Z_UP if inp.get("up", "y") == "y" else np.eye(4)) @ np.diag([float(inp.get("scale", 1.0))] * 3 + [1.0])
-    json.dump(dict(T_input_to_scene=T.tolist(), note="GLB 원본 좌표 (glTF Y-up) → 씬 (Z-up, 바닥 z 0, m)"),
+    json.dump(dict(T_input_to_scene=T.tolist(), note=("GLB 원본 좌표 (glTF Y-up)" if inp.get("up", "y") == "y" else "입력 메쉬 좌표 (Z-up 그대로)") + " → 씬 (Z-up, 바닥 z 0, m)"),
               open(os.path.join(out, "transform.json"), "w", encoding="utf-8"), indent=1)
     info = dict(source="glb", name=cfg["name"], built=time.strftime("%Y-%m-%d"))
     scene_path, mesh_path = write_scene(usd_dir, cfg["name"], visuals, colliders, info=info,
