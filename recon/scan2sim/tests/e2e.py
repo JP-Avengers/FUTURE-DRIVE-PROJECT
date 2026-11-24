@@ -194,7 +194,7 @@ def check_job(j, C):
     bad = [s.get("name") for s in j.get("stages", []) if any(k not in s for k in STAGE_KEYS) or s["status"] not in ("pass", "warn", "fail", "skip")]
     C.add("단계 8개 · 판정 값", len(st) == 8 and not bad, " · ".join(f"{k} {v}" for k, v in st.items()))
     failed = [s for s in j.get("stages", []) if s.get("status") == "fail"]
-    if not C.allow_fail:                                        # 서버는 report.md 만 있으면 done 으로 둠 — 엔진 단계의 실패는 따로 봄
+    if not C.allow_fail:                                        # 엔진 단계의 실패를 직접 봄 (서버도 R2 부터 실패면 failed 로 둠)
         C.add("엔진 단계에 실패 없음", not failed, " / ".join(f"{s['name']}: {s.get('summary')} {s.get('messages', [])[:2]}" for s in failed))
     defects = []
     if st.get("diagnose") in OK:
