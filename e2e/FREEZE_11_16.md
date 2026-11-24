@@ -40,7 +40,7 @@ MANIFEST ckpt 행 형식(기존 11.9 A 행과 같게):
 
 ## 4. 11.23 모델 동결
 
-- [ ] 최종 ckpt sha · `run_meta.json` · MANIFEST 행 · `results/xm_ft_v1.0/`(오프라인 표 · 장애물 진단 · 짧은 폐루프).
-- [ ] 폐루프에서 제로샷보다 나은 후보가 없으면 그것도 결과로 보고(동결 후보에 제로샷 포함, PLAN 11.10).
+- [x] 최종 ckpt sha · `run_meta.json` · MANIFEST 행 · `results/xm_ft_v1.0/`(오프라인 표 · 장애물 진단 · 짧은 폐루프). — 11.24 적음: **E6**(`xm_ft_v1.5_aw30_exec_e6`, sha256 앞 12자 `551cee7beb5d`, MANIFEST 11.12 행). E11 이 11.18 폐루프에서 기준(12/12 · 충돌 0)에 못 미쳐(4/12 · 충돌 2) 확정. 기록 `results/xm_ft_v1.0/README.md` — 모델 이름은 그대로 두고 폴더 이름만 계획대로 씀
+- [x] 폐루프에서 제로샷보다 나은 후보가 없으면 그것도 결과로 보고(동결 후보에 제로샷 포함, PLAN 11.10). — 11.24: 해당 없음. 사전 시험에서 E6 가 제로샷보다 못하다는 결과가 없음(제로샷 1/4, 조건이 같은 짝은 장애물 없는 반시계 바퀴 E6 2/2 대 제로샷 0/1). 정식 비교는 60회 24짝이고, E6 가 낫지 않게 나오면 그대로 보고
 
 동결 커밋: `3bbaad4`(11.16, origin/main) — 이 뒤 `e2e/` · `ros2_ws/src/fd_xm_infer/` · `eval/` 은 버그 수정 · 결과 문서만('동결 뒤 수정'). 마지막 기능 변경: 노드 `72281c6`(11.12) · `eval/closed_loop_diag.py` `b5fe9c4`(11.15) · 학습 · 평가 코드(`e2e/finetune.py` · `xm_exec_input.py` · `configs/` · `eval_offline.py`) `347b40e`(11.11, E6 학습 전).
