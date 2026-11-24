@@ -18,8 +18,10 @@
       구간마다 고르면 시각 차 중앙 0.15~0.5 초 · 맵끼리 0.2~0.5 cm (n=60 에서 0.22~0.26 cm). 같은 장으로 재면 두 맵은 0.04 cm 안으로 같음 —
       남은 차이는 맵이 아니라 장마다 다른 오차 (1133장 맵은 n=60 중 38구간에서 기준을 낮춤)
       실제로 떨어진 시간 · 장 수 · 거리 · 목표 시각과의 차이 분포는 결과 held_out 에
-    - 자세 보정: 맵을 stray_mesh 가 고친 자세로 만들었으면 (input_map/floor_fix.json 의 applied · build/tsdf_meta.json 의 pose_fix.applied
-      둘 다 참) 안 쓴 프레임 자세에도 같은 보정을 시각으로 이어 적용 (stray_fix.apply_fix). 결과 pose_fix 에 적용 여부 · 이유
+    - 자세 보정: 맵을 stray_mesh 가 고친 자세로 만들었으면 (보정 info 의 applied · build/tsdf_meta.json 의 pose_fix.applied 둘 다 참)
+      안 쓴 프레임 자세에도 같은 보정을 시각으로 이어 적용 (stray_fix.apply_fix — 높이 → 수평, applied 인 단계만).
+      info 파일 = tsdf_meta.json 의 pose_fix.file (없으면 input_map/pose_fix.json → floor_fix.json — 11/24 af65f1b 판으로 만든 맵).
+      결과 pose_fix 에 적용 여부 · 파일 · 단계(steps) · 높이 dz_p5_p95_cm · 수평 xy_shift_cm_p50_p95 · 적용 못 한 이유(note)
     - 깊이: 신뢰도 min_conf 이상(주지 않으면 맵을 만들 때와 같은 값 = stray_meta.json 의 min_confidence) ·
       깊이 한계 = min(맵 TSDF 의 depth_trunc(build/tsdf_meta.json, 없으면 3 m), stray.py 가 키프레임 깊이를 자른 select.max_depth_m) 이하
     - 내부 파라미터: 기본은 odometry.csv 의 프레임별 값(그 장의 실제 값 — 맵이 한 값을 써서 생긴 오차도 맵 오차로 잡으려고).
@@ -162,34 +164,83 @@ def _limits(meta, bd, min_conf):
     return trunc, lim, int(min_conf)
 
 
+FIX_FILES = ("pose_fix.json", "floor_fix.json")                 # 자세 보정 info — 새 판(단계 묶음) · 11/24 af65f1b 판(높이 하나)
+
+
+def _fix_step_ok(s):
+    """applied 인 단계 info 에 적용할 값이 다 있나 → 빠진 것 설명 또는 None"""
+    kind = stray_fix.step_kind(s)
+    t = s.get("t")
+    if kind is None:
+        return f"어떤 보정인지 모르는 단계 (method {s.get('method')!r})"
+    need = ("dz",) if kind == "floor" else ("dx", "dy")
+    if not isinstance(t, list) or len(t) < 1 or any(not isinstance(s.get(k), list) or len(s[k]) != len(t) for k in need):
+        return f"{kind} 단계에 키프레임 시각 · 보정값({' · '.join(('t',) + need)})이 없음"
+    for k in ("tilt", "dyaw_deg"):
+        if s.get(k) is not None and (not isinstance(s[k], list) or len(s[k]) != len(t)):
+            return f"{kind} 단계의 {k} 길이가 키프레임 시각과 다름"
+    return None
+
+
 def _pose_fix(mp, bd):
-    """맵을 고친 자세로 만들었으면 그 보정 info (input_map/floor_fix.json) → (info 또는 None, 결과에 남길 요약).
-    floor_fix.json 이 applied 라도 build/tsdf_meta.json 이 보정 없이 만든 맵이면 (pipeline/tsdf.py · --no-fix · 예전 파일) 적용하지 않음"""
-    p = os.path.join(mp, "floor_fix.json")
-    if not os.path.exists(p):
-        return None, dict(applied=False, status=None)
-    try:
-        info = json.load(open(p, encoding="utf-8"))
-    except (OSError, ValueError) as e:
-        return None, dict(applied=False, status=None, note=f"input_map/floor_fix.json 을 읽지 못함 — 자세 그대로 잼 ({e})")
-    st = dict(applied=False, status=info.get("status"), file="input_map/floor_fix.json")
-    if not info.get("applied"):
-        return None, st
-    tp = os.path.join(bd, "tsdf_meta.json")
+    """맵을 고친 자세로 만들었으면 그 보정 info → (info 또는 None, 결과에 남길 요약).
+    파일: build/tsdf_meta.json 의 pose_fix.file (이 메쉬를 만들 때 쓴 것) — 없으면 input_map/pose_fix.json → floor_fix.json (예전 맵) 차례.
+    info 가 applied 라도 build/tsdf_meta.json 이 보정 없이 만든 맵이면 (pipeline/tsdf.py · --no-fix · 예전 파일) 적용하지 않음.
+    단계 묶음이면 applied 인 단계만 차례대로 (stray_fix.apply_fix)"""
+    pf, tp = None, os.path.join(bd, "tsdf_meta.json")
     if os.path.exists(tp):
         try:
             pf = json.load(open(tp, encoding="utf-8")).get("pose_fix")
         except (OSError, ValueError, AttributeError):
             pf = None
-        if not (isinstance(pf, dict) and pf.get("applied")):
-            st["note"] = "floor_fix.json 은 고쳤다고 하지만 맵(build/tsdf_meta.json)은 자세를 고치지 않고 만들어짐 — 안 쓴 프레임 자세를 그대로 씀"
-            return None, st
-    if not isinstance(info.get("t"), list) or not isinstance(info.get("dz"), list) or len(info["t"]) != len(info["dz"]) or len(info["t"]) < 1:
-        st["note"] = "floor_fix.json 에 키프레임 시각 · 보정값(t · dz)이 없음 — 안 쓴 프레임 자세를 그대로 씀"
+    named = os.path.basename(str(pf.get("file"))) if isinstance(pf, dict) and pf.get("file") else None
+    names = [named] if named else [f for f in FIX_FILES if os.path.exists(os.path.join(mp, f))][:1]
+    if not names or not os.path.exists(os.path.join(mp, names[0])):
+        st = dict(applied=False, status=None)
+        if isinstance(pf, dict) and pf.get("applied"):
+            st["note"] = f"맵은 고친 자세로 만들었는데 보정 info(input_map/{names[0] if names else FIX_FILES[0]})가 없음 — 안 쓴 프레임 자세를 그대로 씀"
         return None, st
-    dz = np.asarray(info["dz"], dtype=float)
-    st.update(applied=True, dz_p5_p95_cm=info.get("dz_p5_p95_cm"), dz_max_abs_cm=round(100 * float(np.abs(dz).max()), 1))
+    rel = f"input_map/{names[0]}"
+    try:
+        info = json.load(open(os.path.join(mp, names[0]), encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return None, dict(applied=False, status=None, note=f"{rel} 을 읽지 못함 — 자세 그대로 잼 ({e})")
+    if not isinstance(info, dict):
+        return None, dict(applied=False, status=None, note=f"{rel} 이 dict 가 아님 — 자세 그대로 잼")
+    steps = info["steps"] if isinstance(info.get("steps"), list) else [info]
+    st = dict(applied=False, status=info.get("status"), file=rel,
+              steps=[dict(kind=stray_fix.step_kind(s), applied=bool(s.get("applied")), status=s.get("status")) for s in steps if isinstance(s, dict)])
+    if not info.get("applied"):
+        return None, st
+    if os.path.exists(tp) and not (isinstance(pf, dict) and pf.get("applied")):
+        st["note"] = f"{names[0]} 은 고쳤다고 하지만 맵(build/tsdf_meta.json)은 자세를 고치지 않고 만들어짐 — 안 쓴 프레임 자세를 그대로 씀"
+        return None, st
+    bad = [why for s in steps if isinstance(s, dict) and s.get("applied") for why in [_fix_step_ok(s)] if why]
+    if bad or not all(isinstance(s, dict) for s in steps):
+        st["note"] = f"{names[0]}: {'; '.join(bad) or '단계 info 가 dict 가 아님'} — 안 쓴 프레임 자세를 그대로 씀"
+        return None, st
+    st["applied"] = True
+    for s in steps:
+        k = stray_fix.step_kind(s)
+        if not s.get("applied"):
+            continue
+        if k == "floor":
+            dz = np.asarray(s["dz"], dtype=float)
+            st.update(dz_p5_p95_cm=s.get("dz_p5_p95_cm"), dz_max_abs_cm=round(100 * float(np.abs(dz).max()), 1))
+        elif k == "xy":
+            sh = np.hypot(np.asarray(s["dx"], dtype=float), np.asarray(s["dy"], dtype=float))
+            st.update(xy_axes=s.get("axes_applied"), xy_shift_cm_p50_p95=s.get("shift_cm_p50_p95"), xy_shift_max_cm=round(100 * float(sh.max()), 1))
     return info, st
+
+
+def _fix_text(pf):
+    """결과 pose_fix 요약 → 한 줄 설명 (CLI)"""
+    parts = []
+    if pf.get("dz_p5_p95_cm") is not None:
+        parts.append(f"높이 5~95% {pf['dz_p5_p95_cm']} cm")
+    if pf.get("xy_shift_cm_p50_p95") is not None:
+        parts.append(f"수평({'·'.join(pf.get('xy_axes') or [])}) 중앙 · 95% {pf['xy_shift_cm_p50_p95']} cm")
+    return f"{pf.get('file')}: " + " · ".join(parts)
 
 
 def _depth(src, i, trunc, min_conf):
@@ -551,7 +602,7 @@ def main():
               f"위치 중앙 {ho['nearest_keyframe_cm']['median']} cm | 후보 {r['frames_candidates']}/{r['frames_candidates_all']}장 | "
               f"목표 시각과 차이 중앙 {(ho.get('target_offset_s') or {}).get('median')} 초")
     if (r.get("pose_fix") or {}).get("applied"):
-        print(f"       안 쓴 프레임 자세에 맵과 같은 높이 보정을 적용함 (input_map/floor_fix.json, 5~95% {r['pose_fix'].get('dz_p5_p95_cm')} cm)")
+        print(f"       안 쓴 프레임 자세에 맵과 같은 자세 보정을 적용함 ({_fix_text(r['pose_fix'])})")
     for k, s in r["meshes"].items():
         if k != r["mesh"]:
             print(f"       {k}: 중앙 {s.get('median_cm')} cm · 2 cm 안 {s.get('within_2cm_pct')}% · 맵에 닿음 {s.get('hit_pct')}%")
