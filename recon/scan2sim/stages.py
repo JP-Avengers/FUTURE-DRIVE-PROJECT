@@ -67,7 +67,9 @@ def s_input(ctx):
             r.fail(f"범위가 이상함 ({max(p['extent_m']):.1f} m) — 단위(m)를 확인")
         if p["floor_area_m2"] < 2:
             r.fail("바닥을 찾지 못함 — 위쪽 축 또는 스캔 범위 확인")
-        if not p["floor_flat"]:
+        if not p["floor_flat"] and p["floor_main_share_pct"] >= 75:   # 대부분은 한 높이인데 일부가 다른 높이 — 경사가 아니라 스캔이 어긋난 것 (75 는 자료 세 건으로 잡은 잠정값)
+            r.warn(f"바닥의 {100 - p['floor_main_share_pct']:.0f}% 가 다른 높이에 찍힘 (높이 퍼짐 {p['floor_spread_m']} m) — 충돌 바닥은 스캔 바닥 높이를 따라 깖. 어디가 어긋났는지는 진단 단계에서 봄")
+        elif not p["floor_flat"]:
             r.warn(f"바닥이 평평하지 않음 (높이 퍼짐 {p['floor_spread_m']} m) — 실외 · 경사로로 보고 스캔 바닥 높이 지도를 씀. 넓은 실외는 스캔 틀어짐 때문에 대상 밖")
         if p["textured"] == 0 and not sm:                       # 아이폰 원본은 원래 정점 색 — 결함이 아니므로 알리지 않음
             r.warn("사진 텍스처가 없음 — 정점 색으로만 보임")
@@ -153,7 +155,7 @@ def _free_xy(ctx, clearance, step=1):
     return xy, dist[iy, ix]
 
 
-def _defects(ctx, ground, xy, where, lay, ok, hi, top=30):
+def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, top=30):
     """진단에 걸린 자리를 '결함 후보' 목록으로 — 어디에(씬 좌표 · 입력 원본 좌표) · 얼마나 크게 · 무슨 근거로. 화면에서 그 자리를 짚어 보이기 위한 것.
     <out>/defects_before.json (보정 전) · defects_after.json (보정 뒤 다시 진단) 으로 남김. → 종류별 개수"""
     from .checks import clusters
@@ -175,6 +177,14 @@ def _defects(ctx, ground, xy, where, lay, ok, hi, top=30):
                 D.append(dict(type="low_bump", title="낮은 턱 의심", severity="warn", fixable=False, **c,
                               basis=f"보이는 바닥이 충돌 바닥보다 3~12 cm 높은 자리가 {c['extent_m']} m 이어짐 (표본 {c['samples']}개). 충돌 바닥은 평평해서 시뮬에서는 그냥 지나감",
                               action="고치지 않음 — 스캔만으로는 실제 턱인지 측정 잡음인지 가릴 수 없음. 현장 확인 후보"))
+    if two is not None:
+        for c in clusters(xy[two], n2):
+            if c["samples"] * a1 >= 0.25:
+                near = two & (np.linalg.norm(xy - c["center"], axis=1) <= c["radius_m"])
+                D.append(dict(type="floor_two_levels", title="바닥이 두 높이로 찍힘 (재촬영 후보)", severity="warn", fixable=False, **c,
+                              basis=f"빈 바닥 표본 {c['samples']}개(약 {c['samples'] * a1:.1f} m²)에서 보이는 바닥 아래 {100 * float(np.median(h2[near])):.0f} cm 쯤에 바닥 면이 한 겹 더 있음. "
+                                    "촬영 중 자세가 위아래로 틀어지면 같은 바닥이 두 높이로 찍힘",
+                              action="고치지 않음 — 어느 높이가 실제 바닥인지 스캔만으로는 알 수 없음. 다시 찍을 후보"))
     D.sort(key=lambda d: (d["severity"] != "fail", -d["samples"]))
     D = D[:top]
     tp = os.path.join(ctx["build"], "transform.json")
@@ -223,7 +233,7 @@ def s_diagnose(ctx):
     if lay["under_pct"] > 1.0:
         r.warn(f"바닥 3~30 cm 아래에 면이 있는 자리 {lay['under_3_to_30cm']}곳 ({lay['under_pct']}%)")
     vp = os.path.join(ctx["build"], "visual.ply")               # 보이는 바닥 ↔ 충돌 바닥
-    ok = hi = None
+    ok = hi = two = h2 = None
     if os.path.exists(vp):
         vis = o3d.io.read_triangle_mesh(vp)
         sc = o3d.t.geometry.RaycastingScene()
@@ -232,6 +242,17 @@ def s_diagnose(ctx):
         h = sc.cast_rays(o3d.core.Tensor(rays))["t_hit"].numpy()
         dz = 1.0 - h
         ok = np.isfinite(h) & (np.abs(dz) < 0.3)
+        # 보이는 바닥이 두 높이로 겹친 자리: 맨 위 면 바로 아래에서 다시 쏴 3~30 cm 안에 위를 향한 면이 또 있음.
+        # 촬영 중 자세가 위아래로 틀어지면 같은 바닥이 두 높이로 찍힘 (방 촬영본 11.24: 44 m 를 도는 동안 10~25 cm)
+        r2 = rays.copy()
+        r2[:, 2] = np.where(np.isfinite(h), zf + 1.0 - h - 1e-3, -1e6)
+        a2 = sc.cast_rays(o3d.core.Tensor(r2))
+        h2, n2z = a2["t_hit"].numpy(), a2["primitive_normals"].numpy()[:, 2]
+        two = ok & np.isfinite(h2) & (h2 > 0.03) & (h2 < 0.30) & (np.abs(n2z) > 0.7)
+        m["floor_two_levels"] = dict(samples=int(two.sum()), pct=round(100 * float(two.mean()), 1), gap_cm_median=round(100 * float(np.median(h2[two])), 1) if two.any() else None)
+        if two.mean() > 0.01:
+            r.warn(f"보이는 바닥이 두 높이로 겹친 자리가 빈 바닥의 {m['floor_two_levels']['pct']}% (간격 중앙 {m['floor_two_levels']['gap_cm_median']} cm) — 촬영 중 자세가 위아래로 틀어진 흔적일 수 있음. "
+                   "로봇 카메라에는 바닥이 어긋나 보이고, 벽 · 물체도 그만큼 어긋났을 수 있음")
         m.update(visible_floor_missing_pct=round(100 * float((~ok).mean()), 1),
                  visible_minus_collision_cm=dict(p5=round(100 * float(np.percentile(dz[ok], 5)), 1), median=round(100 * float(np.median(dz[ok])), 1), p95=round(100 * float(np.percentile(dz[ok], 95)), 1)) if ok.any() else None)
         if ok.any() and max(abs(np.percentile(dz[ok], 5)), abs(np.percentile(dz[ok], 95))) > 0.05:
@@ -271,9 +292,14 @@ def s_diagnose(ctx):
         p["ceiling_over_floor_pct"] = ceiling_over_floor(vp, ground, ctx["nav2"], ctx["nav2_free"])
         p["has_ceiling"] = p["ceiling_over_floor_pct"] > 30
     m["has_ceiling"] = bool(p.get("has_ceiling", False))
+    cov = float(p.get("ceiling_over_floor_pct") or 0)
+    # 그림자 설정은 천장이 일부만 찍혀도 넣음 — 천장 조각이 빛을 가려 그 아래가 어두워짐. 천장이 없는 장면에 넣어도 그림자만 없어질 뿐
+    p["shadow_fix"] = m["shadow_fix"] = bool(m["has_ceiling"] or cov >= 10)
     if m["has_ceiling"]:
         r.messages.append("천장이 있음 — 씬 루트에 그림자 설정을 넣음 (안 넣으면 Isaac Sim 화면 밝기 0)")
-    m["defects"] = _defects(ctx, ground, xy, where, lay, ok, hi)
+    elif p["shadow_fix"]:
+        r.messages.append(f"천장이 일부만 찍힘 (빈 바닥 위 {cov:.0f}%) — 그 아래가 어두워지지 않게 씬 루트에 그림자 설정을 넣음")
+    m["defects"] = _defects(ctx, ground, xy, where, lay, ok, hi, two, h2)
     r.summary = f"빈 바닥 표본 {lay['samples']:,} · 바닥 한 겹 {lay['single_pct']}% · 두 겹 {lay['double_within_3cm']}" + (f" · 보이는 바닥 없음 {m['visible_floor_missing_pct']}%" if "visible_floor_missing_pct" in m else "")
     return r
 
@@ -335,7 +361,7 @@ def s_bundle(ctx):
     shutil.copytree(os.path.dirname(ctx["usd_scene"]), usd_dst)
     root = ctx["name"][:1].upper() + ctx["name"][1:]
     vis = [p for p in ctx["prims"] if p not in ("Collision", "Boundary")]
-    shadow = "".join(f'        over "{p}"\n        {{\n            bool primvars:doNotCastShadows = 1\n        }}\n\n' for p in vis) if ctx["profile"].get("has_ceiling") else ""
+    shadow = "".join(f'        over "{p}"\n        {{\n            bool primvars:doNotCastShadows = 1\n        }}\n\n' for p in vis) if ctx["profile"].get("shadow_fix", ctx["profile"].get("has_ceiling")) else ""
     usda = f'''#usda 1.0
 (
     customLayerData = {{

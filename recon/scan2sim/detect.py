@@ -65,9 +65,14 @@ def profile_glb(path, up="y"):
     o = np.argsort(z)
     cw = np.cumsum(zw[o]) / zw.sum()
     spread = float(z[o][np.searchsorted(cw, 0.95)] - z[o][np.searchsorted(cw, 0.05)])
+    # 가장 넓은 바닥 층(±7 cm)이 바닥 근처(±35 cm) 위 향한 면에서 차지하는 비율 — 왜 평평하지 않은지 가리는 데 씀.
+    # 경사 · 굴곡이면 낮고, 평평한 바닥의 일부가 다른 높이로 찍힌 것(촬영 중 자세가 위아래로 틀어짐 — 방 촬영본 11.24: 퍼짐 0.217 m, 비율 84%)이면 높음.
+    # 어느 쪽이든 충돌 바닥은 스캔 바닥 높이를 따라 깖: 평평한 한 장으로 깔면 5~12 cm 높게 찍힌 구역이 장애물로 남아 빈 바닥이 61 → 38 m² 로 줄었음
+    near = up & (np.abs(cen[:, 2]) < 0.35)
+    share = float(area[up & (np.abs(cen[:, 2]) < 0.07)].sum() / max(area[near].sum(), 1e-9))
     ext = np.ptp(v, axis=0)
     return dict(parts=len(parts), textured=sum(p[2] is not None for p in parts), triangles=int(len(t)), extent_m=np.round(ext, 2).tolist(),
-                floor_tilt_deg=st["floor_tilt_deg"], floor_area_m2=round(fa, 1), floor_spread_m=round(spread, 3), floor_flat=bool(spread < 0.12),
+                floor_tilt_deg=st["floor_tilt_deg"], floor_area_m2=round(fa, 1), floor_spread_m=round(spread, 3), floor_main_share_pct=round(100 * share, 1), floor_flat=bool(spread < 0.12),
                 ceiling_area_m2=round(ca, 1), ceiling_over_floor_pct=round(100 * over / max(fa, 1e-6), 1), has_ceiling=bool(over / max(fa, 1e-6) > 0.3),
                 wall_top_m=round(float(np.percentile(v[:, 2], 98)), 2))
 
