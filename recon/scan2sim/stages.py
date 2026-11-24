@@ -162,7 +162,7 @@ def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, top=30):
     n2 = ctx["nav2"]
     a1 = 4 * n2["cell"] ** 2                                    # 표본 하나가 대표하는 넓이 (빈 칸 4개마다 하나)
     D = []
-    for c in clusters(np.asarray(where, float).reshape(-1, 2), n2):
+    for c in clusters(np.asarray(where, float).reshape(-1, 2), n2, join_cells=int(round(0.5 / n2["cell"]))):   # 1 m 안이면 한 결함 — 얇은 판 · 턱의 가장자리가 여러 개로 쪼개지지 않게
         D.append(dict(type="double_floor", title="충돌 바닥 두 겹", severity="fail", fixable=True, **c,
                       basis=f"이 자리의 수직 광선 {c['samples']}개가 맨 위 충돌 면 아래 3 cm 안에서 면을 하나 더 만남 (전체 간격 중앙 {lay.get('double_gap_mm_median')} mm). 겹친 충돌 면은 물리 엔진을 멈추게 할 수 있음",
                       action="충돌 메쉬에서 바닥 바로 위의 낮은 조각을 지움 (보이는 형상은 그대로)"))
@@ -175,7 +175,7 @@ def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, top=30):
         for c in clusters(xy[hi], n2):
             if c["extent_m"] >= 0.6:
                 D.append(dict(type="low_bump", title="낮은 턱 의심", severity="warn", fixable=False, **c,
-                              basis=f"보이는 바닥이 충돌 바닥보다 3~12 cm 높은 자리가 {c['extent_m']} m 이어짐 (표본 {c['samples']}개). 충돌 바닥은 평평해서 시뮬에서는 그냥 지나감",
+                              basis=f"보이는 바닥이 충돌 바닥보다 3~12 cm 높은 자리가 {c['extent_m']} m 이어짐 (표본 {c['samples']}개). 충돌 바닥에는 이 솟음이 없어 시뮬에서는 그냥 지나감",
                               action="고치지 않음 — 스캔만으로는 실제 턱인지 측정 잡음인지 가릴 수 없음. 현장 확인 후보"))
     if two is not None:
         for c in clusters(xy[two], n2):
@@ -185,6 +185,11 @@ def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, top=30):
                               basis=f"빈 바닥 표본 {c['samples']}개(약 {c['samples'] * a1:.1f} m²)에서 보이는 바닥 아래 {100 * float(np.median(h2[near])):.0f} cm 쯤에 바닥 면이 한 겹 더 있음. "
                                     "촬영 중 자세가 위아래로 틀어지면 같은 바닥이 두 높이로 찍힘",
                               action="고치지 않음 — 어느 높이가 실제 바닥인지 스캔만으로는 알 수 없음. 다시 찍을 후보"))
+    bumps = [d for d in D if d["type"] == "low_bump"]
+    for d in D:
+        if d["type"] == "double_floor" and any(np.linalg.norm(np.subtract(d["center"], b["center"])) < b["radius_m"] + d["radius_m"] for b in bumps):
+            d["near_low_bump"] = True
+            d["basis"] += ". 낮은 턱 의심 자리와 붙어 있음 — 솟은 자리의 가장자리가 바닥과 3 cm 안에서 겹친 것일 수 있음"
     D.sort(key=lambda d: (d["severity"] != "fail", -d["samples"]))
     D = D[:top]
     tp = os.path.join(ctx["build"], "transform.json")
@@ -277,7 +282,7 @@ def s_diagnose(ctx):
         m["low_bumps"] = dict(samples_over_3cm_pct=round(100 * float(hi.sum()) / max(int(ok.sum()), 1), 2), runs_over_0p6m=len(runs), longest=runs[:5])
         if runs:
             r.warn(f"보이는 바닥이 3~12 cm 솟은 자리가 0.6 m 넘게 이어진 곳 {len(runs)}군데 (가장 긴 것 {runs[0][0]} m, 위치 ({runs[0][1]}, {runs[0][2]})) — 문턱 · 턱일 수 있음. "
-                   "충돌 바닥은 평평해서 시뮬에서는 그냥 지나감. 실제 턱이면 시뮬 결과가 실제보다 좋게 나옴")
+                   "충돌 바닥에는 이 솟음이 없어 시뮬에서는 그냥 지나감. 실제 턱이면 시뮬 결과가 실제보다 좋게 나옴")
     from .checks import obstacle_match                         # 보이는 물체 ↔ 충돌 물체 (라이다가 보는 것과 Nav2 지도가 같은가)
     om = obstacle_match(ctx["usd_mesh"], ground, ctx["nav2"], ctx["nav2_free"])
     m["obstacle_match"] = om

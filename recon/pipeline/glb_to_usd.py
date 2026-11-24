@@ -581,7 +581,16 @@ def main():
         col.remove_triangles_by_mask(np.asarray(n_c)[np.asarray(tri_c)] < cc["min_cluster_tris_after"])
         col.remove_unreferenced_vertices()
     if cc.get("tris") and len(col.triangles) > cc["tris"]:
-        col = col.simplify_quadric_decimation(target_number_of_triangles=cc["tris"])
+        # 목표의 5배를 넘는 큰 메쉬(폰 LiDAR 로 방 하나 = 140만)는 먼저 3 cm 칸으로 정점을 모아 줄인 뒤 마무리 — 방 촬영본에서 이 단계가 41초였음.
+        # 5배 안쪽(지금까지 확인한 GLB 들)은 전과 같은 결과
+        pre = cc.get("pre_cluster_m", 0.03)
+        if pre and len(col.triangles) > 5 * cc["tris"]:
+            col = col.simplify_vertex_clustering(pre, contraction=o3d.geometry.SimplificationContraction.Average)
+            col.remove_degenerate_triangles()
+            col.remove_duplicated_triangles()
+            col.remove_unreferenced_vertices()
+        if len(col.triangles) > cc["tris"]:
+            col = col.simplify_quadric_decimation(target_number_of_triangles=cc["tris"])
     if ground is not None:                                      # 편 것을 다시 바닥 높이로
         cv = np.asarray(col.vertices).copy()
         cv[:, 2] += ground.height(cv[:, :2])
