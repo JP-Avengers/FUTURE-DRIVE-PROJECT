@@ -46,32 +46,189 @@ distortion_model: plumb_bob
 """
 
 
+NEED = ("rgb.mp4", "odometry.csv", "camera_matrix.csv", "depth")
+ZIP_HINT = "Stray Scanner 의 촬영 폴더 하나(rgb.mp4 · odometry.csv · camera_matrix.csv · depth/ · confidence/)를 통째로 zip 으로 묶어 올릴 것"
+MIN_ROWS, MIN_S = 100, 2.0                                      # 이보다 짧은 촬영은 맵이 안 됨
+COUNT_TOL, VIDEO_MIN = 2, 0.9                                   # 깊이 · 영상 장 수가 자세 줄 수와 다를 때: 2장까지는 주의, 영상은 90 % 밑이면 실패
+QUAT_TOL = 0.01                                                 # 자세 사원수 길이가 1 에서 벗어나도 되는 정도
+MAX_KEYFRAMES = 800                                             # 긴 촬영은 간격을 넓혀 이 수 안으로 — 맵 빌드 시간이 키프레임 수 × (바닥 + 벽 수)에 비례 (11/23 시간 측정)
+ZIP_MAX_FILES, ZIP_MAX_BYTES = 100_000, 6 * 1024 ** 3           # zip 폭탄 막기 (샘플 17 초 = 1682개 · 50 MB)
+
+
+class CaptureError(Exception):
+    """촬영 자료가 잘못됨 — 사용자에게 보일 문구. SystemExit 가 아니라서 scan2sim 의 core.run 이 단계 실패로 받아 보고서에 남김"""
+
+
 def is_stray(path):
-    return os.path.isdir(path) and all(os.path.exists(os.path.join(path, f)) for f in ("rgb.mp4", "odometry.csv", "camera_matrix.csv", "depth"))
+    return os.path.isdir(path) and all(os.path.exists(os.path.join(path, f)) for f in NEED)
+
+
+def _looks_stray(path):
+    """필수 4개 중 2개 이상 있으면 촬영 폴더로 봄 — 빠진 것은 convert 의 validate 가 무엇인지 알려 줌"""
+    return os.path.isdir(path) and sum(os.path.exists(os.path.join(path, f)) for f in NEED) >= 2
+
+
+def _zip_captures(names):
+    """zip 안의 촬영 폴더들 (필수 4개 중 2개 이상이 같은 폴더에 있음, '' = 맨 위). macOS 가 덧붙이는 __MACOSX/ · ._ 파일은 뺌"""
+    got = {}
+    for n in names:
+        p = n.replace("\\", "/").split("/")
+        if p[0] == "__MACOSX" or p[-1].startswith("._"):
+            continue
+        if len(p) >= 2 and p[-2] == "depth":
+            got.setdefault("/".join(p[:-2]), set()).add("depth")
+        elif p[-1] in NEED:
+            got.setdefault("/".join(p[:-1]), set()).add(p[-1])
+    return sorted(d for d, s in got.items() if len(s) >= 2)
 
 
 def find_capture(path, work=None):
-    """촬영 폴더를 찾음. zip 이면 work 에 풀고, 한 겹 아래에 들어 있으면 그 폴더. → 폴더 경로 또는 None"""
+    """촬영 폴더를 찾음. zip 이면 work 에 풀고, 한 겹 아래에 들어 있으면 그 폴더. → 폴더 경로 또는 None
+    촬영 폴더가 여러 개 · zip 이 깨졌거나 너무 큼 · 폴더 밖 경로 → CaptureError"""
     if os.path.isfile(path) and path.lower().endswith(".zip"):
-        if work is None:
-            with zipfile.ZipFile(path) as z:                      # 풀지 않고 판별만
-                names = z.namelist()
-            return path if any(n.endswith("odometry.csv") for n in names) and any(n.endswith("rgb.mp4") for n in names) else None
+        try:
+            with zipfile.ZipFile(path) as z:
+                info = z.infolist()
+        except (zipfile.BadZipFile, OSError) as e:
+            raise CaptureError(f"zip 파일을 열 수 없음 — 깨졌거나 올리기가 끝나지 않았을 수 있음 ({e})")
+        caps = _zip_captures([i.filename for i in info])
+        if work is None or not caps:                              # 풀지 않고 판별만
+            return path if caps else None
+        if len(caps) > 1:
+            raise CaptureError(f"zip 안에 촬영 폴더가 여러 개임 ({', '.join(c or '(맨 위)' for c in caps[:5])}{' …' if len(caps) > 5 else ''}) — 한 번에 촬영 하나만: {ZIP_HINT}")
+        size = sum(i.file_size for i in info)
+        if len(info) > ZIP_MAX_FILES or size > ZIP_MAX_BYTES:
+            raise CaptureError(f"zip 이 너무 큼 (파일 {len(info)}개 · 풀면 {size / 1024 ** 3:.2f} GB, 한도 {ZIP_MAX_FILES}개 · {ZIP_MAX_BYTES / 1024 ** 3:.0f} GB) — {ZIP_HINT}")
         os.makedirs(work, exist_ok=True)
         root = os.path.abspath(work)
+        for i in info:                                            # 폴더 밖으로 나가는 경로는 풀지 않음
+            if not os.path.abspath(os.path.join(root, i.filename)).startswith(root + os.sep):
+                raise CaptureError(f"zip 안에 폴더 밖을 가리키는 경로가 있음: {i.filename}")
         with zipfile.ZipFile(path) as z:
-            for n in z.namelist():                                # 폴더 밖으로 나가는 경로는 풀지 않음
-                if not os.path.abspath(os.path.join(root, n)).startswith(root + os.sep):
-                    raise SystemExit(f"zip 안에 폴더 밖을 가리키는 경로가 있음: {n}")
             z.extractall(root)
-        path = root
-    if is_stray(path):
+        return os.path.normpath(os.path.join(root, caps[0]))      # 이름으로 고른 폴더 (work 에 예전에 푼 것이 남아 있어도 헷갈리지 않음)
+    if _looks_stray(path):
         return path
     if os.path.isdir(path):
-        for d in sorted(os.listdir(path)):
-            if is_stray(os.path.join(path, d)):
-                return os.path.join(path, d)
+        subs = [d for d in sorted(os.listdir(path)) if not d.startswith((".", "__MACOSX")) and _looks_stray(os.path.join(path, d))]
+        if len(subs) > 1:
+            raise CaptureError(f"폴더 안에 촬영 폴더가 여러 개임 ({', '.join(subs[:5])}{' …' if len(subs) > 5 else ''}) — 촬영 하나만 넣을 것")
+        return os.path.join(path, subs[0]) if subs else None
     return None
+
+
+def _read_odometry(p):
+    """odometry.csv 를 줄마다 확인하며 읽음 → (앞 13열 배열, 각 줄의 파일 줄 번호, 오류 목록)"""
+    rows, line_no, errs = [], [], []
+    with open(p, encoding="utf-8", errors="replace") as f:
+        lines = f.read().splitlines()
+    for ln, s in enumerate(lines[1:], 2):                         # 1줄 = 머리글
+        if not s.strip():
+            continue
+        c = s.split(",")
+        if len(c) < 13:
+            errs.append(f"odometry.csv {ln}번째 줄: 열이 {len(c)}개뿐 (timestamp, frame, x, y, z, qx, qy, qz, qw, fx, fy, cx, cy 13개가 있어야 함)")
+        else:
+            try:
+                v = [float(x) for x in c[:13]]
+            except ValueError:
+                errs.append(f"odometry.csv {ln}번째 줄: 숫자가 아닌 값이 있음 ({s.strip()[:60]!r})")
+            else:
+                if np.all(np.isfinite(v)):
+                    rows.append(v)
+                    line_no.append(ln)
+                else:
+                    errs.append(f"odometry.csv {ln}번째 줄: NaN · 무한대 값이 있음")
+        if len(errs) >= 3:
+            errs.append("odometry.csv: 그 뒤 줄은 확인하지 않음 — 파일이 깨졌을 수 있음")
+            break
+    return np.array(rows, dtype=float).reshape(-1, 13), line_no, errs
+
+
+def validate(src):
+    """촬영 폴더를 변환 전에 점검 (영상은 머리 정보만 읽음, 깊이는 파일 수 · 첫 장만). → (오류 목록, 주의 목록, 정보 dict)"""
+    import cv2
+    errs, warns, info = [], [], {}
+    miss = [f + ("/" if f == "depth" else "") for f in NEED if not (os.path.isdir if f == "depth" else os.path.isfile)(os.path.join(src, f))]
+    if miss:
+        return [f"촬영 폴더에 필요한 파일이 없음: {', '.join(miss)} — {ZIP_HINT}"], warns, info
+
+    od, line_no, e = _read_odometry(os.path.join(src, "odometry.csv"))
+    errs += e
+    n = len(od)
+    info["odometry_rows"] = n
+    if not e:
+        if n == 0:
+            errs.append("odometry.csv 에 자세 줄이 없음")
+        else:
+            t = od[:, 0]
+            info["duration_s"] = round(float(t[-1] - t[0]), 2)
+            bad = np.nonzero(np.diff(t) <= 0)[0]
+            if bad.size:
+                b = bad[0] + 1
+                errs.append(f"odometry.csv {line_no[b]}번째 줄: 시각이 앞 줄보다 커지지 않음 ({t[b]:.6f} ≤ {t[b - 1]:.6f}, 이런 곳 {bad.size}군데)")
+            qn = np.linalg.norm(od[:, 5:9], axis=1)
+            bad = np.nonzero(np.abs(qn - 1) > QUAT_TOL)[0]
+            if bad.size:
+                errs.append(f"odometry.csv {line_no[bad[0]]}번째 줄: 자세 사원수(qx, qy, qz, qw)의 길이가 1 이 아님 ({qn[bad[0]]:.3f}, 이런 줄 {bad.size}개)")
+            if n < MIN_ROWS or t[-1] - t[0] < MIN_S:
+                errs.append(f"촬영이 너무 짧음 ({t[-1] - t[0]:.1f} 초 · {n}장) — {MIN_S:.0f} 초 · {MIN_ROWS}장 이상 찍어야 함")
+            if not np.array_equal(od[:, 1], np.arange(n)):
+                warns.append("odometry.csv 의 frame 번호가 0, 1, 2 … 로 이어지지 않음 — 깊이 · 영상과 줄 순서로 짝지음")
+
+    def count(sub, required):
+        d = os.path.join(src, sub)
+        k = sum(f.endswith(".png") for f in os.listdir(d)) if os.path.isdir(d) else None
+        info[f"{sub}_files"] = k
+        if not k:
+            if required:
+                errs.append(f"{sub}/ 에 깊이 파일(.png)이 없음 — 촬영이 덜 저장됐거나 폴더 일부만 묶였음 (옛 Stray Scanner 의 .npy 깊이는 못 읽음)")
+            else:
+                warns.append(f"{sub}/ 가 {'없음' if k is None else '비었음'} — 신뢰도로 거르지 않고 깊이를 모두 씀")
+        elif n and k != n:
+            m = f"{sub}/ 의 파일 {k}개와 자세(odometry.csv) {n}줄의 수가 {abs(k - n)}개 다름"
+            (warns if abs(k - n) <= COUNT_TOL else errs).append(m + ("" if abs(k - n) <= COUNT_TOL else f" — {COUNT_TOL}개까지만 받음. 촬영이 덜 저장됐거나 다른 촬영과 섞였음"))
+        return k
+    if count("depth", True):
+        p = os.path.join(src, "depth", "000000.png")
+        z = cv2.imread(p, cv2.IMREAD_UNCHANGED) if os.path.exists(p) else None
+        if z is not None and z.dtype != np.uint16:
+            errs.append(f"depth/000000.png 가 16비트 깊이(mm)가 아님 ({z.dtype})")
+    count("confidence", False)
+
+    cap = cv2.VideoCapture(os.path.join(src, "rgb.mp4"))
+    W0, H0 = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    nv, fps = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)), cap.get(cv2.CAP_PROP_FPS)
+    ok = cap.isOpened() and W0 > 0 and H0 > 0
+    cap.release()
+    if not ok:
+        errs.append("rgb.mp4 를 열 수 없음 — 깨졌거나 올리기가 끝나지 않았을 수 있음")
+    else:
+        info.update(video_size=[W0, H0], video_frames=nv, video_fps=round(fps, 2))
+        if abs(W0 / H0 - 4 / 3) > 0.01:
+            errs.append(f"rgb.mp4 크기가 4:3 이 아님 ({W0}×{H0}) — Stray Scanner 원본 영상(1920×1440)이 아니거나 다시 인코딩됨")
+        if nv <= 0:
+            warns.append("rgb.mp4 의 장 수를 머리 정보에서 읽지 못함 — 읽히는 데까지만 씀")
+        elif n and nv < n - COUNT_TOL:
+            if nv < VIDEO_MIN * n:
+                errs.append(f"rgb.mp4 가 {nv}장뿐 (자세 {n}줄의 {100 * nv / n:.0f} %) — 영상이 잘렸거나 다른 촬영의 영상임")
+            else:
+                warns.append(f"rgb.mp4 가 자세보다 {n - nv}장 적음 ({nv} / {n}) — 뒤쪽 자세는 버림")
+        elif n and nv > n + COUNT_TOL:
+            warns.append(f"rgb.mp4 가 자세보다 {nv - n}장 많음 ({nv} / {n}) — 뒤쪽 영상은 버림")
+
+    try:
+        K = np.loadtxt(os.path.join(src, "camera_matrix.csv"), delimiter=",")
+        assert K.shape == (3, 3) and np.all(np.isfinite(K))
+    except (ValueError, AssertionError):
+        errs.append("camera_matrix.csv 를 읽지 못함 — 3×3 숫자 행렬이어야 함")
+    else:
+        fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+        if fx <= 0 or fy <= 0:
+            errs.append(f"camera_matrix.csv 의 초점거리가 0 이하임 (fx {fx:g} · fy {fy:g})")
+        if ok and not (0 < cx < W0 and 0 < cy < H0):
+            errs.append(f"camera_matrix.csv 의 주점(cx {cx:g} · cy {cy:g})이 영상({W0}×{H0}) 밖임")
+    return errs, warns, info
 
 
 def _rot(q):
@@ -112,15 +269,22 @@ def select(pos, R, speed, move_m, turn_deg, max_speed, start=0):
     return keep, fast
 
 
-def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_speed=1.5, max_depth_m=5.0, skip_s=1.0, log=print):
-    """촬영 폴더 src → 맵 폴더 out. → 요약 dict (stray_meta.json 과 같음)"""
+def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_speed=1.5, max_depth_m=5.0, skip_s=1.0, log=print, max_keyframes=None):
+    """촬영 폴더 src → 맵 폴더 out. → 요약 dict (stray_meta.json 과 같음). 자료가 잘못됐으면 CaptureError (무엇이 잘못됐는지 한국어로)"""
     import cv2
+    if not src or not os.path.isdir(src):
+        raise CaptureError(f"Stray Scanner 촬영 폴더를 찾지 못함 — {ZIP_HINT}")
+    errs, warns, info = validate(src)
+    if errs:
+        raise CaptureError("촬영 자료에 문제가 있어 변환하지 않음: " + " / ".join(errs))
+    for w in warns:
+        log(f"[stray] 주의: {w}")
     od = np.genfromtxt(os.path.join(src, "odometry.csv"), delimiter=",", skip_header=1, usecols=range(13))
     K = np.loadtxt(os.path.join(src, "camera_matrix.csv"), delimiter=",")
     cap = cv2.VideoCapture(os.path.join(src, "rgb.mp4"))
     W0, H0 = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     if len(od) < 2 or W0 == 0:
-        raise SystemExit("촬영 자료를 읽지 못함 (odometry.csv 가 비었거나 rgb.mp4 를 열 수 없음)")
+        raise CaptureError("촬영 자료를 읽지 못함 (odometry.csv 가 비었거나 rgb.mp4 를 열 수 없음)")
     s = width / W0
     W, H = width, int(round(H0 * s))
     fx, fy, cx, cy = K[0, 0] * s, K[1, 1] * s, K[0, 2] * s, K[1, 2] * s
@@ -132,6 +296,13 @@ def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_spee
     speed = np.convolve(step / dt, np.ones(5) / 5, mode="same")   # 프레임 5장 평균 속력 (m/s)
     start = int(min(np.searchsorted(t, t[0] + skip_s), len(od) - 2))
     keep, fast = select(pos, R, speed, move_m, turn_deg, max_speed, start)
+    cap_n, widen = MAX_KEYFRAMES if max_keyframes is None else max_keyframes, 1.0
+    while cap_n and len(keep) > cap_n and widen < 32:              # 긴 촬영: 움직임 · 회전 간격을 같이 넓혀 상한 안으로
+        widen *= 1.2
+        keep, fast = select(pos, R, speed, move_m * widen, turn_deg * widen, max_speed, start)
+    if widen > 1:
+        warns.append(f"촬영이 길어 키프레임 간격을 {widen:.2f}배 넓힘 ({move_m * widen * 100:.0f} cm · {turn_deg * widen:.1f}°, 상한 {cap_n}장) — 처리 시간을 줄이려는 것")
+        log(f"[stray] {warns[-1]}")
     keep_set = set(keep)
 
     for sub in ("rgb", "depth", "calib"):
@@ -148,7 +319,8 @@ def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_spee
             dp = os.path.join(src, "depth", f"{i:06d}.png")
             z = cv2.imread(dp, cv2.IMREAD_UNCHANGED) if ok and os.path.exists(dp) else None
             if z is not None:
-                c = cv2.imread(os.path.join(src, "confidence", f"{i:06d}.png"), cv2.IMREAD_UNCHANGED)
+                cp = os.path.join(src, "confidence", f"{i:06d}.png")
+                c = cv2.imread(cp, cv2.IMREAD_UNCHANGED) if os.path.exists(cp) else None   # 없으면 cv2 가 장마다 경고를 찍음
                 if c is not None:
                     conf_hist += np.bincount(c.ravel(), minlength=3)[:3]
                     z = np.where(c >= min_conf, z, 0)
@@ -165,7 +337,7 @@ def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_spee
         i += 1
     cap.release()
     if len(rows) < 2:
-        raise SystemExit("쓸 수 있는 장이 2장 미만임")
+        raise CaptureError("쓸 수 있는 장이 2장 미만임 — 깊이 파일 이름(depth/000000.png …)이 자세 줄과 맞지 않거나 카메라가 거의 움직이지 않음")
     with open(os.path.join(out, "trajectory_camera_optical.txt"), "w", encoding="utf-8") as f:
         f.write("# timestamp x y z qx qy qz qw id  (카메라 광학 좌표계 -> 세계. 세계 = 아이폰이 잡은 좌표를 Z 위로 돌린 것, m)" + chr(10))
         for r in rows:
@@ -183,7 +355,9 @@ def convert(src, out, width=960, min_conf=1, move_m=0.05, turn_deg=5.0, max_spee
                 focal_variation_pct=round(float(100 * np.ptp(fl) / np.median(fl)), 2),   # 프레임마다 초점거리가 조금 다름 — 한 값(camera_matrix.csv)으로 씀
                 confidence_pct=np.round(100 * conf_hist / max(conf_hist.sum(), 1), 1).tolist(), min_confidence=min_conf,
                 valid_depth_pct=round(100 * float(np.mean(valid)), 1),
-                select=dict(move_m=move_m, turn_deg=turn_deg, max_speed_mps=max_speed, max_depth_m=max_depth_m, skip_s=skip_s))
+                select=dict(move_m=move_m, turn_deg=turn_deg, max_speed_mps=max_speed, max_depth_m=max_depth_m, skip_s=skip_s,
+                            max_keyframes=cap_n, widen=round(widen, 3), move_m_used=round(move_m * widen, 4), turn_deg_used=round(turn_deg * widen, 2)),
+                checks=dict(warnings=warns, info=info))                # validate 결과 — 주의는 보고서에 띄울 수 있게
     json.dump(meta, open(os.path.join(out, "stray_meta.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     log(f"[stray] {meta['frames_total']}장 중 {meta['keyframes']}장 고름 (빨라서 뺀 것 {fast}) | 이동 {meta['path_length_m']} m · {meta['duration_s']} s | "
         f"쓸 수 있는 깊이 {meta['valid_depth_pct']}% → {out}")
@@ -200,10 +374,13 @@ def main():
     ap.add_argument("--turn-deg", type=float, default=5.0)
     a = ap.parse_args()
     out = os.path.abspath(a.out)
-    src = find_capture(os.path.abspath(a.input), os.path.join(out, "_unzip"))
-    if not src:
-        sys.exit("Stray Scanner 촬영 폴더가 아님 (rgb.mp4 · odometry.csv · camera_matrix.csv · depth/ 가 있어야 함)")
-    convert(src, out, a.width, a.min_conf, a.move_m, a.turn_deg)
+    try:
+        src = find_capture(os.path.abspath(a.input), os.path.join(out, "_unzip"))
+        if not src:
+            sys.exit("Stray Scanner 촬영 폴더가 아님 (rgb.mp4 · odometry.csv · camera_matrix.csv · depth/ 가 있어야 함)")
+        convert(src, out, a.width, a.min_conf, a.move_m, a.turn_deg)
+    except CaptureError as e:
+        sys.exit(f"[stray] 실패: {e}")
 
 
 if __name__ == "__main__":
