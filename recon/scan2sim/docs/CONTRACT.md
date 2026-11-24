@@ -682,7 +682,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `depth/` · `confidence/` 장 수 | 자세 줄 수와 3장 넘게 다름 | 1~2장 다름 (`COUNT_TOL`), `confidence/` 없음(신뢰도로 거르지 않음) |
 | `rgb.mp4` | 열 수 없음 · 장 수가 자세 줄 수의 90% 미만 (`VIDEO_MIN`) · 4:3 이 아님 | — |
 | 내부 파라미터 | `camera_matrix.csv` 가 3×3 숫자가 아님 · fx · fy ≤ 0 · 주점이 영상 밖 | — |
-| 키프레임 수 | — | 800장을 넘어 간격을 넓힘 (6-2) |
+| 키프레임 수 | — | 2,000장을 넘어 간격을 넓힘 (6-2) |
 
 - 주의는 `stray_meta.json` 의 `checks.warnings` 에 남고 (6-3), `input` 단계의 주의로도 나간다 (R4, C `620a2b0`).
 
@@ -690,15 +690,15 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 | 항목 | 값 | 뜻 |
 |---|---|---|
-| `width` | 960 | 키프레임 가로 (색 1920×1440 → 960×720). 내부 파라미터는 `camera_matrix.csv` 값에 같은 비율을 곱함 |
+| `width` | 없음 = 깊이 원래 크기 | 키프레임을 깊이 원래 크기(아이폰 256×192)로 저장. 색은 1920 → 960 → 256 두 번에 나눠 줄임. 내부 파라미터는 `camera_matrix.csv` 를 화소 중심 기준으로 줄임: `c' = (c + 0.5)·s − 0.5`, `f' = f·s` (`stray_quality._intr` 와 같음). `--width 960` 을 주면 전처럼 960×720 (깊이는 최근접으로 키움) — 사진 텍스처를 구울 때만 필요. 11/24 B 측정: 960 과 메쉬 차이 중앙 0.4 mm, 합치기 약 2배 빠름 |
 | `min_conf` | 1 | 신뢰도(0 · 1 · 2) 1 미만 깊이는 0 으로 (`stray.py:326`) |
 | `max_depth_m` | 5.0 | 5 m 넘는 깊이는 0 으로 (`stray.py:327`) |
 | `move_m` · `turn_deg` | 0.05 · 5.0 | 앞에 고른 장에서 5 cm 넘게 움직였거나 5° 넘게 돌았을 때 키프레임으로 고름 (`stray.select`, `stray.py:256-269`) |
-| `max_keyframes` | 800 (`MAX_KEYFRAMES`, `stray.py:54`) | 고른 장이 이보다 많으면 `move_m` · `turn_deg` 를 함께 1.2배씩 넓혀 다시 고름 (최대 32배, `stray.py:299-305`). 넓히면 `checks.warnings` 에 주의. `room`: 6,611장 → 681장 (1.73배, 9 cm · 8.6°) |
+| `max_keyframes` | 2000 (`MAX_KEYFRAMES`) | 고른 장이 이보다 많으면 `move_m` · `turn_deg` 를 함께 넓혀 상한에 가장 가깝게 다시 고름 (이분 탐색, 최대 32배). 넓히면 `checks.warnings` 에 주의. 11/24 전에는 800장 · 1.2배씩이었음 |
 | `max_speed` | 1.5 m/s | 5프레임 평균 속력(`stray.py:296`)이 이보다 빠른 장은 뺌 (흐림) |
 | `skip_s` | 1.0 | 촬영 첫 1초는 건너뜀 (시작 직후 자세가 튐, `stray.py:297`) |
 | 색 저장 | JPEG 품질 92, 영역 평균 축소 | (`stray.py:330`) |
-| 깊이 저장 | 16비트 PNG(mm), 색 크기로 **최근접** 확대 | 섞으면 가장자리에 없는 점이 생김 (`stray.py:331`) |
+| 깊이 저장 | 16비트 PNG(mm) | 기본은 원래 크기 그대로. `--width` 로 키울 때만 **최근접** 확대 (섞으면 가장자리에 없는 점이 생김) |
 | 자세 | `Y_UP_TO_Z_UP · T_stray` | 1-3 (`stray.py:335`) |
 
 - 형상 메쉬 (`detect.config_tsdf`, `detect.py:130-137` → `pipeline/tsdf.py`, `stages.py:53-58`)
@@ -723,7 +723,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `extent_m` | [3] 수 | 고른 카메라 위치의 x · y · z 범위 (입력 좌표, Z 위) |
 | `camera_height_range_m` | [2] 수 | 고른 카메라 위치의 z 최소 · 최대 (입력 좌표. 바닥 기준이 아님) |
 | `speed_median_mps` · `speed_max_mps` | 수 | 5프레임 평균 속력의 중앙값 · 최댓값 |
-| `color_size` · `depth_size_in` · `keyframe_size` | [가로, 세로] | 원본 색 · 원본 깊이 (고정 [256, 192]) · 저장한 키프레임 |
+| `color_size` · `depth_size_in` · `keyframe_size` | [가로, 세로] | 원본 색 · 원본 깊이(첫 깊이 파일에서 잼) · 저장한 키프레임 (기본은 깊이와 같음) |
 | `intrinsics` | {fx, fy, cx, cy} | 키프레임 크기 기준 |
 | `focal_variation_pct` | 수 | 프레임별 초점거리의 변동 폭 (%) — 한 값으로 씀 |
 | `confidence_pct` | [3] 수 | 고른 장의 신뢰도 0 · 1 · 2 비율 (%) |
@@ -738,11 +738,11 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 {"source": "6bc1ae021f", "format": "stray_scanner", "frames_total": 6611, "frames_read": 6610, "keyframes": 681,
  "dropped_fast": 3, "duration_s": 118.3, "path_length_m": 43.83, "extent_m": [9.41, 5.29, 0.89],
  "camera_height_range_m": [-0.4, 0.5], "speed_median_mps": 0.37, "speed_max_mps": 3.41,
- "color_size": [1920, 1440], "depth_size_in": [256, 192], "keyframe_size": [960, 720],
+ "color_size": [1920, 1440], "depth_size_in": [256, 192], "keyframe_size": [960, 720],   ← 11/24 전 예시. 지금 기본은 [256, 192]
  "intrinsics": {"fx": 664.972, "fy": 664.972, "cx": 479.022, "cy": 362.739}, "focal_variation_pct": 1.56,
  "confidence_pct": [29.0, 26.7, 44.3], "min_confidence": 1, "valid_depth_pct": 66.0,
  "select": {"move_m": 0.05, "turn_deg": 5.0, "max_speed_mps": 1.5, "max_depth_m": 5.0, "skip_s": 1.0,
-            "max_keyframes": 800, "widen": 1.728, "move_m_used": 0.0864, "turn_deg_used": 8.64},
+            "max_keyframes": 800, "widen": 1.728,   ← 11/24 전 예시. 지금은 상한 2,000 이라 이 촬영본은 넓히지 않고 1,133장 "move_m_used": 0.0864, "turn_deg_used": 8.64},
  "checks": {"warnings": ["촬영이 길어 키프레임 간격을 1.73배 넓힘 (9 cm · 8.6°, 상한 800장) — 처리 시간을 줄이려는 것"],
             "info": {"odometry_rows": 6611, "duration_s": 118.33, "…": "…"}}}
 ```
@@ -778,7 +778,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | 결함 수 | 파일마다 최대 30 | `stages.py:158` |
 | 화면 폴링 | 1.5초 | `index.html:202` |
 | 화면용 GLB | 정점 색 삼각형 30만 · 텍스처 긴 변 2048 화소 | `preview.py:46` |
-| Stray 키프레임 | 최대 800장 (넘으면 간격을 넓힘) | `stray.py:54` |
+| Stray 키프레임 | 최대 2,000장 (넘으면 간격을 넓힘) | `stray.MAX_KEYFRAMES` |
 | Stray zip | 파일 10만 개 · 풀면 6 GB | `stray.py:55` |
 | 엔진 쪽 실패 기준 (참고) | GLB · Stray 범위 1 m 미만 · 300 m 초과, 바닥 2 m² 미만 · 빈 바닥 4 m² 미만 · 진단 표본 50개 미만 | `stages.py:66-69`, `:142-143`, `:221-222` |
 | 처리 시간 제한 | 없음 (엔진이 끝날 때까지 기다림) | `web/server.py:146` |
