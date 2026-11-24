@@ -40,6 +40,7 @@ MAX_BYTES = 4 * 1024 ** 3
 app = Flask(__name__, static_folder=os.path.join(HERE, "static"), static_url_path="/static")
 CFG = dict(jobs=os.path.expanduser("~/scan2sim_jobs"), code=None)
 JOBS, LOCK, Q = {}, threading.Lock(), queue.Queue()
+PREVIEW_LOCK = threading.Lock()
 
 
 def jdir(jid, *parts):
@@ -197,55 +198,21 @@ def status(jid):
 
 @app.get("/api/jobs/<jid>/preview.glb")
 def preview(jid):
-    """보이는 형상을 화면용 GLB 로 — USD 의 보이는 prim 을 그대로 옮김 (사진 텍스처 · 정점 색 포함, 충돌 · 경계벽은 뺌).
-    USD 가 없으면 build/visual.ply (색 없음). 화면은 Y 가 위라서 돌려 둠 — 화면 (x, y, z) = 씬 (x, z, −y)."""
+    """화면용 GLB — 엔진이 묶음 단계 끝에 줄여서 써 둔 <out>/preview.glb 를 그대로 줌 (scan2sim/preview.py · 씬 → 화면 좌표 변환도 거기서 함).
+    파일이 없거나 USD 보다 오래됐으면(preview.py 가 생기기 전에 돌린 작업 폴더) 같은 엔진 함수로 한 번 만들어 둠. USD 도 없으면 404."""
     job(jid)
     out = jdir(jid, "out")
     dst = os.path.join(out, "preview.glb")
     usd = sorted(glob.glob(os.path.join(out, "build", "usd", "*_mesh.usdc")))
-    src = usd[0] if usd else os.path.join(out, "build", "visual.ply")
-    if not os.path.exists(src):
+    with PREVIEW_LOCK:                                          # 같은 파일을 두 요청이 함께 만들지 않게
+        if usd and (not os.path.exists(dst) or os.path.getmtime(dst) < os.path.getmtime(usd[0])):
+            try:
+                from .. import preview as engine_preview
+                engine_preview.write(usd[0], dst)
+            except Exception as e:
+                app.logger.warning("preview.glb 를 만들지 못함 (%s): %s: %s", jid, type(e).__name__, e)
+    if not os.path.exists(dst):
         abort(404)
-    if not os.path.exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src):
-        import numpy as np
-        import trimesh
-        sc = trimesh.Scene()
-        if usd:
-            from PIL import Image
-            from pxr import Usd, UsdGeom, UsdPhysics, UsdShade
-            st = Usd.Stage.Open(src)
-            for p in st.Traverse():
-                if not p.IsA(UsdGeom.Mesh) or p.HasAPI(UsdPhysics.CollisionAPI) or UsdGeom.Imageable(p).ComputeVisibility() == "invisible":
-                    continue
-                m = UsdGeom.Mesh(p)
-                v = np.array(m.GetPointsAttr().Get(), float)
-                f = np.array(m.GetFaceVertexIndicesAttr().Get()).reshape(-1, 3)
-                if len(f) == 0:
-                    continue
-                pv, tex = UsdGeom.PrimvarsAPI(p), None
-                mat = UsdShade.MaterialBindingAPI(p).ComputeBoundMaterial()[0]
-                if mat:
-                    for c in Usd.PrimRange(mat.GetPrim()):
-                        inp = UsdShade.Shader(c).GetInput("file") if c.IsA(UsdShade.Shader) else None
-                        if inp and inp.Get():
-                            tp = os.path.normpath(os.path.join(os.path.dirname(src), inp.Get().path))
-                            tex = tp if os.path.exists(tp) else None
-                uv, dc = pv.GetPrimvar("st"), pv.GetPrimvar("displayColor")
-                if tex and uv and uv.GetInterpolation() == "vertex":
-                    vis = trimesh.visual.TextureVisuals(uv=np.array(uv.Get(), float), material=trimesh.visual.material.PBRMaterial(baseColorTexture=Image.open(tex), metallicFactor=0.0, roughnessFactor=1.0))
-                elif dc and dc.GetInterpolation() == "vertex" and len(dc.Get() or []) == len(v):
-                    vis = trimesh.visual.ColorVisuals(vertex_colors=(np.clip(np.array(dc.Get(), float), 0, 1) * 255).astype(np.uint8))   # displayColor 는 선형 값 — glTF 정점 색도 선형
-                else:
-                    vis = None
-                sc.add_geometry(trimesh.Trimesh(np.c_[v[:, 0], v[:, 2], -v[:, 1]], f, visual=vis, process=False), geom_name=p.GetName())
-        else:
-            import open3d as o3d
-            m = o3d.io.read_triangle_mesh(src)
-            v = np.asarray(m.vertices)
-            sc.add_geometry(trimesh.Trimesh(np.c_[v[:, 0], v[:, 2], -v[:, 1]], np.asarray(m.triangles), process=False), geom_name="Visual")
-        tmp = dst + ".tmp"
-        open(tmp, "wb").write(sc.export(file_type="glb"))
-        os.replace(tmp, dst)
     return send_file(dst, mimetype="model/gltf-binary", max_age=0)
 
 
