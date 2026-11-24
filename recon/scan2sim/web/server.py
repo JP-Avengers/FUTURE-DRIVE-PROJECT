@@ -144,7 +144,9 @@ def worker():
             with open(os.path.join(CFG["jobs"], jid, "run.txt"), "w", encoding="utf-8") as log:
                 rc = subprocess.run([sys.executable, "-u", "-m", "scan2sim", os.path.join(CFG["jobs"], jid, "input", j["file"]), "--out", out], cwd=RECON, stdout=log, stderr=subprocess.STDOUT,
                                     env=dict(os.environ, PYTHONIOENCODING="utf-8")).returncode
-            j["status"] = "done" if os.path.exists(os.path.join(out, "report.md")) else "failed"
+            # report 단계는 앞 단계가 실패해도 report.md 를 쓰므로, 종료 코드와 단계 결과도 봄 (엔진은 실패 단계가 있으면 1 로 끝남)
+            bad = rc != 0 or any(d.get("status") == "fail" for d in stage_results(out).values())
+            j["status"] = "done" if os.path.exists(os.path.join(out, "report.md")) and not bad else "failed"
             j["exit_code"] = rc
         except Exception as e:
             j["status"], j["error"] = "failed", f"{type(e).__name__}: {e}"
