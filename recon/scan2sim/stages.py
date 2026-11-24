@@ -417,6 +417,12 @@ over "World"
     r = Result(PASS, f"묶음 파일 {len(files)}개 · 시작 ({pose['x']}, {pose['y']}) {pose['yaw_deg']}° · 여유 {pose['clearance_m']} m", metrics=dict(start_pose=pose, files=len(files), shadow_overrides=len(vis) if shadow else 0))
     if d[k] < 0.5:
         r.warn(f"가장 넓은 자리의 여유가 {d[k]:.2f} m 뿐임 — 로봇이 다니기 좁음")
+    try:                                                        # 화면용 GLB: 엔진이 줄여서 써 두고 서버는 주기만 함 (D 11.24). 못 만들어도 묶음은 그대로
+        from . import preview
+        r.metrics["preview"] = preview.write(ctx["usd_mesh"], ctx.path("preview.glb"))
+    except Exception as e:
+        r.metrics["preview"] = dict(error=f"{type(e).__name__}: {e}")
+        r.messages.append(f"화면용 파일(preview.glb)을 만들지 못함: {type(e).__name__}: {e}")
     return r
 
 
