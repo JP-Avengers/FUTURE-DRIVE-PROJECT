@@ -34,12 +34,12 @@ def safe_name(path):
     return ("m_" + s if s[0].isdigit() else s).lower()
 
 
-def profile_glb(path):
-    """GLB 를 읽어 장면 형태를 잰다 (수평을 맞춘 뒤): 범위 · 바닥 기울기와 평평함 · 천장 덮음. → dict"""
+def profile_glb(path, up="y"):
+    """GLB(또는 형상 메쉬 ply)를 읽어 장면 형태를 잰다 (수평을 맞춘 뒤): 범위 · 바닥 기울기와 평평함 · 천장 덮음. up = 파일에서 위쪽 축. → dict"""
     import sys
     sys.path.insert(0, os.path.join(RECON, "pipeline"))
     from glb_to_usd import find_floor, load_parts, merged
-    parts = load_parts(path)
+    parts = load_parts(path, up)
     w = merged(parts)
     M, st = find_floor(w, {})
     w.transform(M)
@@ -87,11 +87,11 @@ def profile_map_folder(path):
                 has_validation=os.path.isdir(os.path.join(path, "validation")))
 
 
-def config_glb(path, name, build_dir, prof):
+def config_glb(path, name, build_dir, prof, up="y"):
     """GLB 용 빌드 설정(yaml 문자열). 실내 · 평평한 바닥이 기본, 바닥이 평평하지 않으면 스캔 바닥 높이 지도."""
     L = [f"# scan2sim 이 자동으로 만든 설정 — 입력 {os.path.basename(path)}",
          f"base: {os.path.join(TEMPLATES, 'polycam_glb.yaml').replace(os.sep, '/')}", f"name: {name}", f"out: {build_dir.replace(os.sep, '/')}",
-         "input:", f"  root: {os.path.dirname(os.path.abspath(path)).replace(os.sep, '/')}", f"  mesh: {os.path.basename(path)}",
+         "input:", f"  root: {os.path.dirname(os.path.abspath(path)).replace(os.sep, '/')}", f"  mesh: {os.path.basename(path)}"] + ([f"  up: {up}"] if up != "y" else []) + [
          "orient:", "  origin: center",
          "collision:", "  tris: 100000", "  floor_margin_m: 0.0"]
     if prof["floor_flat"]:
@@ -105,7 +105,7 @@ def config_glb(path, name, build_dir, prof):
     return "\n".join(L) + "\n"
 
 
-def config_map_folder(path, name, build_dir, prof, stray=False):
+def config_map_folder(path, name, build_dir, prof):
     """B 형식 맵 폴더용 빌드 설정(yaml 문자열) — 실내 틀 + 찾은 묶음. 벽 처리 값은 복도에서 맞춘 것(다른 실내에서는 확인 안 됨)."""
     root = os.path.abspath(path).replace(os.sep, "/")
     L = [f"# scan2sim 이 자동으로 만든 설정 — 입력 {os.path.basename(os.path.normpath(path))}",
@@ -113,8 +113,6 @@ def config_map_folder(path, name, build_dir, prof, stray=False):
          "input:", f"  root: {root}", "  keyframes: keyframes", "  poses: trajectory_camera_optical.txt"]
     if prof["geometry_mesh"]:
         L += ["geometry:", f"  mesh: {prof['geometry_mesh']}"]
-    if stray:                                                   # 아이폰 LiDAR: 깊이가 256×192 라 2 cm 칸 · 3 m 까지 (잠정값 — 복도 촬영으로 맞춰야 함)
-        L += ["tsdf:", "  voxel: 0.02", "  depth_trunc: 3.0"]
     if prof["extra_sets"]:
         L += ["colorize:", "  extra_inputs:"]
         for nm in prof["extra_sets"]:
@@ -122,3 +120,13 @@ def config_map_folder(path, name, build_dir, prof, stray=False):
     L += ["walls:", "  dist_m: 0.08", "  min_normal_cos: 0.5", "  sheet: true", "  min_area_m2: 3.0", "  depth_tol_m: 0.08",
           "usd:", "  double_sided: [Visual, Wall0, Wall1, Wall2, Wall3, Wall4, Wall5, Wall6, Wall7, Wall8, Wall9, Wall10, Wall11]"]
     return "\n".join(L) + "\n"
+
+
+def config_tsdf(map_root, name, build_dir):
+    """아이폰 원본(맵 폴더 형식으로 바꾼 것)의 깊이를 합쳐 형상 메쉬를 만드는 설정 (pipeline/tsdf.py → <build>/mesh_raw.ply · tsdf_meta.json).
+    깊이가 256×192 라 칸 2 cm · 3 m 까지 (샘플 두 건으로 잡은 잠정값)."""
+    L = [f"# scan2sim 이 자동으로 만든 설정 — 아이폰 원본의 형상 메쉬", f"name: {name}", f"out: {build_dir.replace(os.sep, '/')}",
+         "input:", "  format: rtabmap_keyframes", f"  root: {os.path.abspath(map_root).replace(os.sep, '/')}", "  keyframes: keyframes",
+         "  poses: trajectory_camera_optical.txt", "  depth_scale: 1000.0",
+         "tsdf:", "  frame_step: 1", "  voxel: 0.02", "  sdf_trunc_voxels: 4", "  depth_trunc: 3.0", "  far_depth_trunc: 0"]
+    return chr(10).join(L) + chr(10)

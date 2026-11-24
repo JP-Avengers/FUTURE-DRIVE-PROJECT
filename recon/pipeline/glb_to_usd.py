@@ -619,7 +619,7 @@ def main():
 
     o3d.io.write_triangle_mesh(os.path.join(out, "visual.ply"), whole)
     T = M @ (Y_UP_TO_Z_UP if inp.get("up", "y") == "y" else np.eye(4)) @ np.diag([float(inp.get("scale", 1.0))] * 3 + [1.0])
-    json.dump(dict(T_input_to_scene=T.tolist(), note="GLB 원본 좌표 (glTF Y-up) → 씬 (Z-up, 바닥 z 0, m)"),
+    json.dump(dict(T_input_to_scene=T.tolist(), note=("GLB 원본 좌표 (glTF Y-up)" if inp.get("up", "y") == "y" else "입력 메쉬 좌표 (Z-up 그대로)") + " → 씬 (Z-up, 바닥 z 0, m)"),
               open(os.path.join(out, "transform.json"), "w", encoding="utf-8"), indent=1)
     info = dict(source="glb", name=cfg["name"], built=time.strftime("%Y-%m-%d"))
     scene_path, mesh_path = write_scene(usd_dir, cfg["name"], visuals, colliders, info=info,

@@ -37,8 +37,12 @@ def s_input(ctx):
     if k == "bag":
         return Result(FAIL, "녹화 파일(bag) 입력은 아직 연결되지 않음", messages=["녹화 파일 → 맵 폴더는 B 단계의 자리 (한 명령 스크립트가 나오면 여기에 붙임). 지금은 맵 폴더나 GLB 를 넣을 것"])
     build = ctx.path("build", ".keep")[:-len(".keep")].rstrip("/\\")
-    sm = None
-    if k == "stray":                                            # 아이폰 원본 → 맵 폴더 형식으로 바꾼 뒤 맵 폴더 경로를 그대로 탐
+    sm, path, up = None, None, "y"
+    if k == "stray":
+        # 아이폰 원본 → 맵 폴더 형식(키프레임 + 자세) → 깊이를 합친 형상 메쉬(build/mesh_raw.ply) → 그 뒤는 GLB 와 같은 길.
+        # 맵 폴더 경로(build_usd.py)로 보내지 않는 이유: 그 경로는 바닥을 새로 깔아서 스캔에 있던 바닥 결함(겹침 · 구멍 · 낮은 턱)이
+        # 진단에 남지 않음 (B 통합 기록 R8, 가상의 방에서 3개 중 0개). 스캔 형상을 그대로 두는 GLB 경로는 3개 모두 잡음.
+        # 메쉬 좌표는 맵 폴더 세계(Z 위) 그대로 — T_input_to_scene 의 입력 좌표가 전과 같게 (docs/CONTRACT.md 1장)
         from . import stray
         mp = ctx.path("input_map", ".keep")[:-len(".keep")].rstrip("/\\")
         mj = os.path.join(mp, "stray_meta.json")
@@ -46,29 +50,27 @@ def s_input(ctx):
             sm = json.load(open(mj, encoding="utf-8"))
         else:
             sm = stray.convert(stray.find_capture(ctx["input"], os.path.join(mp, "_unzip")), mp)
-        ctx["source"], ctx["map_root"], ctx["kind"], k = "stray", mp, "map_folder", "map_folder"
+        path = os.path.join(build, "mesh_raw.ply")
+        if not (ctx.get("resume") and os.path.exists(path)):
+            tc = os.path.join(build, "tsdf_config.yaml")
+            open(tc, "w", encoding="utf-8", newline=chr(10)).write(detect.config_tsdf(mp, ctx["name"], build))
+            if _call([sys.executable, os.path.join(PIPE, "tsdf.py"), "--config", tc, "--out", build], ctx.path("log.txt")) or not os.path.exists(path):
+                return Result(FAIL, "촬영본에서 형상을 만들지 못함", metrics=dict(stray=sm), messages=["자세한 내용: log.txt"])
+        ctx["source"], ctx["map_root"], ctx["kind"], k, up = "stray", mp, "glb", "glb", "z"
     if k == "glb":
-        path = ctx["input"] if os.path.isfile(ctx["input"]) else [os.path.join(ctx["input"], f) for f in os.listdir(ctx["input"]) if f.lower().endswith(".glb")][0]
-        p = detect.profile_glb(path)
-        cfg = detect.config_glb(path, ctx["name"], build, p)
-        r = Result(PASS, f"GLB · {'천장 있음' if p['has_ceiling'] else '천장 없음'} · 바닥 {'평평' if p['floor_flat'] else '평평하지 않음'} · 범위 {p['extent_m'][0]:.0f}×{p['extent_m'][1]:.0f} m", metrics=p)
+        if path is None:
+            path = ctx["input"] if os.path.isfile(ctx["input"]) else [os.path.join(ctx["input"], f) for f in os.listdir(ctx["input"]) if f.lower().endswith(".glb")][0]
+        p = detect.profile_glb(path, up)
+        cfg = detect.config_glb(path, ctx["name"], build, p, up)
+        r = Result(PASS, ("아이폰 원본 → 형상 메쉬 · " if sm else "GLB · ") + f"{'천장 있음' if p['has_ceiling'] else '천장 없음'} · 바닥 {'평평' if p['floor_flat'] else '평평하지 않음'} · 범위 {p['extent_m'][0]:.0f}×{p['extent_m'][1]:.0f} m", metrics=p)
         if max(p["extent_m"]) > 300 or max(p["extent_m"]) < 1:
             r.fail(f"범위가 이상함 ({max(p['extent_m']):.1f} m) — 단위(m)를 확인")
         if p["floor_area_m2"] < 2:
             r.fail("바닥을 찾지 못함 — 위쪽 축 또는 스캔 범위 확인")
         if not p["floor_flat"]:
             r.warn(f"바닥이 평평하지 않음 (높이 퍼짐 {p['floor_spread_m']} m) — 실외 · 경사로로 보고 스캔 바닥 높이 지도를 씀. 넓은 실외는 스캔 틀어짐 때문에 대상 밖")
-        if p["textured"] == 0:
+        if p["textured"] == 0 and not sm:                       # 아이폰 원본은 원래 정점 색 — 결함이 아니므로 알리지 않음
             r.warn("사진 텍스처가 없음 — 정점 색으로만 보임")
-    else:
-        root = ctx.get("map_root") or ctx["input"]
-        p = detect.profile_map_folder(root)
-        cfg = detect.config_map_folder(root, ctx["name"], build, p, stray=sm is not None)
-        r = Result(PASS, ("아이폰 원본 → " if sm else "") + f"맵 폴더 · 주 묶음 {p['main_keyframes']}장 · 보조 묶음 {len(p['extra_sets'])}개 · 형상 메쉬 {'있음' if p['geometry_mesh'] else '없음'}", metrics=p)
-        if p["main_keyframes"] == 0 or p["main_poses"] == 0:
-            r.fail("주 묶음의 키프레임 또는 자세가 없음")
-        elif p["main_keyframes"] < 0.95 * p["main_poses"] or p["main_poses"] < 0.95 * p["main_keyframes"]:
-            r.warn(f"키프레임 {p['main_keyframes']}장과 자세 {p['main_poses']}줄의 수가 다름 — 범위가 빠졌을 수 있음")
         if sm:
             p["stray"] = sm
             if sm["path_length_m"] < 5 or max(sm["extent_m"][:2]) < 3:
@@ -78,6 +80,15 @@ def s_input(ctx):
             if sm["speed_median_mps"] > 0.8:
                 r.warn(f"촬영 속도가 빠름 (중앙값 {sm['speed_median_mps']} m/s) — 사진이 흐리고 깊이가 성김")
             r.warn("아이폰 자세에는 되돌아온 자리를 맞추는 보정이 없음 — 긴 구간은 틀어질 수 있음 (얼마나인지는 재지 않음)")
+    else:
+        root = ctx.get("map_root") or ctx["input"]
+        p = detect.profile_map_folder(root)
+        cfg = detect.config_map_folder(root, ctx["name"], build, p)
+        r = Result(PASS, f"맵 폴더 · 주 묶음 {p['main_keyframes']}장 · 보조 묶음 {len(p['extra_sets'])}개 · 형상 메쉬 {'있음' if p['geometry_mesh'] else '없음'}", metrics=p)
+        if p["main_keyframes"] == 0 or p["main_poses"] == 0:
+            r.fail("주 묶음의 키프레임 또는 자세가 없음")
+        elif p["main_keyframes"] < 0.95 * p["main_poses"] or p["main_poses"] < 0.95 * p["main_keyframes"]:
+            r.warn(f"키프레임 {p['main_keyframes']}장과 자세 {p['main_poses']}줄의 수가 다름 — 범위가 빠졌을 수 있음")
     ctx["profile"] = p
     ctx["config"] = ctx.path("build", "auto_config.yaml")
     open(ctx["config"], "w", encoding="utf-8", newline="\n").write(cfg)
