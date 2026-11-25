@@ -36,7 +36,8 @@
       맵(stray.py)은 camera_matrix.csv 한 값으로 만들었음 — --k-source camera_matrix 로 맵과 같은 값을 쓸 수 있음.
       stray1(프레임마다 초점거리가 최대 1.5% 다름)에서 중앙 차이 1.23 → 1.21 cm 로 거의 같음. 색 영상 크기 → 깊이 크기로 줄임 (화소 중심 기준)
     - 자세: odometry.csv (카메라 광학 → 세계, y 위) 에 stray.py 와 같은 Y_UP_TO_Z_UP 을 곱함 = 맵 폴더 세계 = mesh_raw.ply 좌표.
-      visual.ply(최종 보이는 메쉬)는 씬 좌표라 build/transform.json 의 T_input_to_scene 을 한 번 더 곱해 따로 잼
+      visual.ply(최종 보이는 메쉬)는 씬 좌표라 build/transform.json 의 T_input_to_scene 을 한 번 더 곱해 따로 잼.
+      진단이 visual.ply 로 만든 광선 구조를 measure(visual_scene=…) 로 넘기면 (같은 파일 · 같은 mtime 일 때만) 그것으로 잼 — 결과 같음
     - 결과: 차이(잰 깊이 − 맵 깊이, 광축 방향 z) 절댓값의 중앙 · 90% · 2 cm 안 · 5 cm 안, 잰 깊이 중 맵에 닿은 비율, 프레임별 중앙값
     - 판정: 중앙 3 cm 이하 통과 · 3 cm 넘으면 주의 · 10 cm 넘으면 실패(자세 · 좌표가 어긋난 것). 맵에 닿은 비율 70% 미만도 주의.
       쓸 수 있는 깊이가 있는 안 쓴 프레임이 하나도 없으면 실패 (잴 수 없음)
@@ -351,6 +352,18 @@ def _scene(mesh):
     return sc
 
 
+def _given_scene(given, path):
+    """넘겨받은 광선 구조 (파일 경로, mtime, RaycastingScene — stages 진단의 ctx["_vis_scene"] 모양)가 path 와 같은 파일 ·
+    같은 mtime 으로 만든 것이면 그 구조, 아니면 None (다른 파일 · 그 뒤에 다시 쓴 파일 · 모양이 다름)"""
+    if not given:
+        return None
+    try:
+        p, mt, sc = given
+        return sc if os.path.samefile(p, path) and mt == os.path.getmtime(path) else None
+    except (OSError, TypeError, ValueError):
+        return None
+
+
 def _cast(sc, rays, nr):
     """광선 → 맵 깊이 (광축 방향 z). 안 닿으면 inf."""
     import open3d as o3d
@@ -452,10 +465,13 @@ def verdict(st):
 _MAIN_KEYS = ("hit_pct", "median_cm", "p90_cm", "within_2cm_pct", "within_5cm_pct", "signed_median_cm")
 
 
-def measure(out_dir, n=30, seed=0, capture=None, min_conf=None, write=True, min_gap_s=MIN_GAP_S, k_source="odometry"):
+def measure(out_dir, n=30, seed=0, capture=None, min_conf=None, write=True, min_gap_s=MIN_GAP_S, k_source="odometry", visual_scene=None):
     """scan2sim 결과 폴더(input_map/ · build/ 가 있는 곳) → 복원 정확도 dict. write 면 input_map/stray_quality.json 에도 합쳐 씀.
     min_conf=None → 맵을 만들 때와 같은 신뢰도 기준. min_gap_s = 안 쓴 프레임이 가장 가까운 키프레임에서 떨어져야 할 시간(초).
-    k_source = 내부 파라미터 (odometry: 프레임별 · camera_matrix: 맵을 만들 때와 같은 한 값)"""
+    k_source = 내부 파라미터 (odometry: 프레임별 · camera_matrix: 맵을 만들 때와 같은 한 값).
+    visual_scene = build/visual.ply 하나만 넣어 만든 광선 구조 (경로, mtime, RaycastingScene) — stages 진단의 ctx["_vis_scene"] 그대로.
+      같은 파일 · 같은 mtime 이면 visual 을 그 구조로 잼 (파일을 다시 읽고 구조를 새로 만들지 않음 — 결과는 같음). 아니면 · None 이면 전과 같이.
+      주 수치(mesh_raw)는 늘 새로 만듦 — visual.ply 는 씬 좌표로 옮기고 떠 있는 조각을 지운 메쉬라 형상이 다름"""
     import open3d as o3d
     t0 = time.time()
     out_dir = os.path.abspath(os.path.expanduser(out_dir))
@@ -543,12 +559,16 @@ def measure(out_dir, n=30, seed=0, capture=None, min_conf=None, write=True, min_
     cut = np.cumsum([f[1] for f in FR])[:-1]
     gap_of = dict(zip(pk.tolist(), pg_s.tolist()))
     for name, path, Tm in meshes:
-        m = o3d.io.read_triangle_mesh(path)
-        if not len(m.triangles):
-            continue
         Rm = Tm[:3, :3]
         rays = np.c_[R[:, :3] @ Rm.T + Tm[:3, 3], R[:, 3:] @ Rm.T]   # 입력 → 메쉬 좌표 (강체)
-        zr = _cast(_scene(m), rays, NR)
+        sc = _given_scene(visual_scene, path) if name == "visual" else None
+        zr = _cast(sc, rays, NR) if sc is not None else None
+        if zr is None or not np.isfinite(zr).any():             # 넘겨받은 구조가 없거나 하나도 안 닿음 → 파일을 읽어 새로 (빈 메쉬는 전처럼 건너뜀)
+            m = o3d.io.read_triangle_mesh(path)
+            if not len(m.triangles):
+                continue
+            zr = _cast(_scene(m), rays, NR)
+            del m                                               # 다음 메쉬를 읽기 전에 놓음 (큰 메쉬 두 개가 같이 메모리에 있지 않게)
         st = _stats(ZM, zr)
         st["file"] = os.path.relpath(path, out_dir)
         st["per_frame"] = [dict(frame=i, t_s=round(float(t[i] - t[0]), 2), gap_s=round(gap_of[i], 3), rays=k,
