@@ -50,7 +50,8 @@ def s_input(ctx):
         # 메쉬 좌표는 맵 폴더 세계(Z 위) 그대로 — T_input_to_scene 의 입력 좌표가 전과 같게 (docs/CONTRACT.md 1장)
         mp = ctx.path("input_map", ".keep")[:-len(".keep")].rstrip("/\\")
         mj = os.path.join(mp, "stray_meta.json")
-        if ctx.get("resume") and os.path.exists(mj):
+        fresh = not (ctx.get("resume") and os.path.exists(mj))  # 이번 실행에서 맵 폴더를 새로 만들었는가
+        if not fresh:
             sm = json.load(open(mj, encoding="utf-8"))
         else:
             try:
@@ -58,11 +59,15 @@ def s_input(ctx):
             except stray.CaptureError as e:
                 return Result(FAIL, str(e))
         path = os.path.join(build, "mesh_raw.ply")
-        if not (ctx.get("resume") and os.path.exists(path)):
-            tc = os.path.join(build, "tsdf_config.yaml")
-            open(tc, "w", encoding="utf-8", newline=chr(10)).write(detect.config_tsdf(mp, ctx["name"], build))
-            if _call([sys.executable, os.path.join(PIPE, "tsdf.py"), "--config", tc, "--out", build], ctx.path("log.txt")) or not os.path.exists(path):
-                return Result(FAIL, "촬영본에서 형상을 만들지 못함", metrics=dict(stray=sm), messages=["자세한 내용: log.txt"])
+        # --resume 이어도 맵 폴더를 새로 만들었거나 메쉬가 맵 폴더보다 오래됐으면 다시 만듦 — 예전 촬영의 메쉬를 그대로 쓰지 않게 (B 11.24)
+        stale = fresh or not os.path.exists(path) or os.path.getmtime(path) < os.path.getmtime(mj)
+        if stale:
+            from . import stray_mesh                            # B 의 형상 메쉬 (통합 기록 R10): 깊이 규칙 · 자세 보정이 이 안에 있음. 파일 이름 · 좌표는 pipeline/tsdf.py 때와 같음
+            try:
+                with open(ctx.path("log.txt"), "a", encoding="utf-8") as fh:
+                    stray_mesh.build(mp, build, log=lambda s: print(s, file=fh, flush=True))
+            except stray.CaptureError as e:                     # stray_mesh.MeshError 도 여기로 — 쓸 장 없음 · 해상도 불일치 · 메쉬 빔
+                return Result(FAIL, "촬영본에서 형상을 만들지 못함", metrics=dict(stray=sm), messages=[str(e)])
         ctx["source"], ctx["map_root"], ctx["kind"], k, up = "stray", mp, "glb", "glb", "z"
     if k == "glb":
         if path is None:
@@ -90,7 +95,18 @@ def s_input(ctx):
                 r.warn(f"촬영 속도가 빠름 (중앙값 {sm['speed_median_mps']} m/s) — 사진이 흐리고 깊이가 성김")
             for w in (sm.get("checks") or {}).get("warnings") or []:
                 r.warn(w)
-            r.warn("아이폰 자세에는 되돌아온 자리를 맞추는 보정이 없음 — 긴 구간은 틀어질 수 있음 (얼마나인지는 재지 않음)")
+            # 자세 보정 요약 (B 의 stray_mesh 가 build/tsdf_meta.json 의 pose_fix 에 남김, 통합 기록 R11): 고쳤으면 알리기만, 못 고쳤거나 표시가 있으면 주의
+            tm = os.path.join(build, "tsdf_meta.json")
+            pf = (json.load(open(tm, encoding="utf-8")).get("pose_fix") if os.path.exists(tm) else None) or {}
+            p["pose_fix"] = {k_: pf.get(k_) for k_ in ("method", "applied", "status", "reasons", "flags") if k_ in pf}
+            if pf.get("applied"):
+                r.messages.append("촬영 중 틀어진 자세를 고쳐서 합침" + (f" ({' · '.join(pf['reasons'])})" if pf.get("reasons") else ""))
+            elif pf:
+                r.warn("촬영 중 틀어진 자세를 고치지 않음 — 긴 구간은 틀어진 채일 수 있음" + (f" ({' · '.join(pf.get('reasons') or [])})" if pf.get("reasons") else ""))
+            else:
+                r.warn("아이폰 자세에는 되돌아온 자리를 맞추는 보정이 없음 — 긴 구간은 틀어질 수 있음 (얼마나인지는 재지 않음)")
+            for w in pf.get("flags") or []:
+                r.warn(w)
     else:
         root = ctx.get("map_root") or ctx["input"]
         p = detect.profile_map_folder(root)
@@ -136,7 +152,8 @@ def s_nav2(ctx):
     out = ctx.path("bundle", "nav2", ".keep")[:-len(".keep")]
     mm = os.path.join(REPO, "sim", "nav2", "make_map.py")
     if not os.path.exists(mm):
-        return Result(SKIP, "sim/nav2/make_map.py 가 없어 지도를 만들지 않음")
+        # 지도가 없으면 진단 · 보정 · 묶음이 모두 못 돎(빈 바닥을 지도에서 찾음) — 건너뛰지 않고 여기서 멈춤 (통합 기록 R12: 전에는 다음 단계가 KeyError 로 죽었음)
+        return Result(FAIL, "Nav2 지도를 만드는 도구가 없음", messages=["저장소의 sim/nav2/make_map.py 가 있어야 함 — recon/ 만 복사했다면 sim/ 도 함께 둘 것"])
     if _call([sys.executable, mm, ctx["usd_mesh"], out, "--route", ""], ctx.path("log.txt")) or not os.path.exists(os.path.join(out, "map.pgm")):
         return Result(FAIL, "Nav2 지도 생성 실패", messages=["자세한 내용: log.txt"])
     import yaml
@@ -164,7 +181,7 @@ def _free_xy(ctx, clearance, step=1):
     return xy, dist[iy, ix]
 
 
-def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, top=30):
+def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, blocked_xy=None, top=30):
     """진단에 걸린 자리를 '결함 후보' 목록으로 — 어디에(씬 좌표 · 입력 원본 좌표) · 얼마나 크게 · 무슨 근거로. 화면에서 그 자리를 짚어 보이기 위한 것.
     <out>/defects_before.json (보정 전) · defects_after.json (보정 뒤 다시 진단) 으로 남김. → 종류별 개수"""
     from .checks import clusters
@@ -178,9 +195,13 @@ def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, top=30):
     if ok is not None:
         for c in clusters(xy[~ok], n2):
             if c["samples"] * a1 >= 0.25:
-                D.append(dict(type="no_visible_floor", title="보이는 바닥 없음 (재촬영 후보)", severity="warn", fixable=False, **c,
-                              basis=f"빈 바닥 표본 {c['samples']}개(약 {c['samples'] * a1:.1f} m²)에서 보이는 바닥 면을 찾지 못함. 충돌 바닥은 받침 바닥으로 메워져 로봇은 지나가지만 카메라에는 구멍으로 보임",
-                              action="고치지 않음 — 촬영 때 가려졌거나 찍히지 않은 자리. 다시 찍을 후보"))
+                glb, after = ctx.get("kind") == "glb", bool(ctx.get("corrected"))   # GLB · 아이폰 원본: 보정 단계가 둘레 바닥 색 판으로 덮음 (통합 기록 R9)
+                D.append(dict(type="no_visible_floor", title="보이는 바닥 없음 (재촬영 후보)", severity="warn", fixable=glb and not after, **c,
+                              basis=f"빈 바닥 표본 {c['samples']}개(약 {c['samples'] * a1:.1f} m²)에서 보이는 바닥 면을 찾지 못함. 충돌 바닥은 평평한 한 장이라 로봇은 지나가지만, "
+                                    "카메라에는 받침 바닥(FloorFill, 맵 전체 바닥의 중앙값 한 가지 색 · 스캔 바닥보다 2~5 cm 아래)이 무늬 없는 자리로 보임",
+                              action=("보정 단계에서 덮지 않음 — 4 m² 보다 넓거나, 둘레가 바닥이 아니거나, 아래에 면이 보이는 자리 (이유는 보정 단계 메시지). 다시 찍을 후보" if glb and after else
+                                      "둘레 바닥 색의 판(FloorPatch)으로 덮음 — 찍힌 바닥이 아니므로 다시 찍으면 더 정확. 아래로 꺼진 자리 · 둘레가 바닥이 아닌 자리 · 4 m² 보다 넓은 자리는 덮지 않음" if glb
+                                      else "고치지 않음 — 촬영 때 가려졌거나 찍히지 않은 자리. 다시 찍을 후보")))
         for c in clusters(xy[hi], n2):
             if c["extent_m"] >= 0.6:
                 D.append(dict(type="low_bump", title="낮은 턱 의심", severity="warn", fixable=False, **c,
@@ -194,6 +215,12 @@ def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, top=30):
                               basis=f"빈 바닥 표본 {c['samples']}개(약 {c['samples'] * a1:.1f} m²)에서 보이는 바닥 아래 {100 * float(np.median(h2[near])):.0f} cm 쯤에 바닥 면이 한 겹 더 있음. "
                                     "촬영 중 자세가 위아래로 틀어지면 같은 바닥이 두 높이로 찍힘",
                               action="고치지 않음 — 어느 높이가 실제 바닥인지 스캔만으로는 알 수 없음. 다시 찍을 후보"))
+    if blocked_xy is not None and len(blocked_xy):              # 촬영자가 걸어간 자리가 장애물로 찍힌 구간 (표본 = 경로 위 10 cm 마다)
+        for c in clusters(np.asarray(blocked_xy, float), n2, join_cells=int(round(0.5 / n2["cell"]))):
+            if c["samples"] >= 5:                               # 0.5 m 넘게
+                D.append(dict(type="path_blocked", title="걸어간 길이 장애물로 찍힘 (재촬영)", severity="fail", fixable=False, **c,
+                              basis=f"촬영자가 걸어간 길 약 {c['samples'] * 0.1:.1f} m 가 지도에서 장애물임. 그 자리는 실제로 비어 있었으므로, 같은 곳이 다른 높이 · 위치로 겹쳐 찍힌 형상이 길을 막은 것 (촬영 중 자세 틀어짐)",
+                              action="고치지 않음 — 어느 쪽이 실제 형상인지 스캔만으로는 알 수 없음. 다시 찍을 것: 같은 길을 되돌아오지 말고 한 방향으로, 천천히"))
     bumps = [d for d in D if d["type"] == "low_bump"]
     for d in D:
         if d["type"] == "double_floor" and any(np.linalg.norm(np.subtract(d["center"], b["center"])) < b["radius_m"] + d["radius_m"] for b in bumps):
@@ -226,6 +253,8 @@ def s_diagnose(ctx):
     from check_floor_layers import measure
     from mesh_utils import Ground
     import open3d as o3d
+    if "nav2_free" not in ctx:                                  # --force 로 지도 없이 넘어온 경우
+        return Result(FAIL, "Nav2 지도가 없어 진단할 수 없음", messages=["진단은 지도의 빈 바닥에서 표본을 뽑음 — 앞의 nav2 단계가 실패한 이유를 볼 것"])
     xy, _ = _free_xy(ctx, ROBOT_RADIUS_M, step=4)
     if len(xy) < 50:
         return Result(FAIL, "진단할 빈 바닥이 거의 없음")
@@ -252,8 +281,14 @@ def s_diagnose(ctx):
         vis = o3d.io.read_triangle_mesh(vp)
         sc = o3d.t.geometry.RaycastingScene()
         sc.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(vis))
+        pp, pid = os.path.join(ctx["build"], "floor_patch.ply"), -1
+        # 판이 없는(보정 전) 장면은 보정 단계의 구멍 찾기(_patch_mask)가 다시 씀 — 큰 메쉬(방 하나 240만 삼각형)는 이 구조를 만드는 데만 수 초~수십 초
+        ctx["_vis_scene"] = None if os.path.exists(pp) else (vp, os.path.getmtime(vp), sc)
+        if os.path.exists(pp):                                # 보정 뒤: 구멍을 덮은 판(FloorPatch)도 보이는 바닥 (통합 기록 R9)
+            pid = sc.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(o3d.io.read_triangle_mesh(pp)))
         rays = np.c_[xy, zf + 1.0, np.zeros(len(xy)), np.zeros(len(xy)), -np.ones(len(xy))].astype(np.float32)
-        h = sc.cast_rays(o3d.core.Tensor(rays))["t_hit"].numpy()
+        a1 = sc.cast_rays(o3d.core.Tensor(rays))
+        h, fake = a1["t_hit"].numpy(), a1["geometry_ids"].numpy().astype(np.int64) == pid   # fake = 판에 맞음 (찍힌 바닥이 아님 → 높이 차 통계에서 뺌)
         dz = 1.0 - h
         ok = np.isfinite(h) & (np.abs(dz) < 0.3)
         # 보이는 바닥이 두 높이로 겹친 자리: 맨 위 면 바로 아래에서 다시 쏴 3~30 cm 안에 위를 향한 면이 또 있음.
@@ -262,14 +297,17 @@ def s_diagnose(ctx):
         r2[:, 2] = np.where(np.isfinite(h), zf + 1.0 - h - 1e-3, -1e6)
         a2 = sc.cast_rays(o3d.core.Tensor(r2))
         h2, n2z = a2["t_hit"].numpy(), a2["primitive_normals"].numpy()[:, 2]
-        two = ok & np.isfinite(h2) & (h2 > 0.03) & (h2 < 0.30) & (np.abs(n2z) > 0.7)
+        two = ok & np.isfinite(h2) & (h2 > 0.03) & (h2 < 0.30) & (np.abs(n2z) > 0.7) & (a2["geometry_ids"].numpy().astype(np.int64) != pid)   # 판은 스캔 바닥 테두리 밑에 깔려 있어 두 겹으로 안 셈
         m["floor_two_levels"] = dict(samples=int(two.sum()), pct=round(100 * float(two.mean()), 1), gap_cm_median=round(100 * float(np.median(h2[two])), 1) if two.any() else None)
         if two.mean() > 0.01:
             r.warn(f"보이는 바닥이 두 높이로 겹친 자리가 빈 바닥의 {m['floor_two_levels']['pct']}% (간격 중앙 {m['floor_two_levels']['gap_cm_median']} cm) — 촬영 중 자세가 위아래로 틀어진 흔적일 수 있음. "
                    "로봇 카메라에는 바닥이 어긋나 보이고, 벽 · 물체도 그만큼 어긋났을 수 있음")
+        sk = ok & ~fake
         m.update(visible_floor_missing_pct=round(100 * float((~ok).mean()), 1),
-                 visible_minus_collision_cm=dict(p5=round(100 * float(np.percentile(dz[ok], 5)), 1), median=round(100 * float(np.median(dz[ok])), 1), p95=round(100 * float(np.percentile(dz[ok], 95)), 1)) if ok.any() else None)
-        if ok.any() and max(abs(np.percentile(dz[ok], 5)), abs(np.percentile(dz[ok], 95))) > 0.05:
+                 visible_minus_collision_cm=dict(p5=round(100 * float(np.percentile(dz[sk], 5)), 1), median=round(100 * float(np.median(dz[sk])), 1), p95=round(100 * float(np.percentile(dz[sk], 95)), 1)) if sk.any() else None)
+        if fake.any():
+            m["floor_patch_samples"] = int(fake.sum())
+        if sk.any() and max(abs(np.percentile(dz[sk], 5)), abs(np.percentile(dz[sk], 95))) > 0.05:
             r.warn(f"보이는 바닥과 충돌 바닥의 높이 차가 5 cm 를 넘는 곳이 있음 (5~95%: {m['visible_minus_collision_cm']['p5']} ~ {m['visible_minus_collision_cm']['p95']} cm)")
         if (~ok).mean() > 0.10:
             r.warn(f"빈 바닥의 {m['visible_floor_missing_pct']}% 에 보이는 바닥이 없음 (받침 바닥으로 메워짐)")
@@ -295,6 +333,31 @@ def s_diagnose(ctx):
     from .checks import obstacle_match                         # 보이는 물체 ↔ 충돌 물체 (라이다가 보는 것과 Nav2 지도가 같은가)
     om = obstacle_match(ctx["usd_mesh"], ground, ctx["nav2"], ctx["nav2_free"])
     m["obstacle_match"] = om
+    # 다닐 수 있는 모양인가: 빈 바닥이 한 덩어리인지 · (아이폰 원본) 촬영자가 걸어간 길이 지도에서 빈 자리인지.
+    # 왕복 촬영에서 자세가 틀어지면 같은 복도가 다른 높이 · 위치로 겹쳐 찍혀, 걸어간 자리가 장애물이 되고 빈 바닥이 끊김 (인문대 2층 촬영 11.25: 걸어간 길의 43% 가 장애물)
+    from .checks import drivable
+    walked, ctx["unusable"] = None, []
+    tj, tp_ = os.path.join(ctx.get("map_root") or "", "trajectory_camera_optical.txt"), os.path.join(ctx["build"], "transform.json")
+    if ctx.get("source") == "stray" and os.path.exists(tj) and os.path.exists(tp_):
+        Ts = np.array(json.load(open(tp_, encoding="utf-8"))["T_input_to_scene"])
+        cam = np.loadtxt(tj, usecols=(1, 2, 3), ndmin=2)
+        walked = (cam @ Ts[:3, :3].T + Ts[:3, 3])[:, :2]
+    dv = drivable(ctx["nav2"], ctx["nav2_free"], ctx["nav2_occ"], walked, ROBOT_RADIUS_M)
+    blocked_xy = (dv.get("path") or {}).pop("blocked_xy", np.zeros((0, 2)))
+    m["drivable"] = dv
+    if dv.get("path"):
+        pa = dv["path"]
+        # 문턱 10% · 80% 는 촬영본 두 건으로 잡은 잠정값: 방 촬영본(한 바퀴) 과 복도 왕복 촬영본
+        if pa["blocked_pct"] > 10:
+            ctx["unusable"].append(f"촬영자가 걸어간 길 {pa['length_m']} m 가운데 {pa['blocked_m']} m ({pa['blocked_pct']}%)가 지도에서 장애물임 — 같은 곳이 다른 높이 · 위치로 겹쳐 찍힌 것. 이 맵으로는 주행할 수 없음")
+        elif pa["blocked_pct"] > 2:
+            r.warn(f"촬영자가 걸어간 길의 {pa['blocked_pct']}% ({pa['blocked_m']} m)가 지도에서 장애물임 — 그 자리는 실제로 비어 있었음. 겹쳐 찍힌 형상일 수 있음")
+        if pa["main_piece_pct"] < 80:
+            ctx["unusable"].append(f"촬영자가 걸어간 길이 지도에서 끊겨 있음 — 한 덩어리로 이어진 구간이 {pa['main_piece_pct']}% 뿐. 처음부터 끝까지 주행할 수 없음")
+    if dv["main_share_pct"] < 60:
+        r.warn(f"빈 바닥이 여러 조각으로 끊겨 있음 — 로봇이 다닐 수 있는 바닥(장애물과 {ROBOT_RADIUS_M} m 띄움) 중 가장 큰 덩어리가 {dv['main_share_pct']}% · 1 m² 넘는 조각 {dv['pieces']}개")
+    for u in ctx["unusable"]:
+        r.warn(u)
     if om["visible_cells"] > 200 and om["collision_cells"] > 200:
         # 문턱은 시험 세트 8개와 D 의 주행 결과로 잡은 잠정값: 반시계 주행이 실패한 주차장 v0.9 만 31.5 / 15.3%, 나머지는 73~100 / 99.7~100%
         if om["collision_in_visible_pct"] < 90 or om["visible_in_collision_pct"] < 60:
@@ -324,14 +387,70 @@ def s_diagnose(ctx):
                 r.warn(w)                                       # fail 이어도 주의로만 (맵은 만들어짐)
         except (SystemExit, Exception) as e:                    # measure 는 SystemExit 을 냄
             r.messages.append(f"복원 정확도를 재지 못함: {e}")
-    m["defects"] = _defects(ctx, ground, xy, where, lay, ok, hi, two, h2)
+    m["defects"] = _defects(ctx, ground, xy, where, lay, ok, hi, two, h2, blocked_xy)
+    if m["defects"].get("no_visible_floor") and ctx.get("kind") == "glb" and not ctx.get("corrected") and not ctx.get("diagnose_only"):
+        ctx.setdefault("needs", {})["no_visible_floor"] = True  # 보정 단계에서 둘레 바닥 색 판으로 덮음 (통합 기록 R9)
     r.summary = f"빈 바닥 표본 {lay['samples']:,} · 바닥 한 겹 {lay['single_pct']}% · 두 겹 {lay['double_within_3cm']}" + (f" · 보이는 바닥 없음 {m['visible_floor_missing_pct']}%" if "visible_floor_missing_pct" in m else "")
     return r
 
 
+def _patch_mask(ctx, defects, top=0.10, max_m2=4.0, low_share=0.1, ring_share=0.5):
+    """보이는 바닥 구멍을 덮을 칸 (Nav2 지도 격자, 통합 기록 R9). → (mask[H, W], 구멍 목록)
+    빈 칸마다 바닥 위 top 에서 아래로 쏴 바닥 높이(± band)에 보이는 면이 없는 칸을 이어 구멍으로 → 보정 전 결함(no_visible_floor) 원에 걸친 구멍만.
+    덮지 않음: 바닥보다 band 넘게 아래에 면이 보이는 칸이 low_share 넘음(꺼진 자리 · 계단) · 둘레 20 cm 띠의 보이는 바닥이 ring_share 미만 · max_m2 보다 넓음.
+    덮는 구멍은 한 칸 넓혀 스캔 바닥 테두리 밑까지 — 빈 칸 안에서만 (장애물 · 벽 · 미지 칸에는 안 깖)."""
+    sys.path.insert(0, PIPE)
+    from mesh_utils import Ground
+    from scipy import ndimage
+    import open3d as o3d
+    n, free = ctx["nav2"], ctx["nav2_free"]
+    (H, W), c, (ox, oy) = n["shape"], n["cell"], n["origin"]
+    band = 0.05 if ctx["profile"].get("floor_flat", True) else 0.08     # detect.config_glb 의 floor_band_m 과 같게
+    gp = os.path.join(ctx["build"], "ground.npz")
+    ground = Ground.load(gp) if os.path.exists(gp) else Ground()
+    iy, ix = np.nonzero(free)
+    xy = np.c_[ox + (ix + 0.5) * c, oy + (H - 1 - iy + 0.5) * c]
+    vp = os.path.join(ctx["build"], "visual.ply")
+    keep = ctx.get("_vis_scene")
+    if keep and keep[0] == vp and keep[1] == os.path.getmtime(vp):   # 진단이 방금 만든 것 (같은 파일)
+        sc = keep[2]
+    else:
+        sc = o3d.t.geometry.RaycastingScene()
+        sc.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(o3d.io.read_triangle_mesh(vp)))
+    h = sc.cast_rays(o3d.core.Tensor(np.c_[xy, ground.height(xy) + top, np.zeros((len(xy), 2)), -np.ones(len(xy))].astype(np.float32)))["t_hit"].numpy()
+    fin, dz = np.isfinite(h), top - h                           # dz = 보이는 면 높이 − 바닥
+
+    def grid(sel):
+        g = np.zeros((H, W), bool)
+        g[iy[sel], ix[sel]] = True
+        return g
+    floor, low = grid(fin & (np.abs(dz) < band)), grid(fin & (dz <= -band))
+    lab, _ = ndimage.label(grid(~fin) | low, structure=np.ones((3, 3)))
+    mask, out = np.zeros((H, W), bool), []
+    for k, sl in enumerate(ndimage.find_objects(lab), 1):
+        win = (slice(max(sl[0].start - 6, 0), min(sl[0].stop + 6, H)), slice(max(sl[1].start - 6, 0), min(sl[1].stop + 6, W)))
+        comp = lab[win] == k
+        py, px = np.nonzero(comp)
+        pxy = np.c_[ox + (px + win[1].start + 0.5) * c, oy + (H - 1 - py - win[0].start + 0.5) * c]
+        if not any((np.linalg.norm(pxy - d["center_scene"][:2], axis=1) <= d["radius_m"]).any() for d in defects):
+            continue
+        ring = ndimage.binary_dilation(comp, iterations=4) & ~ndimage.binary_dilation(comp) & free[win]
+        g = dict(center=np.round(pxy.mean(0), 2).tolist(), area_m2=round(float(comp.sum()) * c * c, 2), low_pct=round(100 * float(low[win][comp].mean()), 1),
+                 ring_floor_pct=round(100 * float(floor[win][ring].mean()), 1) if ring.any() else 0.0)
+        g["reason"] = ("바닥보다 아래에 면이 보임 — 꺼진 자리 · 계단일 수 있음" if g["low_pct"] > 100 * low_share else
+                       "둘레에 보이는 바닥이 적음 — 바닥 높이가 아닌 자리일 수 있음" if g["ring_floor_pct"] < 100 * ring_share else
+                       f"{max_m2:g} m² 보다 넓음 — 다시 찍을 것" if g["area_m2"] > max_m2 else None)
+        g["patched"] = g["reason"] is None
+        if g["patched"]:
+            mask[win] |= ndimage.binary_dilation(comp) & free[win]
+        out.append(g)
+    return mask, sorted(out, key=lambda g: -g["area_m2"])
+
+
 def s_correct(ctx):
     """보정 (논문 3.2 의 1차 보정과 같은 생각): 진단에 걸린 항목만 고쳐 다시 만들고 다시 진단한다.
-    두 겹 바닥 → 충돌 메쉬에서 바닥 위 5 cm 아래의 것을 지움 (바닥 한 장과 그보다 5 cm 넘게 솟은 형상만 남김)."""
+    두 겹 바닥 → 충돌 메쉬에서 바닥 위 5 cm 아래의 것을 지움 (바닥 한 장과 그보다 5 cm 넘게 솟은 형상만 남김).
+    보이는 바닥 없음 (GLB · 아이폰 원본) → 그 구멍을 둘레 바닥 색의 판(FloorPatch)으로 덮음. 충돌은 그대로 (통합 기록 R9)."""
     needs = ctx.get("needs") or {}
     if not needs:
         return Result(SKIP, "진단에 걸린 항목이 없어 보정하지 않음")
@@ -339,12 +458,25 @@ def s_correct(ctx):
     cfg2 = os.path.join(os.path.dirname(ctx["config"]), "auto_config_corrected.yaml")
     glb = ctx["kind"] == "glb"
     lines = [f"# scan2sim 보정: 진단에 걸린 항목({', '.join(needs)})을 고친 설정", f"base: {os.path.basename(ctx['config'])}"]
-    if glb:
+    how, patch = [], None
+    if needs.get("double_floor") and glb:
         lines += ["collision:", "  low_h_m: 0.05", "  min_cluster_tris_after: 100", ""]
-        how = "충돌 메쉬에서 바닥 위 5 cm 아래의 것을 지움 (보이는 메쉬는 그대로)"
-    else:                                                       # 맵 폴더 · 아이폰 원본: 바닥 한 장은 이미 깔려 있고, 걸리는 것은 그 위에 남은 낮은 조각 (틀의 기본 5 cm · 3 cm 를 넘긴 것)
+        how.append("충돌 메쉬에서 바닥 위 5 cm 아래의 것을 지움 (보이는 메쉬는 그대로)")
+    elif needs.get("double_floor"):                             # 맵 폴더 · 아이폰 원본: 바닥 한 장은 이미 깔려 있고, 걸리는 것은 그 위에 남은 낮은 조각 (틀의 기본 5 cm · 3 cm 를 넘긴 것)
         lines += ["single_floor:", "  collision_low_h_m: 0.10", "  collision_flat_h_m: 0.06", ""]
-        how = "충돌 메쉬에서 바닥 위 10 cm 안의 낮은 조각과 6 cm 안의 수평 면을 지움 (보이는 메쉬는 그대로)"
+        how.append("충돌 메쉬에서 바닥 위 10 cm 안의 낮은 조각과 6 cm 안의 수평 면을 지움 (보이는 메쉬는 그대로)")
+    if needs.get("no_visible_floor"):                           # 진단이 GLB 길일 때만 걸어 둠
+        D = [d for d in json.load(open(ctx.path("defects_before.json"), encoding="utf-8"))["defects"] if d["type"] == "no_visible_floor"]
+        mask, regions = _patch_mask(ctx, D)
+        patch = dict(cells=int(mask.sum()), area_m2=round(float(mask.sum()) * ctx["nav2"]["cell"] ** 2, 2), regions=regions)
+        if mask.any():
+            mp = os.path.join(os.path.dirname(ctx["config"]), "floor_patch_mask.npz")
+            np.savez_compressed(mp, mask=mask, origin=np.asarray(ctx["nav2"]["origin"], float), cell=float(ctx["nav2"]["cell"]))
+            lines += ["floor_patch:", f"  mask_file: {mp.replace(os.sep, '/')}", "  depth_m: 0.005", ""]
+            how.append(f"보이는 바닥 구멍 {sum(g['patched'] for g in regions)}곳 ({patch['area_m2']} m²)을 둘레 바닥 색의 판(FloorPatch, 바닥 0.5 cm 아래)으로 덮음 — 찍힌 바닥이 아님. 충돌 · Nav2 지도는 그대로")
+        how += [f"덮지 않은 구멍 ({g['center'][0]}, {g['center'][1]}) {g['area_m2']} m² — {g['reason']}" for g in regions if not g["patched"]]
+    if len(lines) == 2:
+        return Result(SKIP, "고칠 수 있는 자리가 없어 보정하지 않음", metrics=dict(floor_patch=patch), messages=how)
     open(cfg2, "w", encoding="utf-8", newline=chr(10)).write(chr(10).join(lines))
     ctx["config"], ctx["corrected"], ctx["resume"] = cfg2, True, False   # 보정은 반드시 다시 만듦 (--resume 이어도)
     for nm, fn in (("convert", s_convert), ("nav2", s_nav2)):
@@ -354,8 +486,12 @@ def s_correct(ctx):
     r = s_diagnose(ctx)
     after = r.metrics
     ctx["diagnose_before"], ctx["diagnose_after"] = before, after
-    out = Result(r.status, f"두 겹 바닥 {before.get('floor_double')} → {after.get('floor_double')} · 바닥 한 겹 {before.get('floor_single_pct')} → {after.get('floor_single_pct')}%",
-                 metrics=dict(fixed=list(needs), before=before, after=after), messages=[how] + r.messages)
+    S = [f"두 겹 바닥 {before.get('floor_double')} → {after.get('floor_double')} · 바닥 한 겹 {before.get('floor_single_pct')} → {after.get('floor_single_pct')}%"] if needs.get("double_floor") else []
+    if patch:
+        S.append(f"보이는 바닥 없음 {before['defects'].get('no_visible_floor', 0)} → {after['defects'].get('no_visible_floor', 0)}곳 (판 {patch['area_m2']} m²)")
+    out = Result(r.status, " · ".join(S), metrics=dict(fixed=[k for k in needs if k != "no_visible_floor" or (patch and patch["cells"])], before=before, after=after, floor_patch=patch),
+                 messages=how + r.messages)
+    ctx["floor_patch"] = patch
     return out
 
 
@@ -486,7 +622,12 @@ def s_report(ctx):
     """단계별 판정을 한 장으로."""
     res = ctx.get("results", [])
     worst = FAIL if any(d["status"] == FAIL for d in res) else WARN if any(d["status"] == WARN for d in res) else PASS
-    verdict = {PASS: "시뮬레이션에 올릴 수 있음 (주행 검증 전)", WARN: "올릴 수 있으나 아래 주의 항목을 볼 것", FAIL: "쓸 수 없음 — 아래 실패 단계 참고"}[worst]
+    unusable = ctx.get("unusable") or []                        # 단계는 끝까지 돌았지만(묶음 · 화면용 파일은 나옴) 이 맵으로는 주행할 수 없는 경우 — 진단이 남김
+    if unusable and worst != FAIL:
+        worst = FAIL
+        verdict = "쓸 수 없음 — " + unusable[0]
+    else:
+        verdict = {PASS: "시뮬레이션에 올릴 수 있음 (주행 검증 전)", WARN: "올릴 수 있으나 아래 주의 항목을 볼 것", FAIL: "쓸 수 없음 — 아래 실패 단계 참고"}[worst]
     L = [f"# scan2sim 보고서 — {ctx.get('name', '?')}", "", f"- 입력: `{os.path.basename(os.path.normpath(ctx['input']))}` ({'아이폰 LiDAR 원본 → ' if ctx.get('source') == 'stray' else ''}{ctx.get('kind') or '알 수 없음'})", f"- 만든 때: {time.strftime('%Y-%m-%d %H:%M')}",
          f"- **판정: {verdict}**", "", "## 단계", "", "| 단계 | 판정 | 걸린 시간 | 요약 |", "| --- | --- | ---: | --- |"]
     L += [f"| {d['stage']} | {MARK[d['status']]} | {d['seconds']} s | {d['summary']} |" for d in res]
@@ -527,6 +668,9 @@ def s_report(ctx):
           "- 스캔 범위의 테두리에 보이지 않는 경계벽을 세움 (실제로는 없는 벽)",
           "- 스캔 바닥의 구멍은 한 가지 색 받침 바닥으로 메움",
           "- **판정의 뜻:** '올릴 수 있음' = 이 맵 때문에 시뮬레이터가 멈추거나 화면이 깨지지는 않는다는 것. 맵이 실제 공간과 같다는 뜻이 아님"]
+    fp = ctx.get("floor_patch")
+    if fp and fp["cells"]:
+        L += [f"- **보이는 바닥 구멍 {sum(g['patched'] for g in fp['regions'])}곳 ({fp['area_m2']} m²)은 둘레 바닥 색의 판(`FloorPatch`)으로 덮음.** 찍힌 바닥이 아님 — 그 자리의 실제 무늬 · 물건은 없음 (위치: {[g['center'] for g in fp['regions'] if g['patched']]})"]
     lb = ((ctx.get("diagnose_after") or (dg or {}).get("metrics") or {}).get("low_bumps"))
     if lb:
         L += [f"- 보이는 바닥이 3~12 cm 솟은 자리: 빈 바닥 표본의 {lb['samples_over_3cm_pct']}% · 0.6 m 넘게 이어진 곳 {lb['runs_over_0p6m']}군데" + (f" (길이 m · 위치: {lb['longest']})" if lb["longest"] else "")]

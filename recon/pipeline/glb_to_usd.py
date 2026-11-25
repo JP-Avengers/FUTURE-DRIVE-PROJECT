@@ -370,9 +370,9 @@ def scan_ground(mesh, c):
     return g
 
 
-def floor_color(visuals, materials, band, ground=None):
-    """보이는 바닥 색 (중앙값): 부분마다 위를 향한 바닥 높이 정점의 정점 색, 텍스처 부분은 그 정점 UV 자리의 텍스처 색."""
-    cols = []
+def floor_samples(visuals, materials, band, ground=None):
+    """보이는 바닥 정점의 xy 와 색: 부분마다 위를 향한 바닥 높이 정점의 정점 색, 텍스처 부분은 그 정점 UV 자리의 텍스처 색. → (N,2), (N,3)"""
+    pts, cols = [], []
     for name, m in visuals.items():
         v, n = np.asarray(m.vertices), np.asarray(m.vertex_normals)
         sel = (n[:, 2] > 0.9) & (np.abs(v[:, 2] - (ground.height(v[:, :2]) if ground else 0.0)) < band)
@@ -384,7 +384,42 @@ def floor_color(visuals, materials, band, ground=None):
             cols.append(im[((1 - uv[:, 1]) * (im.shape[0] - 1)).astype(int), (uv[:, 0] * (im.shape[1] - 1)).astype(int)])
         elif m.has_vertex_colors():
             cols.append(np.asarray(m.vertex_colors)[sel])
-    return np.median(np.vstack(cols), axis=0) if cols else np.array([0.5, 0.5, 0.5])
+        else:
+            continue
+        pts.append(v[sel, :2])
+    return (np.vstack(pts), np.vstack(cols)) if cols else (np.zeros((0, 2)), np.zeros((0, 3)))
+
+
+def floor_color(visuals, materials, band, ground=None):
+    """보이는 바닥 색 (중앙값)."""
+    cols = floor_samples(visuals, materials, band, ground)[1]
+    return np.median(cols, axis=0) if len(cols) else np.array([0.5, 0.5, 0.5])
+
+
+def floor_patch_from_mask(path, ground, depth, pts, cols, k=64, wide=1024, blend_m=0.15):
+    """보정 단계(scan2sim correct)가 고른 '보이는 바닥 구멍' 칸을 덮는 바닥 판 (FloorPatch prim, 통합 기록 R9). 충돌에는 안 넣음.
+    path = npz (mask[H, W] = Nav2 지도 칸, 행 0 이 위쪽 · origin · cell). 높이 = 바닥 − depth (테두리에서 스캔 바닥과 겹친 곳은 스캔 바닥이 보이게).
+    색 = 스캔 바닥에서 blend_m 안은 가까운 정점 k 개 색의 중앙값(이음매가 안 보이게), 더 안쪽은 wide 개 중앙값(둘레 평균 색)으로 넘어감 —
+    가까운 색만 끌어오면 무늬 있는 바닥(타일)에서 옆 칸 색이 구멍 안으로 번짐. → (메쉬, 칸 수)"""
+    z = np.load(path)
+    mask, (ox, oy), c = z["mask"], z["origin"], float(z["cell"])
+    iy, ix = np.nonzero(mask)
+    if len(ix) == 0 or len(pts) == 0:
+        return o3d.geometry.TriangleMesh(), 0
+    i, j = ix, mask.shape[0] - 1 - iy                          # 열 → x, 아래에서 센 행 → y
+    corners = np.stack([np.c_[i, j], np.c_[i + 1, j], np.c_[i + 1, j + 1], np.c_[i, j + 1]], axis=1)
+    keys, inv = np.unique(corners.reshape(-1, 2), axis=0, return_inverse=True)
+    q = inv.reshape(-1, 4)
+    xy = np.c_[ox + keys[:, 0] * c, oy + keys[:, 1] * c]
+    m = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(np.c_[xy, (ground or Ground()).height(xy) - depth]),
+                                  o3d.utility.Vector3iVector(np.vstack([q[:, [0, 1, 2]], q[:, [0, 2, 3]]])))   # 위에서 봐서 반시계 → 법선 +Z
+    tree = cKDTree(pts)
+    d, nn = tree.query(xy, k=min(k, len(pts)))
+    nw = tree.query(xy, k=min(wide, len(pts)))[1]
+    w = np.clip(1 - d.reshape(len(xy), -1)[:, 0] / blend_m, 0, 1)[:, None]
+    m.vertex_colors = o3d.utility.Vector3dVector(w * np.median(cols[nn.reshape(len(xy), -1)], axis=1) + (1 - w) * np.median(cols[nw.reshape(len(xy), -1)], axis=1))
+    m.compute_vertex_normals()
+    return m, len(ix)
 
 
 def free_space(mesh, c):
@@ -604,6 +639,17 @@ def main():
         fill = floor_fp.plane(-cc.get("floor_fill_depth_m", 0.02), ground=ground)   # 스캔 바닥이 몇 mm 출렁여도 뚫고 나오지 않게 2 cm 아래
         fill.paint_uniform_color(floor_color(visuals, materials, cc.get("floor_band_m", 0.03), ground))
         visuals["FloorFill"] = fill
+    fpc, pp = cfg.get("floor_patch") or {}, os.path.join(out, "floor_patch.ply")
+    if os.path.exists(pp):                                      # 전에 만든 판이 다음 진단에 섞이지 않게
+        os.remove(pp)
+    if fpc.get("mask_file"):                                    # 보이는 바닥 구멍을 둘레 바닥 색 판으로 (scan2sim 보정 단계가 칸을 고름, 통합 기록 R9). 충돌은 그대로
+        pts, cols = floor_samples({k: v for k, v in visuals.items() if k != "FloorFill"}, materials, cc.get("floor_band_m", 0.03), ground)
+        patch, n = floor_patch_from_mask(os.path.join(here, fpc["mask_file"]), ground, fpc.get("depth_m", 0.005), pts, cols)
+        if n:
+            visuals["FloorPatch"] = patch
+            o3d.io.write_triangle_mesh(pp, patch)              # 진단이 보이는 바닥으로 셈
+        report["floor_patch"] = dict(cells=n, color_samples=len(pts), depth_m=fpc.get("depth_m", 0.005))
+        print(f"      보이는 바닥 구멍 판: 칸 {n:,} (바닥 {fpc.get('depth_m', 0.005) * 100:.1f} cm 아래 · 색 = 둘레 스캔 바닥 정점 {len(pts):,}개에서)")
     if cc.get("boundary_height_m", 2.0) > 0:
         colliders["Boundary"] = floor_fp.walls(cc.get("boundary_height_m", 2.0), ground=ground, below=0.5 if ground is not None else 0.0)
     report["collision"] = dict(object_tris=len(col.triangles), scan_floor_tris_removed=int(scan_floor.sum()) if cc.get("flat_floor", True) else 0,

@@ -141,7 +141,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const $ = (id) => document.getElementById(id);
-const CHUNK = 8 * 1024 * 1024;
+const CHUNK = 8 * 1024 * 1024, RETRIES = 8;
 const MARK = { pass: "통과", warn: "주의", fail: "실패", skip: "건너뜀", running: "진행 중", pending: "" };
 let file = null, jobId = null, job = null, phase = "before", selected = null;
 
@@ -178,9 +178,23 @@ $("go").onclick = async () => {
   try {
     const { id } = await api("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: file.name, size: file.size }) });
     jobId = id;
-    for (let off = 0; off < file.size; off += CHUNK) {              // 큰 파일은 조각으로 나눠 보냄
-      await api(`/api/jobs/${id}/chunk?offset=${off}`, { method: "PUT", body: file.slice(off, off + CHUNK) });
-      const p = Math.min(1, (off + CHUNK) / file.size);
+    let off = 0, tries = 0;
+    while (off < file.size) {                                       // 큰 파일은 조각으로 나눠 보냄
+      try {
+        off = (await api(`/api/jobs/${id}/chunk?offset=${off}`, { method: "PUT", body: file.slice(off, off + CHUNK) })).received;
+        tries = 0;
+      } catch (e) {                                                 // 끊기면 서버가 받은 자리부터 이어 올림 (화면을 껐다 켜거나 통신이 잠깐 끊긴 경우)
+        if (/접속 코드/.test(e.message) || ++tries > RETRIES) throw e;
+        $("note").textContent = `연결이 끊김 — 다시 시도 ${tries}/${RETRIES}`;
+        await new Promise((r) => setTimeout(r, Math.min(30000, 1000 * 2 ** (tries - 1))));
+        try {
+          const j = await api(`/api/jobs/${id}`);
+          if (j.status !== "uploading") throw new Error(j.error || "서버가 이 작업을 더 받지 않음");
+          off = j.received;
+        } catch (e2) { if (/더 받지 않음/.test(e2.message)) throw e2; }   // 서버에 아직 안 닿으면 같은 자리로 다시 시도
+        continue;
+      }
+      const p = Math.min(1, off / file.size);
       $("bar").firstElementChild.style.width = `${100 * p}%`;
       $("note").textContent = `올리는 중 ${(100 * p).toFixed(0)}%`;
     }

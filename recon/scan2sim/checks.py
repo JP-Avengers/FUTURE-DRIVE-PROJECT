@@ -45,6 +45,41 @@ def clusters(xy, nav2, join_cells=2):
     return sorted(out, key=lambda d: -d["samples"])
 
 
+def drivable(nav2, free, occ, path_xy=None, clearance=0.3, step_m=0.1, tol_m=0.15):
+    """지도가 다닐 수 있는 모양인가 — 빈 바닥이 한 덩어리인지, 촬영자가 걸어간 길(path_xy, 씬 좌표)이 지도에서 빈 자리인지.
+    촬영자가 지나간 자리는 실제로 비어 있었으므로, 그 자리가 장애물로 찍혔다면 같은 곳이 다른 높이 · 위치로 겹쳐 찍힌 것(자세 틀어짐)이다.
+    → dict(main_share_pct = 장애물과 clearance 띄운 빈 바닥 중 가장 큰 덩어리의 비율, pieces,
+            path = {length_m, blocked_m, blocked_pct, main_piece_pct, blocked_xy}) — path 는 path_xy 가 있을 때만.
+    막힘 = 그 자리가 장애물 칸이고 가장 가까운 빈 칸까지 tol_m 넘음 (자세 보정 전 경로를 쓰므로 그만큼은 봐줌)."""
+    from scipy import ndimage
+    H, W = nav2["shape"]
+    c, (ox, oy) = nav2["cell"], nav2["origin"]
+    wide = ndimage.distance_transform_edt(free) * c >= clearance
+    lab, n = ndimage.label(wide, structure=np.ones((3, 3)))
+    sizes = np.bincount(lab.ravel())[1:] if n else np.zeros(0)
+    out = dict(clearance_m=clearance, free_m2=round(float(free.sum()) * c * c, 1), pieces=int((sizes * c * c >= 1.0).sum()),
+               main_share_pct=round(100 * float(sizes.max()) / max(float(sizes.sum()), 1.0), 1) if n else 0.0)
+    if path_xy is None or len(path_xy) < 2:
+        return out
+    seg = np.linalg.norm(np.diff(path_xy, axis=0), axis=1)
+    s = np.r_[0, np.cumsum(seg)]
+    t = np.arange(0, s[-1], step_m)
+    p = np.c_[np.interp(t, s, path_xy[:, 0]), np.interp(t, s, path_xy[:, 1])]
+    ix = np.floor((p[:, 0] - ox) / c).astype(int)
+    iy = H - 1 - np.floor((p[:, 1] - oy) / c).astype(int)
+    ok = (ix >= 0) & (ix < W) & (iy >= 0) & (iy < H)
+    far = ndimage.distance_transform_edt(~free) * c > tol_m     # 빈 칸까지 tol_m 넘게 떨어진 칸
+    blocked = np.zeros(len(p), bool)
+    blocked[ok] = occ[iy[ok], ix[ok]] & far[iy[ok], ix[ok]]
+    lab0, _ = ndimage.label(ndimage.binary_dilation(free, iterations=int(round(tol_m / c))), structure=np.ones((3, 3)))   # 길이 이어져 있는가 — 빈 칸을 tol_m 만큼 넓혀서
+    on = np.zeros(len(p), int)
+    on[ok] = lab0[iy[ok], ix[ok]]
+    cnt = np.bincount(on[on > 0]) if (on > 0).any() else np.zeros(1)
+    out["path"] = dict(length_m=round(float(s[-1]), 1), blocked_m=round(float(blocked.sum()) * step_m, 1), blocked_pct=round(100 * float(blocked.mean()), 1),
+                       main_piece_pct=round(100 * float(cnt.max()) / len(p), 1), blocked_xy=p[blocked])
+    return out
+
+
 def obstacle_match(usd_mesh, ground, nav2, free, h_lo=0.12, h_hi=1.0, tol_m=0.10, near_m=1.5):
     """보이는 물체와 충돌 물체가 같은 자리에 있는가 — 라이다는 보이는 형상을 보고 Nav2 지도는 충돌 형상으로 만들기 때문에, 둘이 다르면 위치 추정이 흔들린다.
     바닥 위 h_lo~h_hi 높이의 면을 지도 격자에 찍어 (보이는 prim 전체 / Collision), 로봇이 다니는 빈 바닥에서 near_m 안의 칸만 견줌.

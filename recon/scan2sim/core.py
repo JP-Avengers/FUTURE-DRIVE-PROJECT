@@ -50,6 +50,10 @@ def run(stages, ctx, force=False):
         else:
             try:
                 r = fn(ctx)
+            except SystemExit as e:                             # 파이프라인 함수가 문장과 함께 멈춘 것 (예: "바닥을 못 찾음") — 그 문장을 실패 이유로.
+                # 잡지 않으면 단계 파일도 report.md 도 없이 엔진이 끝나 서버 · 화면이 이유를 알 수 없음 (CONTRACT 8-3 의 1번)
+                why = e.code if isinstance(e.code, str) and e.code.strip() else f"멈춤 (종료 코드 {e.code})"
+                r = Result(FAIL, why)
             except Exception as e:                              # 단계 안의 예외도 '실패 보고'로 남긴다
                 r = Result(FAIL, f"예외: {type(e).__name__}: {e}", messages=traceback.format_exc().splitlines()[-6:])
         d = dict(stage=name, status=r.status, summary=r.summary, metrics=r.metrics, messages=r.messages, seconds=round(time.time() - t, 1))
