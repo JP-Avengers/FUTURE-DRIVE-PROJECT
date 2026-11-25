@@ -30,7 +30,8 @@
       refused  바닥을 다른 키프레임과 10칸 넘게 같이 본 키프레임이 30% 미만 · 보정이 40 cm 넘음(틀어짐이 아니라 추적이 깨진 것) ·
                고친 뒤에도 바닥 높이 잔차 RMS 가 3 cm 넘음 (이 모델로 못 고침)
       skipped  보정 폭(2~98%)이 1.5 cm 미만 — 고칠 것 없음 (가상의 방처럼 자세가 정확한 촬영)
-    표시 (info.flags): 키프레임 5% 넘게가 주 바닥과 8 cm 넘게 다른 층에 서 있었음 (단 · 계단 — 층은 칸 높이로 따로 두므로 누르지 않음) ·
+    표시 (info.flags): 키프레임 5% 넘게가 주 바닥과 8 cm 넘게 다른 층에 서 있었음 (단 · 계단, 또는 다 고쳐지지 않은 높이 틀어짐 — 층은 칸 높이로
+      따로 두므로 누르지 않음) ·
       바닥을 못 본 구간이 10 초 넘음 (그 사이는 앞뒤를 이은 값) · 한 장만 튄 키프레임 (시간으로 9장 중앙에서 10 cm 넘게 — 목록만, 빼지 않음) ·
       tilt 일 때 기울기 보정이 5° 넘는 키프레임 (추적이 깨진 자리를 기울기가 흡수하면 튄 장 표시가 사라지므로 — 목록만)
 
@@ -600,18 +601,22 @@ def floor_fix(times, poses, depth, K, *, tilt=None, cell=0.2, q=0.02, log=print,
     if sup.mean() < g["min_frames_frac"]:
         refuse.append(f"바닥을 다른 키프레임과 {g['min_shared']}칸 넘게 같이 본 키프레임이 {sup.mean():.0%} 뿐 (< {g['min_frames_frac']:.0%}) — 고칠 근거가 모자람")
     if info["dz_max_abs_cm"] > 100 * g["max_abs_m"]:
-        refuse.append(f"높이 보정이 {info['dz_max_abs_cm']} cm (> {100 * g['max_abs_m']:.0f} cm) — 틀어짐이 아니라 추적이 깨진 것으로 봄, 다시 촬영 권함")
+        refuse.append(f"높이 보정이 {info['dz_max_abs_cm']} cm (> {100 * g['max_abs_m']:.0f} cm) — 이 보정이 맡기엔 큼 (긴 왕복 촬영에 쌓인 틀어짐이거나 추적이 깨진 것), 다시 촬영 권함")
     if not resid_cm <= g["max_resid_cm"]:
         refuse.append(f"고친 뒤에도 바닥 높이가 키프레임끼리 {resid_cm:.1f} cm (RMS) 어긋남 (> {g['max_resid_cm']:g} cm) — 수평 틀어짐 · 움직인 바닥 등 이 모델로 못 고침")
     noop = rng < g["noop_range_m"]
     if lv.get("stand_other_pct", 0) > g["level_flag_pct"]:
-        info["flags"].append(f"키프레임 {lv['stand_other_pct']}% 가 주 바닥과 {100 * g['level_step_m']:.0f} cm 넘게 다른 층에 서 있었음 "
-                             f"(위 {lv.get('stand_above_m')} m · 아래 {lv.get('stand_below_m')} m) — 단 · 계단 위를 걸은 촬영일 수 있음. "
+        # 층은 고친 카메라 높이 아래의 칸 높이(f)로 잼 — 두 방문이 같은 칸을 같이 보지 못한 곳은 칸 높이에 촬영 중 틀어진 높이가 남아
+        # 단 · 계단이 없어도 나옴 (922acd4755 복도 왕복, 되돌아온 자리 높이 어긋남 44 cm: 42.8% — 11/25 auto 검토). 문장만 — 보정 · 메쉬는 그대로
+        ab = " · ".join(f"{k} {v} m" for k, v in (("위", lv.get("stand_above_m")), ("아래", lv.get("stand_below_m"))) if v is not None)
+        info["flags"].append(f"키프레임 {lv['stand_other_pct']}% 가 주 바닥과 {100 * g['level_step_m']:.0f} cm 넘게 다른 층에 서 있었음 ({ab}) — "
+                             "단 · 계단 위를 걸었거나, 촬영 중 틀어진 높이가 다 고쳐지지 않고 남은 것일 수 있음. "
                              "층은 칸 높이로 따로 두므로 평평하게 누르지 않음 — 결과를 눈으로 확인")
     if gap > g["gap_flag_s"]:
         info["flags"].append(f"바닥을 못 본 구간이 최대 {gap:.0f} 초 — 그 사이 보정은 앞뒤를 이은 값")
     if jump.any():
-        info["flags"].append(f"자세가 앞뒤와 {100 * g['jump_m']:.0f} cm 넘게 튄 키프레임 {int(jump.sum())}장 (jump_frames) — 고치지 않고 목록만 남김")
+        # jump 는 원래 자세가 아니라 높이 보정 값(e)이 튄 것 — 원래 자세가 고르게 틀어진 촬영(922acd4755)에서도 나옴 (C4)
+        info["flags"].append(f"높이 보정 값이 앞뒤 키프레임과 {100 * g['jump_m']:.0f} cm 넘게 다른 키프레임 {int(jump.sum())}장 (jump_frames) — 추적이 깨졌거나 바닥 관측이 흔들린 자리일 수 있음, 고치지 않고 목록만 남김")
     info["reasons"] += refuse
     if noop:
         info["reasons"].append(f"고칠 것 없음: 높이 보정 폭(2~98%) {100 * rng:.1f} cm < {100 * g['noop_range_m']:.1f} cm")
@@ -923,7 +928,7 @@ def xy_fix(times, poses, depth, K, *, yaw=None, log=print, **kw):
                 st["reasons"].append(f"{nm}: 벽을 다른 키프레임과 {g['min_shared']}칸 넘게 같이 본 키프레임이 {sup.mean():.0%} 뿐 "
                                      f"(< {g['min_frames_frac']:.0%}) — 고칠 근거가 모자람")
             if st["max_abs_cm"] > 100 * g["max_abs_m"]:
-                st["reasons"].append(f"{nm}: 수평 보정이 {st['max_abs_cm']} cm (> {100 * g['max_abs_m']:.0f} cm) — 틀어짐이 아니라 추적이 깨진 것으로 봄, 다시 촬영 권함")
+                st["reasons"].append(f"{nm}: 수평 보정이 {st['max_abs_cm']} cm (> {100 * g['max_abs_m']:.0f} cm) — 이 보정이 맡기엔 큼 (긴 왕복 촬영에 쌓인 틀어짐이거나 추적이 깨진 것), 다시 촬영 권함")
             if not np.isfinite(resid):
                 st["reasons"].append(f"{nm}: 남은 벽 관측이 없음 — 고칠 근거가 없음")
             elif resid > g["max_resid_cm"]:
@@ -931,8 +936,9 @@ def xy_fix(times, poses, depth, K, *, yaw=None, log=print, **kw):
             if gap > g["gap_flag_s"]:
                 aflags.append(f"{nm}: 벽을 못 본 구간이 최대 {gap:.0f} 초 — 그 사이 보정은 앞뒤를 이은 값")
             if jump.any():
-                aflags.append(f"{nm}: 자세가 앞뒤와 {100 * g['jump_m']:.0f} cm 넘게 튀거나 1 초 안에 그만큼 건너뛴 키프레임 {int(jump.sum())}장 "
-                              f"(첫 장 {float(times[np.argmax(jump)] - times[0]):.1f} 초, jump_frames) — 추적이 깨졌다 이어진 것으로 보임, 고친 메쉬를 눈으로 확인")
+                # jump 는 원래 자세가 아니라 수평 보정 값(x)이 튄 것 — 원래 자세가 고르게 틀어진 촬영(922acd4755)에서도 29장 나옴 (C4)
+                aflags.append(f"{nm}: 수평 보정 값이 앞뒤와 {100 * g['jump_m']:.0f} cm 넘게 다르거나 1 초 안에 그만큼 바뀐 키프레임 {int(jump.sum())}장 "
+                              f"(첫 장 {float(times[np.argmax(jump)] - times[0]):.1f} 초, jump_frames) — 추적이 깨졌거나 벽 관측이 흔들린 자리일 수 있음, 고친 메쉬를 눈으로 확인")
             info["axes"][AX[a]] = st
             if not st["reasons"]:
                 axes_ok.append(a)

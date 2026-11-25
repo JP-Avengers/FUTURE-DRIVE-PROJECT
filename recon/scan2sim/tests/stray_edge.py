@@ -21,8 +21,15 @@ stray · stray_mesh · stray_fix · stray_quality 가 받을 것은 받고, 못 
   깨진 장   첫 깊이 파일 (깨짐 · 8비트) · 신뢰도 크기 · 가운데 키프레임 깊이 크기 → CaptureError, 가운데 키프레임 깊이가 깨짐 → 그 장만 빼고 주의
   메쉬      읽기 전용 맵 폴더에 --no-fix 로 만들기 · stray_quality 가 pose_fix.json 을 sha256 으로 확인 (새 빌드 · input_map 의 같은 바이트 ·
             손으로 고친 파일 · 멈춘 다시 만들기 두 방향 · sha256 없는 예전 빌드 · 예전 빌드인데 보정 없이 만든 메쉬)
-  CLI       --tilt / --no-tilt 와 --fix · --no-fix 조합 (stray_fix.tilt_fix · split_opts, stray_mesh · stray_fix 는 종료 코드 2) ·
-            stray CLI 가 짧은 촬영에 traceback 없이 종료 코드 1
+  CLI       --tilt / --no-tilt 와 --fix · --no-fix 조합 (stray_fix.tilt_fix · split_opts, stray_mesh · stray_fix 는 종료 코드 2 —
+            --fix xy 와 --capture 도) · stray CLI 가 짧은 촬영에 traceback 없이 종료 코드 1
+  auto      stray_mesh 기본 fix = auto (stray_fix 기본은 xy) · 높이 기준 = stray_revisit.FAIL_Z_CM · 촬영 원본 찾기 (_unzip/<source> ·
+            두 겹 아래 _unzip/outer/<source> (__MACOSX 미끼는 건너뜀) · 없음 · 이름이 다름 · 줄 수가 다름 · capture=) · 엔진 꼴 맵 (_unzip 링크) 에서
+            되돌아온 자리를 재고 (6 초라 skip · 간격 0.1 초) xy — mesh_raw.ply 가 fix="xy" 와 바이트까지 같음 · 촬영 원본이 없으면 xy + 이유
+            (고른 보정에 없는 높이 설정은 unused_opts) · 설정 이름이 틀리면 ValueError · 표시 문장의 갈래 (고침 · 거부 · 오류) ·
+            stray_revisit.measure 를 바꿔 끼워 긴 촬영의 간격 (900 초 → 0.3 초) · 고르기 경계 (15 cm 넘음 · 같음 · 믿을 쌍 0 · 바닥 없음 · 오류 ·
+            SystemExit) · floor+xy 빌드의 표시 (높이 단계가 건너뜀 · stray_fix.floor_fix 를 바꿔 끼워 고침) · pose_fix.json 의 auto ·
+            CLI --fix auto · --tilt 만 (재지 않고 floor+xy)
 종료 코드: 0 = 모두 통과 · 1 = 하나라도 실패 · 2 = 시험 자료를 만들지 못함
 """
 import os
@@ -30,6 +37,8 @@ import os
 os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")              # 일부러 깨뜨린 그림마다 cv2 가 찍는 경고를 줄임 (cv2 를 읽기 전에)
 
 import argparse  # noqa: E402
+import hashlib  # noqa: E402
+import inspect  # noqa: E402
 import json  # noqa: E402
 import shutil  # noqa: E402
 import stat  # noqa: E402
@@ -533,6 +542,7 @@ def check_cli(C, F, out, base):
 
     for k, (mod, args, must) in enumerate((("stray_mesh", ["--no-fix", "--tilt"], "쓸 데가 없음"),
                                            ("stray_mesh", ["--fix", "xy", "--tilt"], "--fix floor+xy"),
+                                           ("stray_mesh", ["--fix", "xy", "--capture", F.src], "--capture"),
                                            ("stray_fix", ["--fix", "xy", "--no-tilt"], "--fix floor+xy"))):
         o = os.path.join(out, f"cli{k}")
         rc, txt = _cli(mod, [base] + (["--out", o] if mod == "stray_mesh" else []) + args)
@@ -544,6 +554,169 @@ def check_cli(C, F, out, base):
     last = (txt.strip().splitlines() or [""])[-1]
     C.add("CLI: stray 에 짧은 촬영 → 종료 코드 1 · '[stray] 실패:' 문구 · traceback 없음",
           rc == 1 and "[stray] 실패:" in txt and "너무 짧음" in txt and "Traceback" not in txt, f"종료 코드 {rc} · {last[:160]}")
+
+
+# ── 자세 보정 auto ───────────────────────────────────────────────────────
+
+def _md5(p):
+    return hashlib.md5(open(p, "rb").read()).hexdigest() if os.path.exists(p) else None
+
+
+def _pf(bd):
+    """빌드 폴더 → (tsdf_meta.json 의 pose_fix, pose_fix.json)"""
+    return (json.load(open(os.path.join(bd, "tsdf_meta.json"), encoding="utf-8"))["pose_fix"],
+            json.load(open(os.path.join(bd, stray_mesh.FIX_FILE), encoding="utf-8")))
+
+
+def _link_dir(src, dst):
+    """폴더 링크 (안 되면 복사 — 윈도우)"""
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    try:
+        os.symlink(src, dst, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        shutil.copytree(src, dst)
+
+
+def fake_floor(times, poses, depth, K, log=print, **_):
+    """stray_fix.floor_fix 대신 — 늘 고치는 높이 단계 (높이 1 cm 내림). auto 표시의 '켜서 합침' 쪽을 보려고 (가상의 방은 높이 단계가 건너뜀)"""
+    new = np.array(poses, dtype=float, copy=True)
+    new[:, 2, 3] -= 0.01
+    t = [float(x) for x in times]
+    return new, dict(method=stray_fix.METHOD, version=stray_fix.VERSION, kind="floor", applied=True, status="applied", reasons=[], flags=[],
+                     t=t, dz=[0.01] * len(t), tilt=None)
+
+
+def fake_revisit(z=None, rel=1, pairs=2, h=None, boom=None, calls=None):
+    """stray_revisit.measure 대신 끼울 함수 — raw 요약만 돌려줌 (boom 을 주면 그 예외, calls 에 받은 (경로, 키워드 인자) 를 모음)"""
+    def measure(path, *a, **k):
+        if calls is not None:
+            calls.append((path, k))
+        if boom is not None:
+            raise boom
+        sm = dict(pairs=pairs, reliable=rel, **({"z_max_cm": z} if z is not None else {}), **({"h_max_cm": h} if h is not None else {}))
+        return dict(raw=dict(summary=sm, verdict="fail" if z and z > 15 else "warn"))
+    return measure
+
+
+def check_auto(C, F, out, base, root):
+    from .. import stray_revisit
+    M = stray_mesh
+    dflt = inspect.signature(M.build).parameters["fix"].default
+    C.add("auto: stray_mesh.build 기본 = auto (xy · floor+xy 중 고름) · stray_fix 기본 = xy · 기준 = stray_revisit.FAIL_Z_CM · PASS_H_CM · EVERY_S",
+          dflt == M.AUTO == "auto" and stray_fix.DEFAULT_FIX == M.AUTO_BASE == "xy" and M.AUTO_FLOOR == "floor+xy"
+          and M.AUTO_FLOOR_Z_CM == stray_revisit.FAIL_Z_CM and M.AUTO_SIDE_NOTE_CM == stray_revisit.PASS_H_CM and M.AUTO_EVERY_S == stray_revisit.EVERY_S,
+          f"build 기본 {dflt} · DEFAULT_FIX {stray_fix.DEFAULT_FIX} · {M.AUTO_FLOOR_Z_CM} / {stray_revisit.FAIL_Z_CM} cm")
+
+    meta = json.load(open(os.path.join(base, "stray_meta.json"), encoding="utf-8"))
+    source = meta["source"]
+    mp = os.path.join(root, "auto_map")                         # 엔진 꼴: 맵 폴더 안 _unzip/<source> 에 촬영 원본 (여기서는 링크)
+    shutil.copytree(base, mp)
+    cap = os.path.join(mp, "_unzip", source)
+    _link_dir(F.src, cap)
+    nest = os.path.join(root, "auto_nest")                      # macOS zip 꼴: _unzip/outer/<source> + 같은 촬영을 가리키는 __MACOSX 미끼
+    shutil.copytree(base, nest)
+    _link_dir(F.src, os.path.join(nest, "_unzip", "outer", source))
+    _link_dir(F.src, os.path.join(nest, "_unzip", "__MACOSX", source))
+    nocap = os.path.join(root, "auto_nocap")                    # 촬영 폴더를 그대로 넣어 만든 맵 꼴 (_unzip 없음)
+    shutil.copytree(base, nocap)
+    other = F.make("auto_other")
+    short = Fake(F.src, os.path.join(root, "auto_rows")).make(source, odo=F.body[:-5])   # 이름은 같고 줄 수가 다름
+    r = M.find_capture(mp)
+    C.add("auto 찾기: 맵 폴더의 _unzip/<source> → 그 촬영 폴더", r == cap, r)
+    r = M.find_capture(nest)
+    _, au = M.choose_fix(nest, log=quiet)
+    C.add("auto 찾기: 두 겹 아래 _unzip/outer/<source> (macOS zip) → 그 촬영 폴더 · __MACOSX 는 건너뜀 · 재기까지 됨",
+          r == os.path.join(nest, "_unzip", "outer", source) and au["measured"] is True and au["source"] == source,
+          f"{r} · {au['reason'][:100]}")
+    C.add("auto 찾기: capture= 로 준 촬영 폴더 → 그것", M.find_capture(nocap, capture=F.src) == F.src)
+    C.error("auto 찾기: _unzip 이 없는 맵 → NoCapture (capture 를 주라고)", lambda: M.find_capture(nocap), ("_unzip", "capture"), exc=M.NoCapture)
+    C.error("auto 찾기: 이름이 다른 촬영 → NoCapture", lambda: M.find_capture(nocap, capture=other), "이 맵의 촬영", exc=M.NoCapture)
+    C.error("auto 찾기: 이름은 같고 odometry 줄 수가 다른 촬영 → NoCapture", lambda: M.find_capture(nocap, capture=short), "frames_total", exc=M.NoCapture)
+
+    bx, ba = os.path.join(root, "auto_b_xy"), os.path.join(root, "auto_b_auto")
+    M.build(mp, bx, fix="xy", log=quiet)
+    logs = []
+    M.build(mp, ba, log=logs.append)                            # 엔진처럼 기본값으로
+    (px, _), (pa, ja) = _pf(bx), _pf(ba)
+    au = pa.get("auto") or {}
+    C.add("auto: 엔진 꼴 맵 → 되돌아온 자리를 재고 (6 초 — 다시 지나간 곳 없음 skip · 간격 0.1 초) xy · fix · name 은 고른 이름 · pose_fix.json 에도 auto",
+          au.get("chosen") == "xy" and au.get("measured") is True and au.get("verdict") == "skip" and au.get("every_s") == M.AUTO_EVERY_S
+          and pa.get("fix") == "xy" and pa.get("name") == "xy"
+          and (ja.get("auto") or {}).get("chosen") == "xy" and "auto" not in px and any("자세 보정 auto" in s for s in logs),
+          js({k: au.get(k) for k in ("chosen", "measured", "verdict", "reason", "seconds")}, 220))
+    C.add("auto: xy 를 고르면 mesh_raw.ply 가 fix=\"xy\" 와 바이트까지 같음 · 표시를 더하지 않음",
+          _md5(os.path.join(ba, "mesh_raw.ply")) == _md5(os.path.join(bx, "mesh_raw.ply")) is not None and pa.get("flags") == px.get("flags"),
+          f"md5 {_md5(os.path.join(ba, 'mesh_raw.ply'))} · {_md5(os.path.join(bx, 'mesh_raw.ply'))}")
+
+    bn = os.path.join(root, "auto_b_nocap")
+    M.build(nocap, bn, log=quiet, fix_opts={"floor": {"tilt": False}})
+    pn, _ = _pf(bn)
+    au = pn.get("auto") or {}
+    C.add("auto: 촬영 원본이 없는 맵 → 재지 않고 xy + 이유 · 고른 보정에 없는 높이 설정은 unused_opts · 메쉬는 xy 와 같음",
+          au.get("chosen") == "xy" and au.get("measured") is False and "찾지 못함" in (au.get("reason") or "") and au.get("unused_opts") == ["floor"]
+          and pn.get("fix") == "xy" and _md5(os.path.join(bn, "mesh_raw.ply")) == _md5(os.path.join(bx, "mesh_raw.ply")), (au.get("reason") or "")[:200])
+    C.error("auto: 설정 이름이 틀림 → 재기 전에 ValueError", lambda: M.build(nocap, os.path.join(root, "auto_b_bad"), log=quiet,
+                                                               fix_opts={"floor": {"tilt_typo": True}}), "tilt_typo", exc=ValueError)
+
+    A = dict(chosen="floor+xy", z_max_cm=20.0, h_max_cm=8.0)
+    fl_of = lambda **s: M._auto_flag(A, dict(steps=[dict(kind="floor", **s)]))   # noqa: E731
+    f_ok, f_ref, f_err = fl_of(applied=True), fl_of(applied=False, status="refused"), fl_of(applied=False, status="error")
+    C.add("auto 표시: 고침 (옆 어긋남 8 cm ≤ 10 → 벽 문장 없음) · 거부 · 오류 · xy 면 없음",
+          f_ok == "되돌아온 자리의 높이 어긋남 20 cm (> 15 cm) — 높이 보정을 켜서 합침" and "고치지 못함 (관문에서 거부)" in f_ref
+          and "고치지 못함 (오류)" in f_err and M._auto_flag(dict(A, chosen="xy"), {}) is None, js([f_ok, f_ref, f_err], 220))
+
+    keep, keep_floor = stray_revisit.measure, stray_fix.floor_fix
+    try:
+        calls = []
+        json.dump(dict(meta, duration_s=900.0), open(os.path.join(nest, "stray_meta.json"), "w", encoding="utf-8"))
+        stray_revisit.measure = fake_revisit(z=5.0, calls=calls)
+        _, au = M.choose_fix(nest, log=quiet)
+        kw = calls[0][1] if calls else {}
+        C.add("auto: 긴 촬영 (900 초) → 프레임 간격을 900 / 3000 = 0.3 초로 넓혀 잼 · every_s 에 남김 · 결과 폴더에 쓰지 않음",
+              au["every_s"] == 0.3 and kw.get("every_s") == 0.3 and kw.get("write") is False, f"every_s {au['every_s']} · 받은 인자 {kw}")
+        for name, kw, want, must in (("높이 44 cm · 믿을 쌍 24", dict(z=44.0, rel=24, pairs=31, h=123.0), "floor+xy", "44 cm > 15 cm"),
+                                     ("높이 15.1 cm", dict(z=15.1), "floor+xy", "> 15 cm"),
+                                     ("높이 15 cm (같음)", dict(z=15.0), "xy", "≤ 15 cm"),
+                                     ("높이 30 cm 인데 믿을 쌍 0", dict(z=30.0, rel=0), "xy", "맞추지 못해"),
+                                     ("믿을 쌍에 바닥 없음", dict(z=None, rel=2), "xy", "바닥이 없어"),
+                                     ("재다 오류", dict(boom=RuntimeError("흉내")), "xy", "재지 못함"),
+                                     ("재다 SystemExit", dict(boom=SystemExit("촬영 폴더가 아님 흉내")), "xy", "SystemExit")):
+            stray_revisit.measure = fake_revisit(**kw)
+            fix, au = M.choose_fix(mp, log=quiet)
+            C.add(f"auto 고르기: {name} → {want}", fix == want == au["chosen"] and must in au["reason"], au["reason"][:160])
+        stray_revisit.measure = fake_revisit(z=44.0, rel=24, pairs=31, h=123.0)
+        bf, bf2 = os.path.join(root, "auto_b_floor"), os.path.join(root, "auto_b_floor_applied")
+        M.build(mp, bf, log=quiet)
+        stray_fix.floor_fix = fake_floor                        # 높이 단계가 고친 쪽 — fix_poses 가 부를 때 모듈 이름으로 찾음
+        M.build(mp, bf2, log=quiet)
+    finally:
+        stray_revisit.measure, stray_fix.floor_fix = keep, keep_floor
+    p2, j2 = _pf(bf2)
+    s2 = next((s for s in p2.get("steps") or [] if s.get("kind") == "floor"), {})
+    f2 = (p2.get("flags") or [""])[0]
+    info2, _ = sq._pose_fix(mp, bf2)
+    C.add("auto: 높이 단계가 고치면 표시 '켜서 합침' + 옆 어긋남 123 cm 문장 · pose_fix.json 과 같음 · stray_quality 가 그 보정을 읽음",
+          f2 == "되돌아온 자리의 높이 어긋남 44 cm (> 15 cm) — 높이 보정을 켜서 합침. 옆으로 어긋난 벽(최대 123 cm)은 남을 수 있음"
+          and s2.get("applied") is True and p2.get("applied") is True and (j2.get("flags") or [None])[0] == f2 and info2 is not None,
+          f"높이 단계 {s2.get('status')} · {f2[:200]}")
+    pf, jf = _pf(bf)
+    fl = (pf.get("flags") or [""])[0]
+    st = next((s for s in pf.get("steps") or [] if s.get("kind") == "floor"), {})
+    want = "높이 보정을 켜서 합침. 옆으로 어긋난 벽(최대 123 cm)은 남을 수 있음" if st.get("applied") else "높이 보정을 켰지만"
+    C.add("auto: 높이 어긋남이 크면 floor+xy 로 합침 · 표시 첫 줄 (높이 단계가 고쳤는지 · 옆 어긋남) · pose_fix.json 의 fix · auto · 표시가 같음",
+          pf.get("fix") == pf.get("name") == "floor+xy" and pf.get("order") == ["floor", "xy"] and (pf.get("auto") or {}).get("chosen") == "floor+xy"
+          and fl.startswith("되돌아온 자리의 높이 어긋남 44 cm (> 15 cm) — ") and want in fl and jf.get("fix") == "floor+xy"
+          and (jf.get("auto") or {}).get("z_max_cm") == 44.0 and (jf.get("flags") or [None])[0] == fl, f"높이 단계 {st.get('status')} · {fl[:200]}")
+
+    o1, o2 = os.path.join(out, "cli_auto"), os.path.join(out, "cli_tilt")
+    rc, txt = _cli("stray_mesh", [mp, "--out", o1, "--fix", "auto"])
+    au = (_pf(o1)[0].get("auto") or {}) if rc == 0 else {}
+    C.add("CLI: stray_mesh --fix auto → 재고 xy", rc == 0 and au.get("chosen") == "xy" and au.get("measured") is True and "자세 보정 auto" in txt,
+          f"종료 코드 {rc} · {js(au.get('reason'), 160)}")
+    rc, txt = _cli("stray_mesh", [mp, "--out", o2, "--tilt"])
+    p2 = _pf(o2)[0] if rc == 0 else {}
+    C.add("CLI: stray_mesh --tilt 만 → 재지 않고 floor+xy (예전과 같음)", rc == 0 and p2.get("fix") == "floor+xy" and "auto" not in p2,
+          f"종료 코드 {rc} · fix {p2.get('fix')}")
 
 
 # ── 차례 ────────────────────────────────────────────────────────────────
@@ -612,6 +785,7 @@ def main():
                 section(C, "읽기 전용 맵", check_readonly, C, base, os.path.join(T, "mesh"))
                 section(C, "보정 sha256", check_fix_sha, C, base, os.path.join(T, "mesh"))
                 section(C, "CLI", check_cli, C, F, out, base)
+                section(C, "자세 보정 auto", check_auto, C, F, out, base, os.path.join(T, "mesh"))
     except stray.CaptureError as e:
         print(f"  중단 — 시험 자료를 풀지 못함: {e}", flush=True)
         rc = 2
