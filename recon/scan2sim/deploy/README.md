@@ -27,6 +27,14 @@ bash recon/scan2sim/deploy/start.sh
 
 그다음 아이폰 브라우저로 터널 주소에 들어가 접속 코드를 넣고 같은 촬영본을 올려 봄.
 
+저장소는 통째로 받아야 함. 엔진이 `recon/` 밖의 `sim/nav2/make_map.py`를 쓰기 때문에 `recon/`만 복사하면 지도 · 진단 단계가 안 됨(`install.sh`가 확인함).
+
+자동 시험(약 5~8분, 같은 입력을 두 번 돌려 결과가 같은지도 봄):
+
+```bash
+cd recon && PY=~/scan2sim_env/bin/python bash scan2sim/tests/run.sh
+```
+
 ## 사람이 해야 하는 것 (스크립트 · Claude Code가 하지 않음)
 
 - **sudo가 필요한 설치.** `install.sh`는 sudo를 쓰지 않음. 파이썬 3.12나 venv가 없으면 필요한 명령을 알려 주고 멈춤(우분투: `sudo apt install python3.12 python3.12-venv`). 이 명령은 사람이 직접 실행함.
@@ -54,7 +62,9 @@ bash recon/scan2sim/deploy/start.sh
 2. `check.py`를 이 컴퓨터 안에서 돌린 처리 시간(17초 예시 촬영본, 그리고 1~2분 촬영본).
 3. `check.py --url <터널 주소>`가 통과하는지와 올리는 속도. 조각 크기는 화면과 같은 8 MB임. Cloudflare 임시 터널은 요청 하나의 크기를 제한할 수 있으므로 `--chunk-mb 64`, `--chunk-mb 128`도 돌려 어디서 막히는지 봄(막혀도 8 MB가 통과하면 문제없음).
 4. 터널을 지나 `preview.glb` · `bundle.zip`을 받는 데 걸린 시간(`check.py`가 보여 줌).
-5. 아이폰 사파리에서 Stray Scanner가 내보낸 zip을 골라 올릴 수 있는지, 올리는 중에 화면을 끄거나 다른 앱으로 가면 어떻게 되는지.
+5. 큰 파일을 터널로 올리는 데 걸린 시간. `check.py`가 올리기 시간과 MB/s를 보여 줌. 5분 촬영 zip이 약 960 MB라 상향 20 Mbps면 6분이 넘음(계산값) — 시연할 네트워크에서 실제 값을 잴 것. 30 fps · 15 fps로 찍은 촬영본이 있으면 둘 다.
+6. `tests/run.sh`의 끝 줄(`TESTS_OK` / `TESTS_FAIL`)과 걸린 시간.
+7. 아이폰 사파리에서 Stray Scanner가 내보낸 zip을 골라 올릴 수 있는지, 올리는 중에 화면을 끄거나 다른 앱으로 가면 어떻게 되는지.
 
 ## 문제가 생기면
 

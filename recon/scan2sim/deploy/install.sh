@@ -10,6 +10,9 @@
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
+# 엔진이 recon/ 밖의 파일도 씀 (Nav2 지도 = sim/nav2/make_map.py). recon/ 만 복사해 오면 지도 · 진단 단계가 안 됨 — 저장소를 통째로 받을 것
+[ -f "$RECON_DIR/../sim/nav2/make_map.py" ] || fail "sim/nav2/make_map.py 가 없음 — recon/ 만 복사하지 말고 저장소 전체를 받을 것 (git clone)"
+
 say "== 1/5 파이썬 3.12"
 PY312=""
 for c in python3.12 python3; do
