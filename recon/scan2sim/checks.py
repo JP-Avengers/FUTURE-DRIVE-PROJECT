@@ -59,6 +59,9 @@ def drivable(nav2, free, occ, path_xy=None, clearance=0.3, step_m=0.1, tol_m=0.1
     sizes = np.bincount(lab.ravel())[1:] if n else np.zeros(0)
     out = dict(clearance_m=clearance, free_m2=round(float(free.sum()) * c * c, 1), pieces=int((sizes * c * c >= 1.0).sum()),
                main_share_pct=round(100 * float(sizes.max()) / max(float(sizes.sum()), 1.0), 1) if n else 0.0)
+    # 로봇이 제자리에서 돌 수 있는 넓이 — sim/add_site.py 의 맵 판정(area_clear_ge_footprint_m2)과 같은 계산: 빈 칸이 아닌 칸까지 로봇 대각선(0.607 · 0.25 m) 넘게 떨어진 빈 칸
+    foot = float(np.hypot(0.607, 0.25))
+    out.update(turn_radius_m=round(foot, 3), turn_area_m2=round(float((ndimage.distance_transform_edt(free) * c >= foot).sum()) * c * c, 2))
     if path_xy is None or len(path_xy) < 2:
         return out
     seg = np.linalg.norm(np.diff(path_xy, axis=0), axis=1)
