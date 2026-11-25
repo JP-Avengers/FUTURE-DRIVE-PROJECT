@@ -98,7 +98,8 @@ def start_server(jobs, code, log):
     """서버를 새 프로세스 묶음으로 띄움 — 끌 때 서버가 띄운 엔진과 그 아래 파이프라인까지 한꺼번에 끄기 위해"""
     port = free_port()
     group = dict(creationflags=subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else dict(start_new_session=True)
-    p = subprocess.Popen([sys.executable, "-m", "scan2sim.web.server", "--port", str(port), "--jobs", jobs, "--code", code], cwd=RECON,
+    # --min-free-gb 0: 서버 기본은 올린 뒤 디스크 여유 20 GB 아래면 507 (D 9b2c95f) — 시험은 디스크가 작은 PC 에서도 돌아야 함
+    p = subprocess.Popen([sys.executable, "-m", "scan2sim.web.server", "--port", str(port), "--jobs", jobs, "--code", code, "--min-free-gb", "0"], cwd=RECON,
                          stdout=log, stderr=subprocess.STDOUT, env=dict(os.environ, PYTHONIOENCODING="utf-8"), **group)
     api = Api(f"http://127.0.0.1:{port}", code)
     for _ in range(60):
