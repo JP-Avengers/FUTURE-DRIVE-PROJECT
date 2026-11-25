@@ -540,7 +540,7 @@ def main():
                     mt = re.search(r"xformOp:translate = \(([-0-9.e]+), ([-0-9.e]+),", txt)
                     mr = re.search(r"xformOp:rotateZ = ([-0-9.e]+)", txt)
                     st = dict(x=float(mt.group(1)), y=float(mt.group(2)), yaw_deg=float(mr.group(1)) if mr else 0.0)
-                cmd += ["--start", f"{st['x']},{st['y']},{st['yaw_deg']}"]
+                cmd += [f"--start={st['x']},{st['y']},{st['yaw_deg']}"]      # 한 덩어리로 — 나눠 주면 x 가 음수일 때 argparse 가 값을 옵션으로 읽어 맵 판정이 멈춤
             env = dict(FD_GATE_THREADS=os.environ.get("FD_GATE_THREADS", "4"), OMP_NUM_THREADS=os.environ.get("FD_GATE_THREADS", "4"))
             rc, o = R.sh(cmd, "gate.log", env=env, nice=True)
             rc2, o2 = R.sh([a.recon_py, os.path.join(gd, "gate_verdict.py"), stem], "gate.log", env=dict(env, FD_GATE_OUT=gout))
