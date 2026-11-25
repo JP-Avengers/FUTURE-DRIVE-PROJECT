@@ -34,7 +34,7 @@ say "== 3/5 불러오기 확인"
 import importlib
 from importlib.metadata import version
 mods = dict(open3d="open3d", pxr="usd-core", numpy="numpy", scipy="scipy", trimesh="trimesh", cv2="opencv-python-headless", skimage="scikit-image",
-            flask="Flask", PIL="pillow", yaml="PyYAML", pandas="pandas", matplotlib="matplotlib")
+            flask="Flask", PIL="pillow", waitress="waitress", segno="segno", yaml="PyYAML", pandas="pandas", matplotlib="matplotlib")
 for m, pkg in mods.items():
     importlib.import_module(m)
     print(f"   {m} {version(pkg)}")

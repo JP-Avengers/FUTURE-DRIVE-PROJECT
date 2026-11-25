@@ -6,6 +6,7 @@
 #
 # - 서버가 죽으면 2초 뒤 다시 켬. 터널도 다시 켜지만 그때는 주소가 바뀜 → status.sh 로 새 주소를 볼 것.
 # - 접속 코드는 처음 켤 때 6자리로 만들어 ~/scan2sim_run/code 에 두고 계속 씀. 직접 정하려면 S2S_CODE=<코드>.
+# - ~/scan2sim_samples 폴더가 있으면 그 안의 .zip · .glb 가 화면의 예시 파일이 됨(S2S_SAMPLES). 그 밖의 값은 common.sh.
 #   링크를 아는 누구나 파일을 올려 이 컴퓨터에서 처리를 돌릴 수 있으므로 터널을 켤 때는 코드를 끄지 않음.
 # - 터미널을 닫아도 계속 돎. 끄기: stop.sh
 set -euo pipefail
@@ -26,15 +27,25 @@ if command -v systemd-inhibit >/dev/null 2>&1 && systemd-inhibit --what=idle:sle
     KEEP=(systemd-inhibit --what=idle:sleep --who=scan2sim --why="scan2sim 서버")
 fi
 
+# 서버에 넘길 선택 사항 (common.sh). 예시 파일 폴더는 있을 때만, 나머지 셋은 줄 때만 넘김
+EXTRA=(--min-free-gb "$S2S_MIN_FREE_GB")
+if [ -d "$S2S_SAMPLES" ]; then EXTRA+=(--samples "$S2S_SAMPLES"); fi
+if [ -n "${S2S_TIMEOUT_MIN:-}" ]; then EXTRA+=(--timeout-min "$S2S_TIMEOUT_MIN"); fi
+if [ -n "${S2S_MAX_WAIT:-}" ]; then EXTRA+=(--max-wait "$S2S_MAX_WAIT"); fi
+if [ -n "${S2S_TTL_HOURS:-}" ]; then EXTRA+=(--ttl-hours "$S2S_TTL_HOURS"); fi
+if [ "$(free_gb)" -lt "${S2S_MIN_FREE_GB%.*}" ]; then
+    say "주의: 디스크 여유가 $(free_gb) GB 로 기준($S2S_MIN_FREE_GB GB)보다 적어 서버가 새 작업을 받지 않음 — 자리를 비우거나 S2S_MIN_FREE_GB 를 낮춰 다시 켤 것"
+fi
+
 : >"$S2S_RUN/server.log"
 cd "$RECON_DIR"
 PYTHONDONTWRITEBYTECODE=1 setsid nohup "${KEEP[@]}" bash -c '
     while :; do
         echo "[$(date "+%F %T")] 서버 켬"
-        "$0" -u -m scan2sim.web.server --host 127.0.0.1 --port "$1" --jobs "$2" --code "$3"
+        "$0" -u -m scan2sim.web.server --host 127.0.0.1 --port "$1" --jobs "$2" --code "$3" "${@:4}"
         echo "[$(date "+%F %T")] 서버가 꺼짐 (종료 코드 $?) — 2초 뒤 다시 켬"
         sleep 2
-    done' "$PY" "$S2S_PORT" "$S2S_JOBS" "$CODE" >>"$S2S_RUN/server.log" 2>&1 </dev/null &
+    done' "$PY" "$S2S_PORT" "$S2S_JOBS" "$CODE" "${EXTRA[@]}" >>"$S2S_RUN/server.log" 2>&1 </dev/null &
 echo $! >"$S2S_RUN/server.pid"
 
 for _ in $(seq 60); do

@@ -530,7 +530,7 @@ def make_bundle(out):
                         z.write(os.path.join(root, f), os.path.join("bundle", os.path.relpath(os.path.join(root, f), b)))
                 for f in ("report.md", "defects_before.json", "defects_after.json"):
                     if os.path.exists(os.path.join(out, f)):
-                        z.write(os.path.join(out, f), f)
+                        z.write(os.path.join(out, f), os.path.join("bundle", f))    # 맨 위가 폴더 하나(bundle/) — sim/add_site.py 가 그 안을 맵 패키지로 봄
             os.replace(tmp, dst)
     return dst
 
