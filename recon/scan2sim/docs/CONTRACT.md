@@ -6,8 +6,9 @@
 **고침 11/24 밤 (`b900e76` + 작업 트리):** B 의 Stray 깊이 규칙 · 깊이 파일 짝짓기 · zip 처리(6-1 ~ 6-3), 자세 보정과 그 결과 파일(6-4), 아직 C 가 넣지 않은 R10 · R11 과 `--resume` 제안(8장)을 반영했다.
 **고침 11/25 (`4823a6e`):** C 의 `be8310e` (R9 ~ R12 · `--resume`) · `105591c` (걸어간 길 진단) · `6ec3237` (`SystemExit`), D 의 `533bffe` (이어 올리기 · 작업 되살리기 · 작업 폴더 정리) · `6afb822` 를 반영했다 (C 의 요청 C1 · C2, `C_TRACK.md` 6장). `core.py` · `checks.py` · `web/server.py` · `web/static/index.html` 의 줄 번호는 모두 `4823a6e` 기준이다. `stages.py` 는 이번에 고친 곳만 `4823a6e` 기준이고, 다른 곳은 앞뒤로 어긋날 수 있다 — 함수 이름으로 찾을 것.
 **고침 11/25 저녁 (`35063bc`, main `5db0573` 을 합친 것):** D 의 `9b2c95f` (서버 보호 · 예시 파일 · `/api/health`) · `1e70ddb` (`sim/add_site.py`) · `bef9cda` (`bundle.zip` 맨 위를 폴더 하나로 · 배포 스크립트의 새 선택 사항)를 반영했다 (2장 · 4장 · 7장 · 8장). **`web/server.py` 와 `deploy/*.sh` 의 줄 번호는 이제 `35063bc` 기준이다.** `core.py` · `checks.py` · `stages.py` · `web/static/index.html` 은 `4823a6e` 뒤로 바뀌지 않아 줄 번호가 그대로다. B 의 `5db0573` (6-4 자동 고르기 · 6-5)은 그 커밋에서 고쳤다.
+**고침 11/26 (`647e3c7`, main `13d1c4d` 를 합친 것):** C 의 `13d1c4d` (R14 · R15 · R19 · R20 · 제자리 회전 가능 넓이)를 반영했다 (3-1 · 3-5 · 5-4 · 6-4 · 6-5 · 8-3 의 11번). 고친 곳의 `stages.py` · `checks.py` 줄 번호만 `647e3c7` 기준이다 — `13d1c4d` 가 `stages.py` 에 줄을 더해 다른 곳의 `stages.py:줄` 은 앞을 가리킬 수 있으니 함수 이름으로 찾을 것. D 의 `d03388f` (화면 Nav2 지도 숨기기 버튼)는 약속에 닿지 않는다.
 
-작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영 · B 의 Stray 깊이 규칙 · 자세 보정) · 고침 2026-11-25 (C · D 의 11/25 변경 반영) · 고침 2026-11-25 저녁 (D 의 서버 보호 · `bundle.zip` 구조)
+작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영 · B 의 Stray 깊이 규칙 · 자세 보정) · 고침 2026-11-25 (C · D 의 11/25 변경 반영) · 고침 2026-11-25 저녁 (D 의 서버 보호 · `bundle.zip` 구조) · 고침 2026-11-26 (C 의 `13d1c4d`)
 
 - 이 문서는 **지금 코드가 하는 일**을 적는다. 계획(`docs/implementation.md` 5장)과 다른 곳과 버그로 보이는 것은 8장에 모았다.
 - 근거 표시: 코드 위치는 `파일:줄`. 경로는 `recon/scan2sim/` 기준이고, `pipeline/` · `tools/` · `configs/` 는 `recon/` 아래다. 코드를 읽지 않고 짐작한 것은 **[추정]** 이라고 적었다.
@@ -325,7 +326,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 - `--force`: 실패한 단계가 있어도 다음 단계를 함. `--resume`: `build/report.json` 이 있으면 변환(`convert`)을 건너뜀 (`__main__.py:22-23`, `stages.py:128-129`). 보정 단계는 `--resume` 이어도 늘 다시 만든다 (`stages.py:481`). **서버는 둘 다 쓰지 않는다** (`web/server.py:393`).
   - Stray 는 `--resume` 이면 `input_map/stray_meta.json` 이 있을 때 변환(`stray.convert`)을 건너뛴다. 입력이 바뀌었는지는 보지 않는다 (`stages.py:53`).
   - 형상 메쉬는 이번 실행에서 맵 폴더를 새로 만들었거나, `build/mesh_raw.ply` 가 없거나, `stray_meta.json` 보다 오래됐으면 다시 만든다. 그 밖에는 건너뛴다 (`stages.py:62-63`, C `be8310e`).
-  - 메쉬를 다시 만들어도 `convert` 는 `build/report.json` 만 보고 건너뛸 수 있다 (8-3 의 11번).
+  - 메쉬를 다시 만들었으면 `--resume` 이어도 `convert` 를 건너뛰지 않는다 (`ctx["mesh_rebuilt"]`, `stages.py:73`, `:131`, C `13d1c4d` — 통합 기록 R15, 8-3 의 11번). 11/25 까지는 `build/report.json` 만 보고 건너뛸 수 있었다.
 - 종료 코드 (`__main__.py:29`)
   - `0` = 어느 단계도 `fail` 이 아님 (통과 또는 주의). **이때도 `verdict` 는 `fail` 일 수 있다** (3-4).
   - `1` = 한 단계라도 `fail`
@@ -370,7 +371,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | 00 | `input` | 입력 확인 | 입력 종류 판별, 형태 재기, 빌드 설정 만들기. Stray 면 맵 폴더로 바꾸고 형상 메쉬(`stray_mesh.build`)까지 만듦 | pass · warn · fail |
 | 01 | `convert` | 메쉬 · USD 만들기 | GLB · Stray: `pipeline/glb_to_usd.py`. 맵 폴더: `check_input.py` + `run.py --from tsdf` | pass · fail |
 | 02 | `nav2` | Nav2 지도 | `sim/nav2/make_map.py`. 이 파일이 없으면 fail `"Nav2 지도를 만드는 도구가 없음"` (R12, C `be8310e`, `stages.py:153-156`). 빈 바닥 4 m² 미만이면 fail | pass · fail |
-| 03 | `diagnose` | 진단 | 충돌 바닥 층수 · 보이는 바닥 · 보이는 바닥 두 높이 · 낮은 턱 · 물체 일치 · 다닐 수 있는 모양(`drivable`) · 천장 · (Stray) 복원 정확도. `defects_before.json` 씀. 지도가 없으면(`--force`) fail `"Nav2 지도가 없어 진단할 수 없음"` (`stages.py:256-257`) | pass · warn · fail |
+| 03 | `diagnose` | 진단 | 충돌 바닥 층수 · 보이는 바닥 · 보이는 바닥 두 높이 · 낮은 턱 · 물체 일치 · 다닐 수 있는 모양(`drivable` — 제자리 회전 가능 넓이 포함) · 천장 · (Stray) 복원 정확도 · 되돌아온 자리 어긋남(`revisit`, 6-5). `defects_before.json` 씀. 지도가 없으면(`--force`) fail `"Nav2 지도가 없어 진단할 수 없음"` (`stages.py:256-257`) | pass · warn · fail |
 | 04 | `correct` | 보정 · 다시 진단 | 두 겹 바닥, 또는 (GLB · Stray) 보이는 바닥 없음이 있을 때만 다시 빌드 · 다시 진단 (5-4). `defects_after.json` 씀 | pass · warn · fail · skip |
 | 05 | `bundle` | 묶음 만들기 | `bundle/` 만들기, 끝에 `preview.glb` 쓰기 | pass · warn |
 | 06 | `verify` | 주행 검증 | 지금은 항상 skip (Isaac Sim 자리, `stages.py:616-618`) | skip |
@@ -401,15 +402,20 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `input` (맵 폴더) | `main_keyframes` · `main_poses` · `extra_sets` · `geometry_mesh` · `has_validation` (`detect.py:91-92`). 진단이 같은 dict 에 `ceiling_over_floor_pct` · `has_ceiling` 을 더함 (`stages.py:367-370`) |
 | `convert` | `mesh_mb` · `prims` ({prim 이름: 삼각형 수}) · `collision` · `clean`. 실패 시 `check_input` |
 | `nav2` | `cells` [가로, 세로] · `resolution` · `free_m2` · `occupied_cells` |
-| `diagnose` | `samples` · `floor_single_pct` · `floor_double` · `floor_double_pct` · `floor_under` · (`visual.ply` 가 있으면) `floor_two_levels` {samples, pct, gap_cm_median} · `visible_floor_missing_pct` · `visible_minus_collision_cm` {p5, median, p95} · (판에 맞은 표본이 있으면) `floor_patch_samples` · `low_bumps` {samples_over_3cm_pct, runs_over_0p6m, longest} · `obstacle_match` {…} · `drivable` (아래) · `has_ceiling` · `shadow_fix` · (Stray) `stray_quality` {frames, median_cm, p90_cm, within_2cm_pct, hit_pct, verdict} · `defects` ({type: 개수}) |
+| `diagnose` | `samples` · `floor_single_pct` · `floor_double` · `floor_double_pct` · `floor_under` · (`visual.ply` 가 있으면) `floor_two_levels` {samples, pct, gap_cm_median} · `visible_floor_missing_pct` · `visible_minus_collision_cm` {p5, median, p95} · (판에 맞은 표본이 있으면) `floor_patch_samples` · `low_bumps` {samples_over_3cm_pct, runs_over_0p6m, longest} · `obstacle_match` {…} · `drivable` (아래) · `has_ceiling` · `shadow_fix` · (Stray) `stray_quality` {frames, median_cm, p90_cm, within_2cm_pct, hit_pct, verdict} · (Stray, 재었으면) `revisit` (아래) · `defects` ({type: 개수}) |
 | `correct` (돌았을 때) | `fixed` (예: `["double_floor"]`. `no_visible_floor` 는 판을 깐 칸이 있을 때만) · `before` · `after` (각각 `diagnose` 의 metrics 와 같은 모양) · `floor_patch` (아래, 보정이 `no_visible_floor` 를 다루지 않았으면 `null`). 덮을 자리가 없어 `skip` 이면 `floor_patch` 만 |
 | `bundle` | `start_pose` (= `start_pose.json`) · `files` (개수) · `shadow_overrides` · `preview` ({prims, triangles, triangles_in, mb, seconds, cell_m}, 못 만들면 {error}) |
 
-- `input` 의 `pose_fix` (Stray, R11 · C `be8310e`, `stages.py:99-101`) = `build/tsdf_meta.json` 의 `pose_fix` (6-4) 에서 `method` · `applied` · `status` · `reasons` · `flags` 만, 있는 키만 옮긴 것. 그 정보가 없으면 `{}`. 이 값으로 내는 문장은 6-3.
-- `diagnose` 의 `drivable` (C `105591c`, `checks.drivable`, `checks.py:48-80`) = `{clearance_m, free_m2, pieces, main_share_pct, path}`.
+- `input` 의 `pose_fix` (Stray, R11 · C `be8310e`, `stages.py:104`) = `build/tsdf_meta.json` 의 `pose_fix` (6-4) 에서 `method` · `applied` · `status` · `reasons` · `flags` · `auto` 만, 있는 키만 옮긴 것. 그 정보가 없으면 `{}`. 이 값으로 내는 문장은 6-3.
+  - `auto` (C `13d1c4d`, 통합 기록 R20) = 높이 보정을 자동으로 고른 근거 `{chosen, threshold_cm, measured, source, every_s, verdict, pairs, reliable, z_max_cm, h_max_cm, reason, seconds (, unused_opts)}` (6-4 "자동 고르기"). 재지 못해 `"xy"` 로 갔으면 `measured` 가 거짓이고 까닭이 `reason`. `fix "auto"` 로 만든 메쉬에만 있다.
+- `diagnose` 의 `drivable` (C `105591c` · `13d1c4d`, `checks.drivable`, `checks.py:48-83`) = `{clearance_m, free_m2, pieces, main_share_pct, turn_radius_m, turn_area_m2, path}`.
   - `clearance_m` = 0.3 (`ROBOT_RADIUS_M`). `free_m2` = Nav2 지도 빈 칸 넓이.
   - 장애물 · 미지 칸과 0.3 m 이상 떨어진 빈 칸을 8방향으로 잇는다. `pieces` = 그 덩어리 중 1 m² 이상인 것의 수. `main_share_pct` = 덩어리 전체 넓이 중 가장 큰 덩어리의 비율(%).
+  - `turn_radius_m` = 0.656 (로봇 대각선 `hypot(0.607, 0.25)`). `turn_area_m2` = **제자리 회전 가능 넓이** — 빈 칸이 아닌 칸(장애물 · 미지)까지 `turn_radius_m` 이상 떨어진 빈 칸의 넓이 (`checks.py:62-64`, C `13d1c4d`). `sim/add_site.py` 의 맵 판정 `area_clear_ge_footprint_m2` 와 같은 계산이다 [C 측정: 방 촬영본 `6bc1ae021f` 1.35 m² 로 D 의 값과 같음]. 5 m² 미만이면 진단 주의 (5-4 아래).
   - `path` = `{length_m, blocked_m, blocked_pct, main_piece_pct}` — Stray 입력만 (촬영 경로가 있을 때). 뜻은 5-4 `path_blocked`. `main_piece_pct` = 빈 칸을 0.15 m 넓혀 이은 덩어리 중, 걸어간 길의 점이 가장 많이 든 덩어리에 든 점의 비율 (지도 밖 점은 어느 덩어리에도 안 듦).
+- `diagnose` 의 `revisit` (Stray, C `13d1c4d`, 통합 기록 R19, `stages.py:397-411`) = `stray_revisit.measure(out, capture=<입력>)` (6-5) 결과에서 `{verdict, raw{…}, fixed{…}}`. `raw` · `fixed` 는 각 `summary` 의 `pairs` · `reliable` · `h_max_cm` · `z_max_cm` · `yaw_max_deg` · `h_worst` · `z_worst` 만 (`fixed` 는 맵을 만든 보정을 읽었을 때만). 재다 오류가 나면 키가 없고 진단 메시지 `"되돌아온 자리 어긋남을 재지 못함: …"`.
+  - 한 작업에서 한 번만 잰다 (`ctx["stray_revisit"]` — 보정 뒤 다시 진단할 때 그대로 씀). `input_map/stray_revisit.json` 도 쓴다 (6-5).
+  - 원래 자세(`raw`)는 입력 단계의 자동 고르기(6-4)도 한 번 재므로 Stray 작업은 두 번 잰다 (자동 고르기는 프레임 간격 max(0.1 초, 촬영 초 / 3000), 진단은 0.1 초) [코드로 봄].
 - `correct` 의 `floor_patch` (R9) = `{cells, area_m2, regions: [{center, area_m2, low_pct, ring_floor_pct, reason, patched}]}` — 판을 깐 Nav2 지도 칸 수 · 넓이와 보정 전 `no_visible_floor` 에 걸친 구멍마다 덮었는지와 덮지 않은 이유 (`stages.py:438-447`, `:471`). 넓은 것부터.
 - **단계 파일과 엔진 `report.json` 의 `input` metrics 가 다르다.** 진단 단계가 입력 단계의 dict 에 나중에 키를 더하는데, 입력 단계 파일은 그 전에 쓰였기 때문이다.
   - 모든 입력: `shadow_fix` (`stages.py:374`). 맵 폴더는 `ceiling_over_floor_pct` · `has_ceiling` 도 (`stages.py:367-370`).
@@ -783,6 +789,8 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 - 막힌 길이 걸어간 길의 **10% 넘음**, 또는 한 덩어리로 이어진 길이 **80% 미만** → 이유를 `ctx["unusable"]` 에 남기고 진단 주의로 보인다. 판정(`verdict`)은 `fail` 이 된다 (3-4).
 - 막힌 길 2~10% → 주의만. 빈 바닥의 가장 큰 덩어리가 60% 미만 → 주의만 (모든 입력).
+- 제자리 회전 가능 넓이 `turn_area_m2` 가 **5 m² 미만** → 주의만 (모든 입력, C `13d1c4d`, `stages.py:363-365`): `"로봇이 제자리에서 돌 수 있는 넓이가 N m² 뿐임 (5 m² 미만) — 주행 공간이 좁아 주행 실패가 예상됨 (sim 쪽 맵 판정의 '실패 예상'과 같은 기준). …"`. 5 m² 는 `sim/add_site.py` 맵 판정의 "실패 예상" 문턱이다. 판정(`verdict`)은 바꾸지 않는다 — 올릴지는 C · D 가 정할 것 (`C_TRACK.md` 6장 C13). [C 측정] 방 촬영본 `6bc1ae021f` 1.35 m² → 주의.
+- **되돌아온 자리 어긋남** (Stray, C `13d1c4d`, `stages.py:397-411`, 수치 `revisit` 은 3-5): `stray_revisit` 의 `reasons` 를 모두 진단 주의로 내고, `verdict` 가 `fail` 이면 `"되돌아온 자리가 크게 어긋나 있음 — 같은 곳이 두 번 겹쳐 찍혔을 수 있음. 다시 찍기를 권함 (긴 복도는 한 방향으로만)"` 주의를 더한다. **판정은 주의까지만** — `verdict` `fail` 은 지금처럼 걸어간 길이 막혔을 때만. `report.md` 에 "되돌아온 자리 어긋남 (아이폰 원본)" 절 (`stages.py:680-690`). [C 측정] 복도 왕복 `922acd4755`: 수평 123 → 124.6 cm(남음) · 높이 44 → 1.2 cm → `fail` → 다시 찍기 권함 주의, 판정 주의.
 - 막힘은 자세 보정 전 경로로 잰다. 그래서 0.15 m 를 봐준다 (`checks.py:53`).
 - 문턱(10% · 80% · 60%)은 촬영본 두 건으로 잡은 잠정값이다 (`stages.py:350`). [C 측정, `C_TRACK.md` 2-6] 복도 왕복 `922acd4755`: 막힌 길 36.5% (61.7 m) · 이어진 길 62.4% · 가장 큰 덩어리 53.2% → "쓸 수 없음", `path_blocked` 4곳. 방 한 바퀴 `6bc1ae021f`: 0.2% · 100% · 89.5% → 판정 그대로.
 
@@ -982,7 +990,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 - **자동 고르기 (11/25 B, 사용자 결정 — `fix "auto"`, 엔진 기본)**: 합치기 전에 촬영 원본의 원래 자세(ARKit)로 되돌아온 자리 어긋남을 잰다(`stray_revisit.measure` 의 `raw`, 6-5 — 4~8 초 · 0.9 GB 이하). 믿을 쌍이 있고 높이 어긋남 최대 `z_max_cm` 가 15 cm(`stray_mesh.AUTO_FLOOR_Z_CM` = `stray_revisit.FAIL_Z_CM`)를 넘으면 `"floor+xy"`, 아니면 `"xy"`. `"xy"` 를 고르면 메쉬는 `fix "xy"` 와 바이트까지 같다.
   - 왜: 높이 단계는 방 촬영본에서 천장을 나쁘게 해 기본에서 뺐지만(아래 "B 측정"), 긴 왕복 촬영에서 아이폰 높이가 고르게 틀어지면 같은 바닥이 두 높이로 찍혀 걸어간 길이 막힌다. 근거(11/25 엔진): `922acd4755` 원래 자세 높이 어긋남 44 cm → `floor+xy`, 막힌 길 35.8 → 0.0% · 판정 쓸 수 없음 → 주의 · 안 쓴 프레임 중앙 6.13 → 3.49 cm · 천장 그대로. `6bc1ae021f` 11.1 cm → `"xy"`, 메쉬 md5 가 전과 같음.
   - 촬영 원본 찾기(`stray_mesh.find_capture`, 풀지 않음): `capture=` 를 주면 그것만. 아니면 `input_map/_unzip/<stray_meta.json 의 source>` → `_unzip` 아래 3겹 안의 `<source>` 폴더(macOS 가 묶은 zip 의 `outer/<source>` 등, `__MACOSX` · `.` 로 시작하는 이름은 건너뜀) → `input_map/_unzip` 그 자체. 폴더 이름 · `odometry.csv` 줄 수가 맞아야 함. (`stray_quality._capture` 와 달리 `capture=` 가 맨 앞이다.)
-  - 크기 한도: 재는 프레임 간격 = max(0.1 초, 촬영 초 / 3000) — 아주 긴 촬영도 3,000장 안(약 1.4 GB · 20 초 [추정]). 쓴 값은 `auto.every_s`. 못 찾거나(촬영 폴더를 zip 이 아니라 폴더로 넣은 실행 — `_unzip` 이 없음) 재다 오류가 나면 `"xy"` 와 이유를 남기고 빌드는 계속한다. 서버는 zip 만 받으므로 웹앱에서는 늘 잰다.
+  - 크기 한도: 재는 프레임 간격 = max(0.1 초, 촬영 초 / 3000) — 아주 긴 촬영도 3,000장 안(약 1.4 GB · 20 초 [추정]). 쓴 값은 `auto.every_s`. 못 찾거나 재다 오류가 나면 `"xy"` 와 이유를 남기고 빌드는 계속한다. 엔진은 입력 단계가 찾은 촬영 원본을 `capture=` 로 넘긴다 (`stages.py:70`, C `13d1c4d` — 통합 기록 R20) — 그래서 촬영 폴더를 zip 이 아니라 폴더로 넣은 실행도 잰다(11/25 까지는 `_unzip` 이 없어 재지 않고 `"xy"`). `--resume` 으로 변환을 건너뛴 실행은 `capture=<입력>` 이다. 서버는 zip 만 받으므로 웹앱에서는 늘 잰다.
   - 기록: `build/pose_fix.json` 과 `tsdf_meta.json` 의 `pose_fix` 에 `auto = {chosen, threshold_cm, measured, source, every_s, verdict, pairs, reliable, z_max_cm, h_max_cm, reason, seconds (, unused_opts)}` (auto 일 때만). `fix` · `name` 은 고른 이름이라 `stray_quality` · sha256 은 그대로. `tsdf_meta.json` 의 `timing.auto_s`.
   - 높이 단계를 켰으면 `flags` 맨 앞에 한 줄 — 입력 단계 주의로 보인다(6-3): "되돌아온 자리의 높이 어긋남 44 cm (> 15 cm) — 높이 보정을 켜서 합침. 옆으로 어긋난 벽(최대 123 cm)은 남을 수 있음"(뒷문장은 수평 어긋남이 10 cm 넘을 때만). 높이 단계가 거부 · 오류면 "… 켰지만 고치지 못함 (…) — 바닥이 두 높이로 찍혔을 수 있음", 건너뛰면 "… 고칠 것이 없다고 나옴 — 바닥이 두 높이로 찍혔는지 눈으로 확인".
   - `python -m scan2sim.stray_fix <맵 폴더> [--fix …] [--tilt] [--yaw] [--json <경로>]` 는 재기만 한다 (맵 · 메쉬는 그대로).
@@ -1074,7 +1082,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
   - `measure` 는 경로가 같은 파일이고 mtime 이 같을 때만 그 구조로 `meshes.visual` 을 재고, 아니면 전처럼 파일을 읽어 새로 만든다. 결과 dict 는 넘기든 안 넘기든 같다 (`seconds` 만 다름).
   - 주 수치(`mesh_raw` — 진단 수치 `stray_quality` 의 값들)는 늘 `build/mesh_raw.ply` 로 새로 만든 구조로 잰다. `visual.ply` 는 씬 좌표로 옮기고 (천장이 없으면) 떠 있는 조각을 지운 메쉬라 형상이 달라, 진단 구조로 재면 "복원 정확도"의 뜻이 바뀐다.
   - B 측정(11/25, B 노트북): `measure` 융복 2층 2.69 → 1.49 s · 인문대 2층 12.85 → 6.14 s, 두 촬영본 모두 결과 값 503개가 같음. 남은 시간은 거의 `mesh_raw` 의 PLY 읽기와 BVH 만들기(약 1.0 s / 4.7 s).
-  - 엔진에서 쓰려면 `stages.py` 의 `measure` 부르는 줄에 `visual_scene=ctx.get("_vis_scene")` 를 더한다 (통합 기록 R14).
+  - 엔진이 넘긴다: `stray_quality.measure(…, visual_scene=ctx.get("_vis_scene"))` (`stages.py:389`, C `13d1c4d` — 통합 기록 R14). `_vis_scene` 을 만드는 자리(`stages.py:289-290`)에 "visual.ply 말고 넣지 말 것" 주석이 있다.
 
 - 보정 info 찾기
   - 새 빌드 (`tsdf_meta.json` 의 `pose_fix` 에 `sha256` 이 있음): `pose_fix.applied` 가 거짓이면 읽지 않는다. 참이면 `build/<file>` → `input_map/<같은 이름>` 차례로 찾아 **파일 sha256 이 같은 것만** 적용한다. 같은 것이 없으면 적용하지 않고 `notes` 에 문장을 남긴다.
@@ -1094,7 +1102,7 @@ B 측정 (기준 촬영본, 통합 기록 11/24 저녁 · R10): 자세 보정 �
 
 ### 6-5. 되돌아온 자리 어긋남 (B `stray_revisit.py`, C4 · 11/25)
 
-같은 곳을 다른 때 다시 본 깊이(벽 · 바닥)끼리 맞춰, 그 사이에 쌓인 자세 틀어짐을 직접 잰다. 안 쓴 프레임 정확도(`stray_quality.measure`)는 키프레임 바로 옆 장과 견주어 이것을 못 본다(복도 왕복 `922acd4755` 중앙 6.13 cm — 주의에 그침). **엔진은 아직 부르지 않는다** — 진단 · 보고서에 붙이는 것은 C(통합 기록 R19).
+같은 곳을 다른 때 다시 본 깊이(벽 · 바닥)끼리 맞춰, 그 사이에 쌓인 자세 틀어짐을 직접 잰다. 안 쓴 프레임 정확도(`stray_quality.measure`)는 키프레임 바로 옆 장과 견주어 이것을 못 본다(복도 왕복 `922acd4755` 중앙 6.13 cm — 주의에 그침). **엔진은 진단 단계에서 부른다** (C `13d1c4d`, 통합 기록 R19 — 진단 수치 `revisit` 은 3-5, 주의 문장 · 판정은 5-4 "되돌아온 자리 어긋남"). 입력 단계의 자동 고르기(6-4)도 `raw` 만 따로 잰다.
 
 - 부르기: `stray_revisit.measure(path, fix_info=None, write=True, every_s=0.1, capture=None)` → dict. `path` = 촬영 폴더 · zip · scan2sim 결과 폴더(`input_map/` · `build/`). 결과 폴더에 `input_map/_unzip` 이 없으면(서버가 끝난 작업에서 지움 · 폴더 입력) `capture=` 로 촬영 폴더나 zip 을 준다 — `stray_quality.measure` 와 같이 `stray_quality._capture` 로 찾고, zip 이면 `input_map/_unzip` 에 푼다. CLI `python -m scan2sim.stray_revisit <path> [--capture] [--fix-json] [--json] [--pairs] [--no-write]`.
 - 촬영 자료가 잘못됐으면 `stray.validate` 의 문장으로 `stray.CaptureError`, 직접 준 보정 info 가 잘못됐으면 `ValueError`, 촬영본을 못 찾으면 `SystemExit`(문장). CLI 는 "[되돌아온 자리] 실패: …". zip 은 임시 폴더에 풀고 실패해도 지운다.
@@ -1218,7 +1226,7 @@ B 측정 (기준 촬영본, 통합 기록 11/24 저녁 · R10): 자세 보정 �
 | 8 | 상태 응답의 `status` (`web/server.py:405-407`) | 엔진 단계가 실패해도 `done` 이었다 (8-1 의 7번) | **고침** (D `98da703`, R2) |
 | 9 | `stages.py:52` · `core.py:53-54` | Stray 촬영본 오류가 `"예외: CaptureError: <문장>"` 요약과 traceback 6줄로 나간다. 사용자 문장만 보이고, `checks.warnings` 도 입력 단계 주의로 보이게 해 달라고 요청함 (통합 기록 R4, C) | **고침** C `620a2b0` |
 | 10 | `web/static/index.html:325-326` | 화면이 "천장이 있는가" 를 진단 `messages` 의 문장(`"천장이 있음"`)으로 판단해 3D 위쪽을 자른다. 문장이 바뀌면 깨지고, 지금도 천장이 일부만 찍힌 경우(`room`: 덮음 27%, 문장 "천장이 일부만 찍힘")는 자르지 않는다. 상태 응답의 `metrics.before.has_ceiling` · `shadow_fix` 를 보는 편이 약속에 맞다 [추정: 화면에서 직접 확인하지 않음] | 열림 (A) |
-| 11 | `stages.s_input` (Stray 분기, `--resume`) | `--resume` 이면 `input_map/stray_meta.json` 이 있을 때 변환을, `build/mesh_raw.ply` 가 **있기만 하면** 형상 메쉬를 건너뛴다. 앞 실행이 변환 중에 멈췄다면 `stray.convert` 가 `stray_meta.json` 을 지운 채라 다시 변환하지만, 예전 `mesh_raw.ply` 는 남아 있어 새 키프레임 · 자세와 맞지 않는 메쉬를 그대로 쓸 수 있다 [추정: 그렇게 멈춰 본 적은 없음, 코드로만 봄]. 제안: 이번 실행에서 변환을 했으면 메쉬도 다시 만들기 (또는 `mesh_raw.ply` 가 `stray_meta.json` 보다 새것일 때만 건너뛰기). 서버는 `--resume` 을 쓰지 않아 웹 작업에는 닿지 않는다 | **메쉬는 고침** C `be8310e` (제안 두 가지 모두, `stages.py:53`, `:62-63`). **남은 것 — 열림 (C):** 메쉬를 다시 만들어도 `convert` 는 `build/report.json` 이 있으면 건너뛴다 (`stages.py:128-129`). 그래서 USD · `visual.ply` · `transform.json` 이 예전 메쉬로 만든 것일 수 있다. 같은 입력 · 같은 코드면 메쉬가 같아(8-2 의 md5) 차이가 없고, 코드나 입력이 바뀐 뒤 `--resume` 을 쓸 때만 닿는다 [추정: 돌려 보지 않음, 코드로만 봄]. 제안: 이번 실행에서 메쉬를 다시 만들었으면 `convert` 도 건너뛰지 않기 |
+| 11 | `stages.s_input` (Stray 분기, `--resume`) | `--resume` 이면 `input_map/stray_meta.json` 이 있을 때 변환을, `build/mesh_raw.ply` 가 **있기만 하면** 형상 메쉬를 건너뛴다. 앞 실행이 변환 중에 멈췄다면 `stray.convert` 가 `stray_meta.json` 을 지운 채라 다시 변환하지만, 예전 `mesh_raw.ply` 는 남아 있어 새 키프레임 · 자세와 맞지 않는 메쉬를 그대로 쓸 수 있다 [추정: 그렇게 멈춰 본 적은 없음, 코드로만 봄]. 제안: 이번 실행에서 변환을 했으면 메쉬도 다시 만들기 (또는 `mesh_raw.ply` 가 `stray_meta.json` 보다 새것일 때만 건너뛰기). 서버는 `--resume` 을 쓰지 않아 웹 작업에는 닿지 않는다 | **메쉬는 고침** C `be8310e` (제안 두 가지 모두, `stages.py:53`, `:62-63`). **남은 것도 고침** C `13d1c4d` (통합 기록 R15): 메쉬를 다시 만들었으면 `convert` 도 건너뛰지 않는다 (`stages.py:73`, `:131`). 아래는 그 전 설명 — 메쉬를 다시 만들어도 `convert` 는 `build/report.json` 이 있으면 건너뛰었다 (`stages.py:128-129`). 그래서 USD · `visual.ply` · `transform.json` 이 예전 메쉬로 만든 것일 수 있다. 같은 입력 · 같은 코드면 메쉬가 같아(8-2 의 md5) 차이가 없고, 코드나 입력이 바뀐 뒤 `--resume` 을 쓸 때만 닿는다 [추정: 돌려 보지 않음, 코드로만 봄]. 제안: 이번 실행에서 메쉬를 다시 만들었으면 `convert` 도 건너뛰지 않기 |
 | 12 | `web/static/index.html:241-243` | 판정 `fail` 의 문구가 `"쓸 수 없음 — 실패한 단계를 볼 것"` 으로 고정돼 있다. `105591c` 부터는 실패한 단계 없이 `verdict` 만 `fail` 인 경우가 있다 (3-4). 이유는 `report` 단계 요약 · 진단 주의 · 결함 `path_blocked` 에 있다 (`C_TRACK.md` C11 ①) | 열림 (A) |
 | 13 | `web/server.py:405-415` (`worker`) · `index.html:240` | 서버가 `status` 를 `done` · `failed` 로 바꾼 뒤 `bundle.zip` 을 만들고 나서야 `finished` 를 쓴다 (D `9b2c95f`, 4-3). 그 사이에 화면이 상태를 받으면 조회를 멈추고 `job.finished - job.started` 를 적어 `"끝남 (NaN초)"` · `"실패 (NaN초)"` 가 된다. 입력 검사에 걸린 작업을 `#<작업 번호>` 로 열어도 `started` 가 없어 `"실패 (NaN초)"` 다 [추정: 코드로만 봄, 화면에서 보지 않음]. 제안: `finished` 를 `status` 와 함께 쓰고 `bundle.zip` 은 그 뒤에 (D), 또는 화면이 없는 값을 거르기 (A) | 열림 (D · A) |
 | 14 | `web/server.py:553` (`--keep` 도움말) | 도움말은 "-1 이면 지우지 않음" 인데, `_unzip/` 은 늘 지우고 (`tidy`, 통합 기록 R17 ②), 11/25 저녁부터는 `--keep` 과 상관없이 24시간 뒤 폴더째 지운다 (`purge`, 2-1). 모두 남기려면 `--keep -1 --ttl-hours 0` | 열림 (D) |
