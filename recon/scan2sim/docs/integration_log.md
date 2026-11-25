@@ -22,7 +22,7 @@
 | R14 | C | **C5 답.** `stages.py` 의 `stray_quality.measure(...)` 부르는 줄(지금 382행)에 `visual_scene=ctx.get("_vis_scene")` 를 더하기. 진단이 `visual.ply` 하나로 만든 광선 구조를 `meshes.visual` 잴 때 다시 씀. 주 수치(`mesh_raw`)는 늘 새로 만듦 — `visual.ply` 는 씬 좌표로 옮기고 떠 있는 조각을 지운 메쉬라, 진단 구조로 재면 복원 정확도의 뜻이 바뀜. 판을 더한 구조는 지금처럼 `_vis_scene = None` 이어야 함 — `stages.py:286` 에 "이 구조에는 visual.ply 말고 넣지 말 것 (stray_quality 가 같은 결과를 가정)" 주석을 남겨 주기(B 검토 제안). 약속은 `CONTRACT.md` 6-4 "진단의 광선 구조 넘겨받기" | 11/25 B 측정: `measure` 융복 2층 2.69 → 1.49 s · 인문대 2층 12.85 → 6.14 s, 결과 값 503개 같음. 단계 안 시간은 아래 11/25 "C5" | 열림 — B 쪽 `stray_quality.py` 를 main 에 올린 뒤 |
 | R15 | C | `--resume` 의 남은 것(`CONTRACT.md` 8-3 11번): 입력 단계가 메쉬를 다시 만들어도(맵 폴더를 새로 만들었거나 `mesh_raw.ply` 가 오래됨) `s_convert` 는 `build/report.json` 이 있으면 건너뜀(`stages.py:128`) → USD · `visual.ply` · `transform.json` 이 예전 메쉬 것으로 남음. 제안: 입력 단계가 메쉬를 다시 만들었으면 `ctx` 에 표시하고 convert 도 다시 | 11/25 B — 코드를 읽음, 돌려 보지는 않음. 같은 입력 · 같은 코드면 메쉬가 같아 해가 없음 | 열림 |
 | R16 | C | (제안, 속도) 보정 단계가 판(`FloorPatch`)만 덮을 때도 convert · nav2 · 진단을 처음부터 다시 함(`stages.py:481-486`). 판만 덮을 때는 충돌 · Nav2 지도가 그대로이므로, USD 에 판만 더하고 진단만 다시 하면 됨. 두 겹 바닥 보정(충돌이 바뀜)은 지금처럼 | 11/25 B 측정: 인문대 2층 보정 단계 151.6 s(전체 401.7 s 의 38%, 그중 USD 다시 만들기가 대부분 [추정]) | 열림 |
-| R17 | D | ① `deploy/check.py` 는 판정(`verdict`)을 찍기만 하고 `CHECK_OK` 판단에는 안 씀(86행) — "쓸 수 없음"인 맵도 `CHECK_OK`. 배포 확인이 목적이면 그대로여도 됨, 의도인지만 확인 ② `server.py` `--keep` 도움말은 "-1 이면 지우지 않음"인데 `_unzip` 은 늘 지움(`tidy`) — 도움말 고치기 ③ 기준 촬영본 540 MB 가 어떤 파일인지(B 의 zip 은 379 MB) | 11/25 B — 코드를 읽음 | 열림 |
+| R17 | D | ① `deploy/check.py` 는 판정(`verdict`)을 찍기만 하고 `CHECK_OK` 판단에는 안 씀(86행) — "쓸 수 없음"인 맵도 `CHECK_OK`. 배포 확인이 목적이면 그대로여도 됨, 의도인지만 확인 ② `server.py` `--keep` 도움말은 "-1 이면 지우지 않음"인데 `_unzip` 은 늘 지움(`tidy`) — 도움말 고치기 ③ "실제 촬영본 540 MB · 두 번 다 약 40 s"(`6afb822`)가 인문대 2층이면(사용자 11/25) 어느 판 · 어느 단계까지의 시간인지 — B 노트북은 같은 촬영본이 402 s | 11/25 B — 코드를 읽음 | 열림 |
 | R18 | A | `a/donggi-viewer`(`3306933`)를 main 에 합치기 전에 볼 것 — main 과 겹치는 곳 없이 합쳐짐(시험 병합). ① **3D 지도가 어둡게 나올 수 있음**: main 은 `preview.glb` 재질을 조명이 필요 없는 `MeshBasicMaterial`(정점 색)로 바꾸는데 브랜치는 원래 재질을 씀. 엔진의 `preview.glb` 는 재질이 없어 glTF 기본 재질(금속 1)이 되고, 환경맵이 없으면 거의 검게 보임 → main 의 바꾸는 3줄(`index.html` 319~321행)을 `viewer.js` `load()` 로 ② 표식 최소 반경 0.25 m 가 빠짐(`viewer.js` 96행, 반경 0.1 m 결함은 폰에서 누르기 어려움) ③ `center_scene` 이 없는 결함이 오면 목록 전체가 멈춤 ④ `path_blocked`(9~13 m 구간)는 반경 5~7 m 원판이 복도를 덮음 → 고리만 그리기 ⑤ `C_TRACK.md` C11 ① · ② · ④ 와 QR `?code=` 는 아직 | 11/25 B 검토 — 코드를 읽음, 브라우저로는 안 봄 | 열림 |
 | R19 | C | **C4 답.** 진단(`s_diagnose`)의 Stray 갈래에서 `stray_quality` 바로 뒤에 같은 try/except 로 `from . import stray_revisit; rv = ctx.get("stray_revisit") or stray_revisit.measure(ctx["out"])` 를 넣고, `m["revisit"] = {verdict, raw · fixed 의 summary(h_max_cm · z_max_cm · yaw_max_deg · pairs · reliable · h_worst · z_worst)}`, 이유는 `r.warn`. 보고서에 "되돌아온 자리 어긋남" 절(원래 · 고친 자세의 수평 · 높이 최대와 그 쌍의 시각, 기준 높이 3 / 15 cm · 수평 10 / 30 cm). 판정 반영은 C 가 정함 — B 제안: revisit `fail` 이면 진단 주의 + "다시 찍을 것 권함", `verdict` fail 은 지금처럼 `path_blocked` 로. `stray_quality` 처럼 `capture=ctx["input"]` 을 넘길 것(서버가 끝난 작업의 `_unzip` 을 지우고, 폴더 입력은 `_unzip` 이 없음). `measure` 는 `stray.CaptureError` · `SystemExit` 을 낼 수 있음 | 11/25 B: 아래 11/25 "C4" 절, `CONTRACT.md` 6-5. 인문대 2층 2~17 s · 0.9 GB | 열림 — B 쪽 파일이 main 에 들어간 뒤 |
 | R20 | C | 높이 보정 자동 고르기(`stray_mesh` `fix "auto"`, `CONTRACT.md` 6-4)를 위해 두 줄: ① `s_input` 에서 `stray.find_capture` 로 찾은 촬영 원본(`stages.py:58` 근처의 값)을 `stray_mesh.build(mp, build, log=…, capture=<그 값>)` 로 넘기기(68행) — 지금은 `input_map/_unzip` 에서 다시 찾는데, 폴더 입력은 `_unzip` 이 없어 재지 않고 `xy` 로 감 ② 입력 단계 수치 `pose_fix` 에 옮기는 키(101행 `method · applied · status · reasons · flags`)에 `auto` 를 더하기 — 재지 못해 `xy` 로 간 까닭(`auto.reason`)이 지금은 log.txt 와 빌드 파일에만 남음 | 11/25 B 검토(자동 고르기) | 열림 |
@@ -310,15 +310,14 @@
 
 | 입력 | 방법 | 결과 | 걸린 시간 | 메모 |
 |---|---|---|---|---|
-| 기준 장소 촬영본 `6bc1ae021f` | 서버 경유, 두 번 | 두 번의 `mesh_raw.ply` · USD · Nav2 지도 · 결함 목록 · `preview.glb` · 시작 자세가 md5 까지 같음 | 약 40 s · 두 번 | 11/24 `98da703`(Stray 가 맵 폴더 길이던 판)에서는 `transform.json` 부터 달랐음 → 풀림. `C_TRACK.md` C7 의 답 |
+| 실제 촬영본 540 MB (D 커밋 글 — 인문대 2층 `922acd4755` 으로 보임, 아래) | 서버 경유, 두 번 | 두 번의 `mesh_raw.ply` · USD · Nav2 지도 · 결함 목록 · `preview.glb` · 시작 자세가 md5 까지 같음 | 약 40 s · 두 번 | 11/24 `98da703`(Stray 가 맵 폴더 길이던 판)에서는 `transform.json` 부터 달랐음 → 풀림. `C_TRACK.md` C7 의 답 |
 | `tests/run.sh` 전체 | — | **TESTS_OK** | 120 s | |
 | Isaac Sim 6.0.1 에서 `scene_root.usda` 열기 | — | 조명까지 오류 없이 열림 | — | `C_TRACK.md` C6 의 답. 주행(C8)은 보고 없음 |
 
 - 아직 안 함(팀 ThinkPad 필요): 터널 업로드 시간(`deploy/check.py <파일> --url https://<이름>.trycloudflare.com`) · ThinkPad 에서 `tests/run.sh`. 그래서 R13 · `C_TRACK.md` C3 는 열림.
-- **촬영본 용량이 안 맞음 — D 에게 물을 것.**
-  - D 는 기준 촬영본을 540 MB 로 적음(`533bffe` · `6afb822` 커밋 글).
-  - B 가 가진 zip 은 379 MB(379,159,774 B), 풀면 385 MB [실측].
-  - R13 의 "5분 촬영 약 960 MB" 는 379 MB × 300/118 s 로 낸 값이다. 540 MB 가 맞으면 약 1.37 GB 가 된다 [계산].
+- **D 의 "실제 촬영본 540 MB" 는 인문대 2층으로 보임**(사용자 11/25 — D 커밋 글 `533bffe` · `6afb822` 에는 촬영본 이름이 없음). 처음에는 기준 촬영본(융복 2층, zip 379 MB)으로 읽어 용량이 안 맞는다고 봤음 → 풀림.
+  - 업로드 크기 어림은 그대로: 인문대 2층 zip 583 MB / 182 s 로 5분 약 960 MB(아래 B 측정). R13 의 379 MB × 300/118 s 와 같은 값.
+  - **남은 물음 — D 에게**: 그러면 "두 번 다 약 40 s" 도 인문대 2층이다. B 노트북은 같은 촬영본이 402 s(그중 convert 139 s · 보정 152 s), C 의 PC 는 11분 27초라 열 배 차이가 남. 어느 촬영본을 어느 판으로 · 어느 단계까지 잰 시간인지 확인할 것. md5 가 두 번 같았다는 것(C7)은 어느 촬영본이든 그대로 유효.
 
 ### 새 촬영본 — 인문대 2층 `922acd4755`
 
@@ -343,7 +342,7 @@
 - 인문대 2층 입력 단계 [실측]: 촬영 속도 중앙 1.15 m/s(안내 0.8 m/s 넘음) · 키프레임 간격 1.63배 · **깊이 규칙 hf 의 바닥 찾기 실패 → `dist` 로 내려감**(바닥 높이가 0.40 m 퍼져 ±5 cm 띠에 23% 만 들어옴 — 왕복 높이 어긋남 탓으로 보임 [추정]) · 자세 보정 적용, 표시 3개: u 축 튐 2장(14.2 s 부터) · v 축 튐 29장(29.9 s 부터) · u 축 수평 보정 47.1 cm(> 40 cm, "추적이 깨진 것으로 봄, 다시 촬영 권함").
 - C 보고와 같은 수준: 막힌 길 36.5 → 35.8%, 복원 정확도 6.13 cm 같음.
 - 저녁: D 의 서버 보호(`9b2c95f`)가 들어와 서버 기본이 "올린 뒤 디스크 여유 20 GB 아래면 507" — `tests/e2e.py` 가 서버를 `--min-free-gb 0` 으로 띄우게 고침(디스크가 작은 PC 에서도 시험이 돌게). main `5db0573` 위 전체 시험 TESTS_OK 194 s [실측].
-- 업로드 크기: 인문대 2층 zip 583 MB / 182 s = 3.2 MB/s → 5분이면 약 960 MB [실측에서 계산]. R13 어림과 맞음 — D 의 540 MB 는 다른 파일일 수 있음.
+- 업로드 크기: 인문대 2층 zip 583 MB / 182 s = 3.2 MB/s → 5분이면 약 960 MB [실측에서 계산]. R13 어림과 맞음. D 의 540 MB 도 이 촬영본으로 보임(위 D 보고).
 - 원인 · 왕복 어긋남 수치(C4): 아래 "C4" 절.
 
 ### C4 — 인문대 2층이 쓸 수 없는 까닭과 왕복 어긋남 수치 (B)
