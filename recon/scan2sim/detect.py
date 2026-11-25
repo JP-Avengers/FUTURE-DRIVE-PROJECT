@@ -125,13 +125,3 @@ def config_map_folder(path, name, build_dir, prof):
     L += ["walls:", "  dist_m: 0.08", "  min_normal_cos: 0.5", "  sheet: true", "  min_area_m2: 3.0", "  depth_tol_m: 0.08",
           "usd:", "  double_sided: [Visual, Wall0, Wall1, Wall2, Wall3, Wall4, Wall5, Wall6, Wall7, Wall8, Wall9, Wall10, Wall11]"]
     return "\n".join(L) + "\n"
-
-
-def config_tsdf(map_root, name, build_dir):
-    """아이폰 원본(맵 폴더 형식으로 바꾼 것)의 깊이를 합쳐 형상 메쉬를 만드는 설정 (pipeline/tsdf.py → <build>/mesh_raw.ply · tsdf_meta.json).
-    깊이가 256×192 라 칸 2 cm · 3 m 까지 (샘플 두 건으로 잡은 잠정값)."""
-    L = [f"# scan2sim 이 자동으로 만든 설정 — 아이폰 원본의 형상 메쉬", f"name: {name}", f"out: {build_dir.replace(os.sep, '/')}",
-         "input:", "  format: rtabmap_keyframes", f"  root: {os.path.abspath(map_root).replace(os.sep, '/')}", "  keyframes: keyframes",
-         "  poses: trajectory_camera_optical.txt", "  depth_scale: 1000.0",
-         "tsdf:", "  frame_step: 1", "  voxel: 0.02", "  sdf_trunc_voxels: 4", "  depth_trunc: 3.0", "  far_depth_trunc: 0"]
-    return chr(10).join(L) + chr(10)
