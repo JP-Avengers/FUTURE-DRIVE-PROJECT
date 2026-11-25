@@ -181,7 +181,7 @@ def _free_xy(ctx, clearance, step=1):
     return xy, dist[iy, ix]
 
 
-def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, top=30):
+def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, blocked_xy=None, top=30):
     """진단에 걸린 자리를 '결함 후보' 목록으로 — 어디에(씬 좌표 · 입력 원본 좌표) · 얼마나 크게 · 무슨 근거로. 화면에서 그 자리를 짚어 보이기 위한 것.
     <out>/defects_before.json (보정 전) · defects_after.json (보정 뒤 다시 진단) 으로 남김. → 종류별 개수"""
     from .checks import clusters
@@ -215,6 +215,12 @@ def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, top=30):
                               basis=f"빈 바닥 표본 {c['samples']}개(약 {c['samples'] * a1:.1f} m²)에서 보이는 바닥 아래 {100 * float(np.median(h2[near])):.0f} cm 쯤에 바닥 면이 한 겹 더 있음. "
                                     "촬영 중 자세가 위아래로 틀어지면 같은 바닥이 두 높이로 찍힘",
                               action="고치지 않음 — 어느 높이가 실제 바닥인지 스캔만으로는 알 수 없음. 다시 찍을 후보"))
+    if blocked_xy is not None and len(blocked_xy):              # 촬영자가 걸어간 자리가 장애물로 찍힌 구간 (표본 = 경로 위 10 cm 마다)
+        for c in clusters(np.asarray(blocked_xy, float), n2, join_cells=int(round(0.5 / n2["cell"]))):
+            if c["samples"] >= 5:                               # 0.5 m 넘게
+                D.append(dict(type="path_blocked", title="걸어간 길이 장애물로 찍힘 (재촬영)", severity="fail", fixable=False, **c,
+                              basis=f"촬영자가 걸어간 길 약 {c['samples'] * 0.1:.1f} m 가 지도에서 장애물임. 그 자리는 실제로 비어 있었으므로, 같은 곳이 다른 높이 · 위치로 겹쳐 찍힌 형상이 길을 막은 것 (촬영 중 자세 틀어짐)",
+                              action="고치지 않음 — 어느 쪽이 실제 형상인지 스캔만으로는 알 수 없음. 다시 찍을 것: 같은 길을 되돌아오지 말고 한 방향으로, 천천히"))
     bumps = [d for d in D if d["type"] == "low_bump"]
     for d in D:
         if d["type"] == "double_floor" and any(np.linalg.norm(np.subtract(d["center"], b["center"])) < b["radius_m"] + d["radius_m"] for b in bumps):
@@ -327,6 +333,31 @@ def s_diagnose(ctx):
     from .checks import obstacle_match                         # 보이는 물체 ↔ 충돌 물체 (라이다가 보는 것과 Nav2 지도가 같은가)
     om = obstacle_match(ctx["usd_mesh"], ground, ctx["nav2"], ctx["nav2_free"])
     m["obstacle_match"] = om
+    # 다닐 수 있는 모양인가: 빈 바닥이 한 덩어리인지 · (아이폰 원본) 촬영자가 걸어간 길이 지도에서 빈 자리인지.
+    # 왕복 촬영에서 자세가 틀어지면 같은 복도가 다른 높이 · 위치로 겹쳐 찍혀, 걸어간 자리가 장애물이 되고 빈 바닥이 끊김 (인문대 2층 촬영 11.25: 걸어간 길의 43% 가 장애물)
+    from .checks import drivable
+    walked, ctx["unusable"] = None, []
+    tj, tp_ = os.path.join(ctx.get("map_root") or "", "trajectory_camera_optical.txt"), os.path.join(ctx["build"], "transform.json")
+    if ctx.get("source") == "stray" and os.path.exists(tj) and os.path.exists(tp_):
+        Ts = np.array(json.load(open(tp_, encoding="utf-8"))["T_input_to_scene"])
+        cam = np.loadtxt(tj, usecols=(1, 2, 3), ndmin=2)
+        walked = (cam @ Ts[:3, :3].T + Ts[:3, 3])[:, :2]
+    dv = drivable(ctx["nav2"], ctx["nav2_free"], ctx["nav2_occ"], walked, ROBOT_RADIUS_M)
+    blocked_xy = (dv.get("path") or {}).pop("blocked_xy", np.zeros((0, 2)))
+    m["drivable"] = dv
+    if dv.get("path"):
+        pa = dv["path"]
+        # 문턱 10% · 80% 는 촬영본 두 건으로 잡은 잠정값: 방 촬영본(한 바퀴) 과 복도 왕복 촬영본
+        if pa["blocked_pct"] > 10:
+            ctx["unusable"].append(f"촬영자가 걸어간 길 {pa['length_m']} m 가운데 {pa['blocked_m']} m ({pa['blocked_pct']}%)가 지도에서 장애물임 — 같은 곳이 다른 높이 · 위치로 겹쳐 찍힌 것. 이 맵으로는 주행할 수 없음")
+        elif pa["blocked_pct"] > 2:
+            r.warn(f"촬영자가 걸어간 길의 {pa['blocked_pct']}% ({pa['blocked_m']} m)가 지도에서 장애물임 — 그 자리는 실제로 비어 있었음. 겹쳐 찍힌 형상일 수 있음")
+        if pa["main_piece_pct"] < 80:
+            ctx["unusable"].append(f"촬영자가 걸어간 길이 지도에서 끊겨 있음 — 한 덩어리로 이어진 구간이 {pa['main_piece_pct']}% 뿐. 처음부터 끝까지 주행할 수 없음")
+    if dv["main_share_pct"] < 60:
+        r.warn(f"빈 바닥이 여러 조각으로 끊겨 있음 — 로봇이 다닐 수 있는 바닥(장애물과 {ROBOT_RADIUS_M} m 띄움) 중 가장 큰 덩어리가 {dv['main_share_pct']}% · 1 m² 넘는 조각 {dv['pieces']}개")
+    for u in ctx["unusable"]:
+        r.warn(u)
     if om["visible_cells"] > 200 and om["collision_cells"] > 200:
         # 문턱은 시험 세트 8개와 D 의 주행 결과로 잡은 잠정값: 반시계 주행이 실패한 주차장 v0.9 만 31.5 / 15.3%, 나머지는 73~100 / 99.7~100%
         if om["collision_in_visible_pct"] < 90 or om["visible_in_collision_pct"] < 60:
@@ -356,7 +387,7 @@ def s_diagnose(ctx):
                 r.warn(w)                                       # fail 이어도 주의로만 (맵은 만들어짐)
         except (SystemExit, Exception) as e:                    # measure 는 SystemExit 을 냄
             r.messages.append(f"복원 정확도를 재지 못함: {e}")
-    m["defects"] = _defects(ctx, ground, xy, where, lay, ok, hi, two, h2)
+    m["defects"] = _defects(ctx, ground, xy, where, lay, ok, hi, two, h2, blocked_xy)
     if m["defects"].get("no_visible_floor") and ctx.get("kind") == "glb" and not ctx.get("corrected") and not ctx.get("diagnose_only"):
         ctx.setdefault("needs", {})["no_visible_floor"] = True  # 보정 단계에서 둘레 바닥 색 판으로 덮음 (통합 기록 R9)
     r.summary = f"빈 바닥 표본 {lay['samples']:,} · 바닥 한 겹 {lay['single_pct']}% · 두 겹 {lay['double_within_3cm']}" + (f" · 보이는 바닥 없음 {m['visible_floor_missing_pct']}%" if "visible_floor_missing_pct" in m else "")
@@ -591,7 +622,12 @@ def s_report(ctx):
     """단계별 판정을 한 장으로."""
     res = ctx.get("results", [])
     worst = FAIL if any(d["status"] == FAIL for d in res) else WARN if any(d["status"] == WARN for d in res) else PASS
-    verdict = {PASS: "시뮬레이션에 올릴 수 있음 (주행 검증 전)", WARN: "올릴 수 있으나 아래 주의 항목을 볼 것", FAIL: "쓸 수 없음 — 아래 실패 단계 참고"}[worst]
+    unusable = ctx.get("unusable") or []                        # 단계는 끝까지 돌았지만(묶음 · 화면용 파일은 나옴) 이 맵으로는 주행할 수 없는 경우 — 진단이 남김
+    if unusable and worst != FAIL:
+        worst = FAIL
+        verdict = "쓸 수 없음 — " + unusable[0]
+    else:
+        verdict = {PASS: "시뮬레이션에 올릴 수 있음 (주행 검증 전)", WARN: "올릴 수 있으나 아래 주의 항목을 볼 것", FAIL: "쓸 수 없음 — 아래 실패 단계 참고"}[worst]
     L = [f"# scan2sim 보고서 — {ctx.get('name', '?')}", "", f"- 입력: `{os.path.basename(os.path.normpath(ctx['input']))}` ({'아이폰 LiDAR 원본 → ' if ctx.get('source') == 'stray' else ''}{ctx.get('kind') or '알 수 없음'})", f"- 만든 때: {time.strftime('%Y-%m-%d %H:%M')}",
          f"- **판정: {verdict}**", "", "## 단계", "", "| 단계 | 판정 | 걸린 시간 | 요약 |", "| --- | --- | ---: | --- |"]
     L += [f"| {d['stage']} | {MARK[d['status']]} | {d['seconds']} s | {d['summary']} |" for d in res]
