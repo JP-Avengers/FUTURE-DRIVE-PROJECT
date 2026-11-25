@@ -127,6 +127,7 @@
       <label>위쪽 자르기 <input type="range" id="clip" min="0" max="100" value="100"> <span id="clipV"></span></label>
       <button id="fit">전체 보기</button>
       <button id="topv">위에서 보기</button>
+      <button id="mapToggle" aria-pressed="true" hidden>Nav2 지도 숨기기</button>
     </div>
     <div class="mapbox" id="mapbox"><img id="mapimg" alt="Nav2 지도"><br><span>Nav2 지도 (흰색 = 빈 바닥)</span></div>
   </main>
@@ -312,7 +313,17 @@ function bg() { renderer.setClearColor(getComputedStyle(document.documentElement
 bg(); matchMedia("(prefers-color-scheme: dark)").addEventListener("change", bg);
 (function loop() { requestAnimationFrame(loop); controls.update(); const t = performance.now() / 400; for (const m of markers.children) if (m.userData.sel) m.children[0].material.opacity = 0.35 + 0.25 * Math.sin(t); renderer.render(scene, camera); })();
 
-function clearScene() { if (model) { scene.remove(model); model = null; } markers.clear(); $("hud").hidden = true; $("mapbox").style.display = "none"; $("hint").style.display = ""; }
+// Nav2 지도 상자: 불러왔고(mapReady) 켜 둔(mapOn) 때만 보임. 켜고 끈 것은 다음 작업에도 그대로
+let mapReady = false, mapOn = true;
+function showMap() {
+  $("mapbox").style.display = mapReady && mapOn ? "block" : "none";
+  $("mapToggle").hidden = !mapReady;
+  $("mapToggle").textContent = mapOn ? "Nav2 지도 숨기기" : "Nav2 지도 보기";
+  $("mapToggle").setAttribute("aria-pressed", String(mapOn));
+}
+$("mapToggle").onclick = () => { mapOn = !mapOn; showMap(); };
+
+function clearScene() { if (model) { scene.remove(model); model = null; } markers.clear(); $("hud").hidden = true; mapReady = false; showMap(); $("hint").style.display = ""; }
 function loadScene() {
   new GLTFLoader().load(withCode(`/api/jobs/${jobId}/preview.glb`), (g) => {
     model = g.scene;
@@ -326,7 +337,7 @@ function loadScene() {
     $("clip").value = hasCeil ? 55 : 100; setClip();      // 천장이 있으면 안이 보이게 위쪽을 잘라 둠
     fit(true); drawMarkers();
   }, undefined, () => { $("hint").firstElementChild.textContent = "3D 지도를 불러오지 못함 (빌드가 실패했을 수 있음)"; });
-  const img = $("mapimg"); img.onload = () => ($("mapbox").style.display = "block"); img.src = withCode(`/api/jobs/${jobId}/map.png`);
+  const img = $("mapimg"); img.onload = () => { mapReady = true; showMap(); }; img.src = withCode(`/api/jobs/${jobId}/map.png`);
 }
 function setClip() {
   if (!bounds) return;
