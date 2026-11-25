@@ -982,7 +982,13 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 **`stray_quality` 와의 관계** (`stray_quality._pose_fix` · `_rule` · `_depth`, `measure` · `drift` 같음)
 
-- **[B 정하는 중 — C5]** 진단이 만든 광선 구조를 `stray_quality.measure` 가 넘겨받아 쓰는 방법 (`C_TRACK.md` C5). 정해지면 여기에 적는다.
+- **진단의 광선 구조 넘겨받기 (C5, 11/25 B)**: `stray_quality.measure(out_dir, …, visual_scene=None)`.
+  - `visual_scene` = `(build/visual.ply 경로, 그 파일의 mtime, RaycastingScene)` 세 개 묶음 — 진단 단계의 `ctx["_vis_scene"]` 모양 그대로.
+  - 조건: 그 광선 구조에는 `build/visual.ply` 하나만 씬 좌표 그대로 넣었어야 한다. 보정 판(`floor_patch.ply`) 등 다른 형상을 더했으면 `None` 을 넘긴다. 지금 진단은 판을 더한 구조면 `_vis_scene` 을 `None` 으로 두므로 그대로 넘기면 된다.
+  - `measure` 는 경로가 같은 파일이고 mtime 이 같을 때만 그 구조로 `meshes.visual` 을 재고, 아니면 전처럼 파일을 읽어 새로 만든다. 결과 dict 는 넘기든 안 넘기든 같다 (`seconds` 만 다름).
+  - 주 수치(`mesh_raw` — 진단 수치 `stray_quality` 의 값들)는 늘 `build/mesh_raw.ply` 로 새로 만든 구조로 잰다. `visual.ply` 는 씬 좌표로 옮기고 (천장이 없으면) 떠 있는 조각을 지운 메쉬라 형상이 달라, 진단 구조로 재면 "복원 정확도"의 뜻이 바뀐다.
+  - B 측정(11/25, B 노트북): `measure` 융복 2층 2.69 → 1.49 s · 인문대 2층 12.85 → 6.14 s, 두 촬영본 모두 결과 값 503개가 같음. 남은 시간은 거의 `mesh_raw` 의 PLY 읽기와 BVH 만들기(약 1.0 s / 4.7 s).
+  - 엔진에서 쓰려면 `stages.py` 의 `measure` 부르는 줄에 `visual_scene=ctx.get("_vis_scene")` 를 더한다 (통합 기록 R14).
 
 - 보정 info 찾기
   - 새 빌드 (`tsdf_meta.json` 의 `pose_fix` 에 `sha256` 이 있음): `pose_fix.applied` 가 거짓이면 읽지 않는다. 참이면 `build/<file>` → `input_map/<같은 이름>` 차례로 찾아 **파일 sha256 이 같은 것만** 적용한다. 같은 것이 없으면 적용하지 않고 `notes` 에 문장을 남긴다.
