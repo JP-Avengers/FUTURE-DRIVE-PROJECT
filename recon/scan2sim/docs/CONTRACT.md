@@ -1,19 +1,21 @@
 # CONTRACT.md — scan2sim 약속 (엔진 · 서버 · 화면이 주고받는 것)
 
-**기준 코드: `b/yunseong` `b900e76` + 작업 트리(커밋 전)** — B 의 `stray.py` · `stray_fix.py` · `stray_mesh.py` · `stray_quality.py` 는 `595d439` 위의 커밋 전 변경까지 반영했다. 이 네 파일은 줄 번호 대신 함수 · 상수 이름(`stray.convert`, `stray.MAX_KEYFRAMES` 등)으로 적는다.
+**기준 코드: `b/yunseong` `4823a6e`** (main `6ec3237` 을 합친 것). B 의 `stray.py` · `stray_fix.py` · `stray_mesh.py` · `stray_quality.py` 는 줄 번호 대신 함수 · 상수 이름(`stray.convert`, `stray.MAX_KEYFRAMES` 등)으로 적는다.
 처음 판의 기준은 `d019a22` (main 의 C · D 11/24 변경 `736eb68` ~ `ed7220e` 을 합친 `ed4ee25` + 시험 · 기록 커밋 하나)이고, 다른 파일의 `파일:줄` 은 그 커밋 기준이다.
 **고침 11/24 저녁 (`ccaca39`, C 의 `620a2b0` 을 합침):** 씬 루트가 둘로 나뉜 것(2-4)과 R3 · R4 가 붙은 것을 반영했다. `620a2b0` 이 `stages.py` 에 줄을 더해, 이 문서의 `stages.py:줄` 가운데 입력(`s_input`, 5~7줄) · 진단 · 묶음 단계 쪽은 지금 코드보다 앞을 가리킬 수 있다 — 함수 이름으로 찾을 것.
 **고침 11/24 밤 (`b900e76` + 작업 트리):** B 의 Stray 깊이 규칙 · 깊이 파일 짝짓기 · zip 처리(6-1 ~ 6-3), 자세 보정과 그 결과 파일(6-4), 아직 C 가 넣지 않은 R10 · R11 과 `--resume` 제안(8장)을 반영했다.
+**고침 11/25 (`4823a6e`):** C 의 `be8310e` (R9 ~ R12 · `--resume`) · `105591c` (걸어간 길 진단) · `6ec3237` (`SystemExit`), D 의 `533bffe` (이어 올리기 · 작업 되살리기 · 작업 폴더 정리) · `6afb822` 를 반영했다 (C 의 요청 C1 · C2, `C_TRACK.md` 6장). `core.py` · `checks.py` · `web/server.py` · `web/static/index.html` 의 줄 번호는 모두 `4823a6e` 기준이다. `stages.py` 는 이번에 고친 곳만 `4823a6e` 기준이고, 다른 곳은 앞뒤로 어긋날 수 있다 — 함수 이름으로 찾을 것.
 
-작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영 · B 의 Stray 깊이 규칙 · 자세 보정)
+작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영 · B 의 Stray 깊이 규칙 · 자세 보정) · 고침 2026-11-25 (C · D 의 11/25 변경 반영)
 
 - 이 문서는 **지금 코드가 하는 일**을 적는다. 계획(`docs/implementation.md` 5장)과 다른 곳과 버그로 보이는 것은 8장에 모았다.
 - 근거 표시: 코드 위치는 `파일:줄`. 경로는 `recon/scan2sim/` 기준이고, `pipeline/` · `tools/` · `configs/` 는 `recon/` 아래다. 코드를 읽지 않고 짐작한 것은 **[추정]** 이라고 적었다.
 - 예시 JSON 은 실제 실행 결과에서 가져왔다. 긴 배열은 줄였다(`…`).
   - `room` = 서버를 띄워 방 촬영본(Stray zip `6bc1ae021f.zip`, 118초 · 379 MB, E 가 찍음)을 API 로 올린 시험. 기준 코드에서 `tests/e2e.py` 로 돌림. 작업 `694ddc986821`, 결과 · 엔진 출력은 B 노트북 작업 폴더(저장소 밖). 15/15 통과 · `done` · 판정 `warn` · 82초.
+    - `room` 은 `be8310e` 전 엔진(형상 메쉬 `pipeline/tsdf.py`)의 결과다. 지금 엔진으로 같은 촬영본을 돌리면 결함 · 수치 · 문장이 다르다 (C 측정: 결함 6 → 1곳, `floor_two_levels` 16~17 → 2.9%, `C_TRACK.md` 2-5).
   - `e2e_glb` = 11/23 에 서버로 GLB(`corridor_v04.glb`)를 올린 시험 (작업 `b8ce80baff04`). 그때 환경에 `scikit-image` 가 없어 변환 단계에서 실패했다. 8장에서 고쳐진 항목을 설명할 때만 쓴다.
   - 11/23 판의 `stray1` · `e2e_stray` 예시는 Stray 를 맵 폴더 길로 돌린 결과라 지금 출력과 모양이 달라 뺐다 (1-2).
-  - `ref` = B 가 `room` 과 같은 촬영본을 엔진 밖에서 11/24 밤 작업 트리의 `stray.convert` → `stray_mesh.build` (기본값) → `stray_quality.measure` 로 돌린 결과. R10 이 들어간 엔진의 Stray 중간 파일이 이 모양이 된다 [추정: R10 diff 대로 넣으면]. 6장에서만 쓴다.
+  - `ref` = B 가 `room` 과 같은 촬영본을 엔진 밖에서 11/24 밤 작업 트리의 `stray.convert` → `stray_mesh.build` (기본값) → `stray_quality.measure` 로 돌린 결과. 지금 엔진(R10, C `be8310e`)도 같은 함수를 기본값으로 부르므로(`stages.s_input` · `s_diagnose`) Stray 중간 파일이 이 모양이다. C 가 엔진으로 잰 복원 정확도(중앙 1.78 cm)도 같다 (`C_TRACK.md` 2-5). 6장에서만 쓴다.
 
 ---
 
@@ -22,14 +24,14 @@
 1. API 경로 · 응답 필드, 작업 폴더의 파일 이름, 결함 목록의 필드를 **바꾸거나 없앨 때**는 먼저 팀 채팅에 알린다.
 2. 그 변경과 **같은 커밋**에서 이 파일을 고친다.
 3. **필드를 더하는 것은 자유**다(알리지 않아도 됨). 대신 화면 · 시험 · 다른 도구는 모르는 필드를 무시해야 한다.
-   - 화면은 모르는 결함 `type` 이 와도 목록에 보여 줘야 한다. 지금 화면은 `type` 을 보지 않고 `severity` · `title` 로 그린다 (`web/static/index.html:256-275`).
+   - 화면은 모르는 결함 `type` 이 와도 목록에 보여 줘야 한다. 지금 화면은 `type` 을 보지 않고 `severity` · `title` 로 그린다 (`web/static/index.html:270-289`).
 4. `tests/` 의 시험이 이 약속을 검사한다. 시험이 깨지면 바꾼 사람이 그날 안에 고친다.
    - `tests/e2e.py`: 서버를 띄워 API 로 올리고 상태 · 결함 필드 · 결과 파일 4개를 검사.
      검사하는 키는 `tests/e2e.py:35-38` (`JOB_KEYS` · `DONE_KEYS` · `STAGE_KEYS` · `DEFECT_KEYS`).
    - `tests/repeat.py`: 같은 입력을 두 번 돌려 결함 목록이 같은지 검사.
    - `tests/run.sh`: 가상의 방 GLB · 가상 Stray 촬영본으로 위 둘을 돌리고, 넣어 둔 결함 3개가 제자리(0.5 m 안)에 잡히는지 본다 (`--truth`). Stray 도 11/24 부터 견준다 (`d019a22`).
    - 이 문서의 필드 표를 고치면 위 키 목록도 같이 고친다.
-5. 이 약속을 쓰는 다른 도구: D 의 `deploy/check.py`. 화면과 같은 순서로 올리고, 상태 `done` · `has_bundle` · `report.md` · `preview.glb` · `bundle.zip` 을 다 받으면 `CHECK_OK` (`deploy/check.py:86`).
+5. 이 약속을 쓰는 다른 도구: D 의 `deploy/check.py`. 화면과 같은 순서로 올리고, 상태 `done` · `has_bundle` · `report.md` · `preview.glb` · `bundle.zip` 을 다 받으면 `CHECK_OK` (`deploy/check.py:86`). `verdict` 는 보지 않는다 — `done` 이어도 `verdict` 가 `fail` 일 수 있다 (3-4).
 
 ---
 
@@ -45,9 +47,9 @@
 
 - 장면 → 화면 변환은 **두 곳에서만** 한다.
   - **엔진**이 `preview.glb` 를 쓸 때: `preview.py:111`. 정점을 `(x, z, −y)` 로 바꿔 씀.
-    서버는 이 파일을 주기만 하고, 파일이 없거나 USD 보다 오래됐을 때만 같은 엔진 함수(`preview.write`)를 부른다 (`web/server.py:207-213`).
+    서버는 이 파일을 주기만 하고, 파일이 없거나 USD 보다 오래됐을 때만 같은 엔진 함수(`preview.write`)를 부른다 (`web/server.py:258-265`).
     11/23 까지는 서버가 직접 변환했다. 11/24 에 엔진으로 옮겨졌다 (C `2a6e89f`, D `ed7220e`).
-  - **화면**이 결함 표시를 놓을 때: `web/static/index.html:293` `toView = (p) => (p[0], p[2], -p[1])`.
+  - **화면**이 결함 표시를 놓을 때: `web/static/index.html:307` `toView = (p) => (p[0], p[2], -p[1])`.
 - 거꾸로(화면 → 장면)는 `장면 (x, y, z) = 화면 (x, −z, y)`.
 - Nav2 지도(`bundle/nav2/map.pgm`)는 장면 좌표의 위에서 본 그림이다.
   - `map.yaml` 의 `origin` 은 그림 왼쪽 아래 칸 모서리의 장면 (x, y).
@@ -60,11 +62,11 @@
 | GLB · **Stray** | 바닥 평면 법선 → +Z (`pipeline/glb_to_usd.py:79-130` `find_floor`). 위를 향한 면(15° 안)의 높이 분포에서 넓은 층 중 가장 낮은 층 ± 5 cm 의 면으로 넓이 가중 최소제곱 평면을 맞춤. 2 cm 넘게 벗어난 면은 빼고 되풀이. 무작위 표본 없음 (C `736eb68`) | 그 바닥 평면 (`pipeline/glb_to_usd.py:126`) | 수평을 맞춘 메쉬 전체 정점의 x · y 범위 가운데 (자동 설정 `orient: origin: center`, `detect.py:100`; 이동은 `pipeline/glb_to_usd.py:489-493`) |
 | 맵 폴더 (리얼센스) | 바닥 법선 → +Z (`pipeline/build_usd.py:70-85`) | **카메라 경로 아래 바닥 높이의 중앙값** (`pipeline/build_usd.py:251-261`, `transform.json` 의 `floor_zero`) | 입력 좌표 그대로 (틀 `configs/templates/indoor_rtabmap.yaml:33` 의 `orient: origin: keep`) |
 
-- **Stray 는 11/24 (C `0534d95`) 부터 GLB 와 같은 길**로 간다 (`stages.py:41-59`).
-  - `stray.py` 로 맵 폴더 형식(`out/input_map/`)을 만들고, `pipeline/tsdf.py` 로 깊이를 합쳐 형상 메쉬 `build/mesh_raw.ply` 를 만든다.
+- **Stray 는 11/24 (C `0534d95`) 부터 GLB 와 같은 길**로 간다 (`stages.py:46-71`).
+  - `stray.py` 로 맵 폴더 형식(`out/input_map/`)을 만들고, B 의 `stray_mesh.build` (깊이 5 m · 자세 보정, 6-4)로 깊이를 합쳐 형상 메쉬 `build/mesh_raw.ply` 를 만든다.
   - 그 메쉬를 GLB 처럼 `pipeline/glb_to_usd.py` 에 넣는다. 그래서 원점 · 바닥의 정의가 GLB 와 같다.
   - 11/23 까지는 맵 폴더 길(`build_usd.py`)이라 "x · y = 입력 그대로, z = 경로 아래 중앙값" 이었다.
-  - 형상 메쉬를 B 의 `stray_mesh.build` (깊이 5 m · 자세 보정, 6-4)로 만드는 것은 통합 기록 R10 이고, 아직 C 가 넣지 않았다. 넣어도 메쉬 파일 이름 · 좌표는 같다.
+  - 형상 메쉬는 11/24 까지 `pipeline/tsdf.py` (깊이 3 m · 자세 보정 없음)로 만들었다. 11/25 R10 (C `be8310e`) 부터 `stray_mesh.build` 다. 메쉬 파일 이름 · 좌표는 같다.
 - GLB · Stray 에서 바닥이 평평하지 않으면 스캔 바닥 높이 지도를 쓴다.
   - 평평함 판정: 바닥 근처 위 향한 면 높이의 5~95% 폭이 0.12 m 미만 (`detect.py:67`, `:75`).
   - 평평하지 않으면 자동 설정에 `collision.ground: scan` 이 붙고 (`detect.py:104-105`), `build/ground.npz` 를 만든다 (`pipeline/glb_to_usd.py:556`).
@@ -84,7 +86,7 @@
 |---|---|---|---|
 | GLB | 올린 GLB 의 glTF 좌표 그대로 (+Y 위) | `M(원점 · 수평 · 바닥) · Y_UP_TO_Z_UP · 배율` | `pipeline/glb_to_usd.py:630-632` |
 | B 형식 맵 폴더 (리얼센스) | 맵 폴더의 세계 좌표 = `trajectory_camera_optical.txt` 의 세계 (+Z 위) | 수평 맞춤 회전 + 바닥 높이 이동 | `pipeline/build_usd.py:248`, `:260` |
-| **Stray (아이폰)** | **`out/input_map/` 의 세계 좌표** = Stray 세계를 `Y_UP_TO_Z_UP` 으로 돌린 것 (+Z 위). 형상 메쉬 `build/mesh_raw.ply` 가 이 좌표다. **Stray 원본 세계(+Y 위)가 아님** | `M(원점 · 수평 · 바닥) · 배율`. 입력 메쉬가 이미 Z 위라 `Y_UP_TO_Z_UP` 을 곱하지 않음 (설정 `input: up: z`, `stages.py:59`, `detect.py:99`) | `pipeline/glb_to_usd.py:630-632` (메쉬를 만든 곳은 `stray.Y_UP_TO_Z_UP` · `stray.convert` 안의 `pose` + `pipeline/tsdf.py`, R10 뒤에는 `stray_mesh.build`) |
+| **Stray (아이폰)** | **`out/input_map/` 의 세계 좌표** = Stray 세계를 `Y_UP_TO_Z_UP` 으로 돌린 것 (+Z 위). 형상 메쉬 `build/mesh_raw.ply` 가 이 좌표다. **Stray 원본 세계(+Y 위)가 아님** | `M(원점 · 수평 · 바닥) · 배율`. 입력 메쉬가 이미 Z 위라 `Y_UP_TO_Z_UP` 을 곱하지 않음 (설정 `input: up: z`, `stages.py:71`, `detect.py:99`) | `pipeline/glb_to_usd.py:630-632` (메쉬를 만든 곳은 `stray.Y_UP_TO_Z_UP` · `stray.convert` 안의 `pose` + `stray_mesh.build`) |
 
 - 11/24 에 Stray 의 길이 바뀌었지만 **Stray 의 "입력 좌표" 는 그대로**다 (`stages.py:45` 주석). 바뀐 것은 T 의 내용(x · y 원점이 범위 가운데로, z = 0 이 맞춘 바닥 평면으로)뿐이다.
 
@@ -95,8 +97,8 @@
   - `Y_UP_TO_Z_UP = [[1,0,0,0],[0,0,-1,0],[0,1,0,0],[0,0,0,1]]` → `p_입력 = (x, −z, y)_stray` (`stray.Y_UP_TO_Z_UP`)
   - 거꾸로: `p_stray = (x, z, −y)_입력`
 - 이 돌린 세계로 `input_map/trajectory_camera_optical.txt` 를 쓴다 (`stray.convert` 끝).
-  `pipeline/tsdf.py` 가 이 자세로 깊이를 합쳐 `build/mesh_raw.ply` 를 같은 좌표로 만들고, 빌드 설정(`build/auto_config.yaml`)의 `input.mesh` 가 이 파일이다.
-  - R10 뒤의 `stray_mesh.build` 는 합치기 전에 키프레임 자세를 고친다 (6-4). 메쉬 좌표계(입력 좌표)는 같고, `trajectory_camera_optical.txt` 는 **보정 전 자세 그대로**다. 고친 자세는 `build/pose_fix.json` 으로 다시 만든다 (`stray_fix.apply_fix`).
+  `stray_mesh.build` 가 이 자세로 깊이를 합쳐 `build/mesh_raw.ply` 를 같은 좌표로 만들고, 빌드 설정(`build/auto_config.yaml`)의 `input.mesh` 가 이 파일이다.
+  - `stray_mesh.build` 는 합치기 전에 키프레임 자세를 고친다 (6-4). 메쉬 좌표계(입력 좌표)는 같고, `trajectory_camera_optical.txt` 는 **보정 전 자세 그대로**다. 고친 자세는 `build/pose_fix.json` 으로 다시 만든다 (`stray_fix.apply_fix`).
 - 그래서 Stray 결함의 `center_input` 을 Stray 원본 좌표로 보려면 `(x, z, −y)` 를 한 번 더 해야 한다.
 
 실제 값 (`room` 의 `build/transform.json`) — 약 0.38° 기울기 보정, x · y 를 (+4.506, −2.313) 옮겨 범위 가운데를 원점으로, z 를 1.580 m 올림. 입력 좌표에서 바닥이 z ≈ −1.555 인 것은 입력 좌표의 원점이 촬영을 시작한 폰 자리이기 때문이다 [추정: ARKit 세계 원점].
@@ -123,38 +125,45 @@
 
 ### 2-1. 서버 쪽 (`<jobs>/<작업 번호>/`)
 
-`<jobs>` 기본값 `~/scan2sim_jobs`, 서버의 `--jobs` 로 바꿈 (`web/server.py:41`, `:266`). 저장소 밖에 둔다. 배포 스크립트는 `S2S_JOBS` 로 정한다 (기본 같음, `deploy/common.sh:8`).
+`<jobs>` 기본값 `~/scan2sim_jobs`, 서버의 `--jobs` 로 바꿈 (`web/server.py:41`, `:318`). 저장소 밖에 둔다. 배포 스크립트는 `S2S_JOBS` 로 정한다 (기본 같음, `deploy/common.sh:8`).
 
 ```
-<jobs>/<id>/                  id = 16진수 소문자 12자리 (uuid4 앞 12자리, web/server.py:97)
+<jobs>/<id>/                  id = 16진수 소문자 12자리 (uuid4 앞 12자리, web/server.py:144)
   job.json                    서버가 쓰는 작업 기록 (2-2)
-  input/input.zip             올린 파일. 이름은 항상 "input" + 확장자 (web/server.py:99)
+  input/input.zip             올린 파일. 이름은 항상 "input" + 확장자 (web/server.py:146)
   input/input.glb               — 원래 이름은 job.json 의 name 에만 남음
-  run.txt                     엔진의 표준 출력 + 표준 오류 (web/server.py:145-147)
+  run.txt                     엔진의 표준 출력 + 표준 오류 (web/server.py:193-195)
   out/                        엔진 출력 폴더 (2-3)
 ```
 
-- 올린 파일 이름을 바꾸는 이유: 경로에 한글이 있으면 Open3D 가 못 읽음 (`web/server.py:99` 주석).
+- 올린 파일 이름을 바꾸는 이유: 경로에 한글이 있으면 Open3D 가 못 읽음 (`web/server.py:146` 주석).
 - 그 결과 **웹으로 올린 작업은 장면 이름이 모두 `input`** 이 된다 (2-4).
+- **작업 폴더 정리** (D `533bffe`, `web/server.py:92-112` `tidy`). 작업이 하나 끝날 때마다 서버가 부른다 (`:204-207`). `status` 가 `done` · `failed` 이고 `finished` 가 있는 작업만 본다. 올리다 만 작업은 건드리지 않는다.
+  - 끝난 작업 모두: `out/input_map/_unzip/` (올린 zip 을 풀어 둔 사본)을 지운다.
+  - 끝난 시각이 최근 `--keep` 건(기본 5, `:41`, `:320`)보다 오래된 작업: `input/` · `out/input_map/` 도 지운다. `out/build/` 는 `out/preview.glb` 가 있거나 `out/build/usd/` 가 없을 때만 지운다 (화면용 파일을 만들 USD 는 남김).
+  - 남는 것: `job.json` · `run.txt` · `out/stages/` · `out/bundle/` · `preview.glb` · `report.md` · `report.json` · 결함 목록 · `log.txt` 등. 그래서 상태 응답 · `preview.glb` · `map.png` · `report.md` · `bundle.zip` 은 그대로 나온다 [D 측정: 오래된 작업 1.1 GB → 86 MB 뒤에도 네 가지가 나옴, `533bffe` 커밋 설명].
+  - `--keep` 이 0 보다 작으면(예: `-1`) 오래된 작업 지우기만 하지 않는다. **`_unzip/` 은 `--keep -1` 이어도 지운다** (`:106-108`).
+  - 엔진을 직접 돌릴 때(CLI)는 아무것도 지우지 않는다.
 
 ### 2-2. `job.json`
 
-서버가 메모리에 든 작업 dict 를 그대로 쓴 것 (`web/server.py:68-69`). 4-3 의 `GET /api/jobs/<id>` 응답의 앞부분과 같다.
+서버가 메모리에 든 작업 dict 를 그대로 쓴 것 (`web/server.py:115-116` `save`). 4-3 의 `GET /api/jobs/<id>` 응답의 앞부분과 같다.
 
 | 필드 | 형 | 언제 생기나 | 뜻 |
 |---|---|---|---|
 | `id` | 문자열 | 만들 때 | 작업 번호 |
 | `name` | 문자열 | 만들 때 | 올린 파일의 원래 이름 (경로 빼고, 앞 120자) |
 | `size` | 정수 | 만들 때 | 알린 파일 크기 (바이트) |
-| `received` | 정수 | 만들 때 (0) | 지금까지 받은 바이트. **조각을 받을 때마다 메모리에서만 늘고 `job.json` 에는 `start` 때 저장됨** |
+| `received` | 정수 | 만들 때 (0) | 지금까지 받은 바이트. **조각을 받을 때마다 메모리에서만 늘고 `job.json` 에는 `start` 때 저장됨**. 서버를 다시 켠 뒤 `uploading` 작업을 읽을 때는 올린 파일의 크기(최대 `size`)로 되찾음 (`web/server.py:61-63`) |
 | `status` | 문자열 | 만들 때 | `uploading` · `queued` · `running` · `done` · `failed` (4-3) |
 | `created` | 실수 | 만들 때 | 유닉스 시각(초) |
 | `file` | 문자열 | 만들 때 | `input.zip` 또는 `input.glb` |
 | `queued_at` | 실수 | `start` 때 | 줄에 넣은 시각 |
 | `started` | 실수 | 처리 시작 | |
 | `exit_code` | 정수 | 엔진이 끝남 | 엔진 종료 코드 (3-1). 엔진이 끝났으면 `failed` 여도 있음. 엔진을 못 띄운 경우에는 없음 |
-| `finished` | 실수 | 처리 끝 | |
-| `error` | 문자열 | 서버 쪽 실패일 때만 | 서버 쪽 예외 (`"TypeError: …"`) 또는 `"서버가 다시 켜져서 끊김"`. 엔진 단계가 실패한 `failed` 에는 없음 |
+| `finished` | 실수 | 처리 끝 | 두 번째로 끊겨 `failed` 가 될 때도 씀 (4-3) |
+| `restarts` | 정수 | 서버를 다시 켜서 줄에 다시 넣었을 때 | 다시 넣은 횟수. 지금은 1 까지 (D `533bffe`, `web/server.py:79-83`) |
+| `error` | 문자열 | 서버 쪽 실패일 때만 | 서버 쪽 예외 (`"TypeError: …"`) 또는 `"서버가 다시 켜져서 끊김 (두 번째)"` · `"서버가 다시 켜져서 끊김"` (4-3). 엔진 단계가 실패한 `failed` 에는 없음 |
 
 실제 `job.json` (`room`):
 
@@ -185,16 +194,18 @@ out/
   stages/NN_<단계>.json       단계별 판정 (3-2). NN = 00~07
   log.txt                     형상 메쉬 · 빌드 · 지도 하위 프로그램의 출력 (stages.py:23-27)
   input_map/                  Stray 입력일 때만 — Stray 를 맵 폴더 형식으로 바꾼 것 (6장)
-    _unzip/                     zip 을 푼 원본 촬영 (rgb.mp4 · depth/ · odometry.csv …). 사람 얼굴이 든 영상이 그대로 남음
+    _unzip/                     zip 을 푼 원본 촬영 (rgb.mp4 · depth/ · odometry.csv …). 사람 얼굴이 든 영상이 그대로 남음 — 서버는 작업이 끝나면 지움 (2-1)
     keyframes/rgb/<n>.jpg · keyframes/depth/<n>.png · keyframes/calib/<n>.yaml
     trajectory_camera_optical.txt   키프레임 자세 — 자세 보정 전 (6-4)
     stray_meta.json             변환이 끝나면 맨 끝에 씀 (6-3)
     stray_quality.json          Stray 입력이면 진단 단계가 씀 (`stray_quality.measure`, 통합 기록 R3 — C `620a2b0`). 진단 수치의 `stray_quality` 와 같은 값
-    (R10 뒤) pose_fix.json      build/pose_fix.json 과 같은 바이트의 복사본. 없어도 됨 (6-4)
+    pose_fix.json               build/pose_fix.json 과 같은 바이트의 복사본. 없어도 됨 (6-4)
     (예전 맵만) floor_fix.json   af65f1b 판 B 메쉬가 쓴 높이 보정 info. 지금 코드는 쓰지 않고 새로 만들 때 지움 (6-4)
   build/                      빌드 결과
     auto_config.yaml            엔진이 만든 빌드 설정
-    auto_config_corrected.yaml  보정을 했을 때만 (stages.py:319)
+    auto_config_corrected.yaml  보정을 했을 때만 (stages.py:458, :480)
+    floor_patch_mask.npz        보정이 보이는 바닥 구멍을 덮을 때만 — 덮을 Nav2 지도 칸 (5-4, stages.py:472-475)
+    floor_patch.ply             그 판의 메쉬 (= USD prim FloorPatch). 빌드가 판을 만들었을 때만. 빌드마다 먼저 지움 (pipeline/glb_to_usd.py:642-650)
     transform.json              1-3
     visual.ply                  보이는 형상 (장면 좌표)
     report.json                 빌드 보고 (엔진의 report.json 과 다른 파일)
@@ -203,8 +214,7 @@ out/
     ground.npz                  바닥 높이 지도. GLB · Stray 는 바닥이 평평하지 않을 때만 (1-2). 있으면 진단 · 시작 자세가 씀
     (GLB · Stray) drive_path.json   가상 주행 경로 → bundle/route.csv 의 재료
     (GLB · Stray) glb_tex/          GLB 텍스처를 풀어 두는 곳. Stray 는 빈 폴더
-    (Stray 만) tsdf_config.yaml · mesh_raw.ply · tsdf_meta.json   형상 메쉬와 그 설정 (stages.s_input, detect.config_tsdf)
-    (Stray, R10 뒤) pose_fix.json   자세 보정 info (6-4). R10 diff 대로면 tsdf_config.yaml 은 더 생기지 않음
+    (Stray 만) mesh_raw.ply · tsdf_meta.json · pose_fix.json   형상 메쉬 · 그 정보 · 자세 보정 info (stages.s_input → stray_mesh.build, 6-4)
     (맵 폴더만) mesh_raw.ply · collider.ply · floor.ply · boundary.ply · check_input.json · tsdf_meta.json …
   defects_before.json         보정 전 결함 목록 (5장). 진단 단계가 돌면 항상
   defects_after.json          보정 뒤 다시 진단한 결함 목록. **보정이 돌았을 때만** (5-4)
@@ -216,6 +226,7 @@ out/
 ```
 
 - Stray 의 `build/` 는 11/24 에 바뀌었다 (C `0534d95`). `floor.ply` · `collider.ply` · `boundary.ply` · `check_input.json` 이 없어지고 `drive_path.json` · `glb_tex/` · `tsdf_config.yaml` 이 생겼다. `mesh_raw.ply` · `tsdf_meta.json` · `visual.ply` · `transform.json` 은 그대로 있다.
+  - 11/25 (R10, C `be8310e`) 부터 `tsdf_config.yaml` 은 생기지 않고 (`detect.config_tsdf` 지움) `pose_fix.json` 이 생긴다.
 - 보정이 돌면 `build/` 는 **같은 자리에 다시 만들어진다** (보정 설정이 원래 설정을 `base:` 로 물려받고 `out:` 을 바꾸지 않음, `stages.py:319-329`).
   - 그래서 보정 뒤의 `build/` · `bundle/` · `preview.glb` 는 모두 보정된 것이다.
   - Stray 의 형상 메쉬(`mesh_raw.ply`)는 보정 때 다시 만들지 않는다 (입력 단계는 다시 돌지 않음).
@@ -273,11 +284,11 @@ free_thresh: 0.25
 
 - `kind` 는 빌드가 간 길이다. **Stray 도 `glb`** 로 적힌다 (`stages.py:59` 에서 GLB 길로 바꿈, C `0534d95`). 11/23 까지 Stray 는 `map_folder` 였다. Stray 인지는 `input` 의 확장자(`.zip`)로만 알 수 있다.
 - `route.csv` 는 머리줄 `x,y` + 장면 좌표 점들이다. 바닥 빈 곳의 뼈대로 만든 **가상 경로**이고, 촬영 경로가 아니다 (`pipeline/glb_to_usd.py:614`, `:622-624`). `room` 은 285점.
-- **씬 루트가 둘이다** (C `620a2b0`, `stages.s_bundle`).
-  - `scene_root.usda`: **묶음만으로 열린다.** subLayer 는 `./usd/<이름>_scene.usda` 하나. `/World/Lights/Dome`(DomeLight, 세기 600)을 직접 정의한다. 로봇 · 센서는 없다. [C 측정] usd-core 로 열면 못 찾는 층 0. Isaac Sim 에서는 아직 열어 보지 않았다.
+- **씬 루트가 둘이다** (C `620a2b0`, `stages.s_bundle`, `stages.py:569-600`).
+  - `scene_root.usda`: **묶음만으로 열린다.** subLayer 는 `./usd/<이름>_scene.usda` 하나. `/World/Lights/Dome`(DomeLight, 세기 600)을 직접 정의한다. 로봇 · 센서는 없다. [C 측정] usd-core 로 열면 못 찾는 층 0. [D 확인] Isaac Sim 6.0.1 (Ubuntu 서버, main `533bffe`)에서 조명까지 오류 없이 열린다. 로봇을 놓고 주행해 본 것은 아직 없다 (`C_TRACK.md` C8).
   - `scene_root_sim.usda`: 11/24 전의 `scene_root.usda` 그대로 — `../proxy/*.usda` 와 `../../../data/usd/<이름>/usd/<이름>_scene.usda` 를 subLayer 로 건다. `sim/scenes/<장소>/` 에 두는 것을 가정하고, 혼자서는 안 열린다. 웹 작업은 `<이름>` 이 모두 `input` 이다.
   - 맵 파일(`usd/<이름>_scene.usda`)에는 조명이 없다. 맵만 열면 검게 보인다.
-- 그림자 설정: 진단의 `shadow_fix` 가 참이면(3-5) 보이는 prim 마다 `primvars:doNotCastShadows = 1` 을 건다 (`stages.py:367-369`). `room` 은 `Visual` · `FloorFill` 2개.
+- 그림자 설정: 진단의 `shadow_fix` 가 참이면(3-5) 보이는 prim 마다 `primvars:doNotCastShadows = 1` 을 건다 (`stages.py:524-525`). `room` 은 `Visual` · `FloorFill` 2개. 보정이 구멍을 덮었으면 `FloorPatch` 도 들어간다 (5-4).
 - `bundle/` 구조는 D 의 `sim/add_site.py` 가 받는 형식에 **아직 맞추지 않았다** (8장).
 
 ---
@@ -296,19 +307,21 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
   - Stray 촬영 폴더, 또는 그 폴더가 든 zip (촬영 폴더 판별은 6-1, `stray._zip_captures`). 맵 폴더 형식으로 바꾼 뒤 형상 메쉬를 만들어 GLB 길로 감 (1-2)
   - B 형식 맵 폴더 (`keyframes/` + `trajectory*camera_optical.txt`) — **폴더만**. 맵 폴더를 묶은 zip 은 알아보지 못함 (8장)
   - 녹화 파일(`.mcap` · `.db3` · `.bag`)은 알아보지만 입력 단계에서 실패시킴 (`stages.py:37-38`)
-- `--force`: 실패한 단계가 있어도 다음 단계를 함. `--resume`: `out/build` 에 결과가 있으면 변환을 건너뜀 (`__main__.py:20-23`). **서버는 둘 다 쓰지 않는다** (`web/server.py:146`).
-  - Stray 는 `--resume` 이면 `input_map/stray_meta.json` 이 있을 때 변환을, `build/mesh_raw.ply` 가 있을 때 형상 메쉬를 건너뛴다 (`stages.s_input`). 메쉬는 있는지만 본다 (8-3 의 11번).
+- `--force`: 실패한 단계가 있어도 다음 단계를 함. `--resume`: `build/report.json` 이 있으면 변환(`convert`)을 건너뜀 (`__main__.py:22-23`, `stages.py:128-129`). 보정 단계는 `--resume` 이어도 늘 다시 만든다 (`stages.py:481`). **서버는 둘 다 쓰지 않는다** (`web/server.py:194`).
+  - Stray 는 `--resume` 이면 `input_map/stray_meta.json` 이 있을 때 변환(`stray.convert`)을 건너뛴다. 입력이 바뀌었는지는 보지 않는다 (`stages.py:53`).
+  - 형상 메쉬는 이번 실행에서 맵 폴더를 새로 만들었거나, `build/mesh_raw.ply` 가 없거나, `stray_meta.json` 보다 오래됐으면 다시 만든다. 그 밖에는 건너뛴다 (`stages.py:62-63`, C `be8310e`).
+  - 메쉬를 다시 만들어도 `convert` 는 `build/report.json` 만 보고 건너뛸 수 있다 (8-3 의 11번).
 - 종료 코드 (`__main__.py:29`)
-  - `0` = 어느 단계도 `fail` 이 아님 (통과 또는 주의)
+  - `0` = 어느 단계도 `fail` 이 아님 (통과 또는 주의). **이때도 `verdict` 는 `fail` 일 수 있다** (3-4).
   - `1` = 한 단계라도 `fail`
-  - 단계 안의 `Exception` 은 그 단계의 `fail` 로 바뀐다 (`core.py:53-54`). 요약은 `"예외: <예외 이름>: <문장>"`, `messages` 는 traceback 마지막 6줄.
+  - 단계 안의 `Exception` 은 그 단계의 `fail` 로 바뀐다 (`core.py:57-58`). 요약은 `"예외: <예외 이름>: <문장>"`, `messages` 는 traceback 마지막 6줄.
     - 단, `stray.py` 의 `CaptureError` 는 `input` 단계가 직접 받아 **그 문장만** 요약에 넣고 `messages` 는 비운다 (R4, C `620a2b0`; 6-1).
-    - 단, `SystemExit` 은 잡히지 않아 단계 파일 없이 엔진이 끝난다 (종료 코드 1, 8-3 의 1번).
+    - 단계 안의 `SystemExit` 도 그 단계의 `fail` 이 된다 (C `6ec3237`, `core.py:53-56`). 요약 = 그 문장 (문장이 없으면 `"멈춤 (종료 코드 N)"`), `messages` 는 비어 있다. 뒤 단계는 `skip`, `report.md` · `report.json` 은 남는다. 예: 바닥을 못 찾는 GLB 의 `"바닥(위를 향한 넓은 면)을 못 찾음 …"`.
   - 인자가 틀리면 argparse 의 `2` [추정: argparse 기본 동작].
 
 ### 3-2. 단계 파일 `out/stages/NN_<단계>.json`
 
-`core.run` 이 단계마다 하나씩 쓴다 (`core.py:41-64`). 파일 이름 = `f"{k:02d}_{name}.json"` (`core.py:56`).
+`core.run` 이 단계마다 하나씩 쓴다 (`core.py:41-68`). 파일 이름 = `f"{k:02d}_{name}.json"` (`core.py:60`).
 
 ```json
 {"stage": "nav2", "status": "pass", "summary": "304×277 칸 (0.05 m) · 빈 바닥 61 m²",
@@ -322,7 +335,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `status` | 문자열 | `pass` · `warn` · `fail` · `skip` (3-3) |
 | `summary` | 문자열 | 한 줄 요약. 화면에 그대로 나감 |
 | `metrics` | 객체 | 단계별 수치. 키는 단계마다 다름 (3-5). 비어 있을 수 있음 |
-| `messages` | 문자열 배열 | 사용자가 읽을 문장. 예외면 traceback 마지막 6줄 (`core.py:54`) |
+| `messages` | 문자열 배열 | 사용자가 읽을 문장. 예외면 traceback 마지막 6줄 (`core.py:58`) |
 | `seconds` | 실수 | 걸린 시간 (소수 1자리) |
 
 - `summary` 와 `messages` 는 화면에 그대로 나간다. 한국어, 사용자가 읽을 문장으로 쓴다.
@@ -335,54 +348,68 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 ### 3-3. 단계 목록
 
-순서 · 이름은 `stages.py:483`, 화면 이름(`label`)은 `web/server.py:35-36`.
+순서 · 이름은 `stages.py:683`, 화면 이름(`label`)은 `web/server.py:35-36`.
 
 | NN | `stage` | `label` | 하는 일 | 나올 수 있는 `status` |
 |---|---|---|---|---|
-| 00 | `input` | 입력 확인 | 입력 종류 판별, 형태 재기, 빌드 설정 만들기. Stray 면 맵 폴더로 바꾸고 형상 메쉬(`pipeline/tsdf.py`, R10 뒤 `stray_mesh.build`)까지 만듦 | pass · warn · fail (Stray 는 늘 warn 이상, 6-3) |
+| 00 | `input` | 입력 확인 | 입력 종류 판별, 형태 재기, 빌드 설정 만들기. Stray 면 맵 폴더로 바꾸고 형상 메쉬(`stray_mesh.build`)까지 만듦 | pass · warn · fail |
 | 01 | `convert` | 메쉬 · USD 만들기 | GLB · Stray: `pipeline/glb_to_usd.py`. 맵 폴더: `check_input.py` + `run.py --from tsdf` | pass · fail |
-| 02 | `nav2` | Nav2 지도 | `sim/nav2/make_map.py`. 빈 바닥 4 m² 미만이면 fail | pass · fail · skip(`make_map.py` 없음) |
-| 03 | `diagnose` | 진단 | 충돌 바닥 층수 · 보이는 바닥 · 보이는 바닥 두 높이 · 낮은 턱 · 물체 일치 · 천장. `defects_before.json` 씀 | pass · warn · fail |
-| 04 | `correct` | 보정 · 다시 진단 | 두 겹 바닥이 있을 때만 다시 빌드 · 다시 진단. `defects_after.json` 씀 | pass · warn · fail · skip |
+| 02 | `nav2` | Nav2 지도 | `sim/nav2/make_map.py`. 이 파일이 없으면 fail `"Nav2 지도를 만드는 도구가 없음"` (R12, C `be8310e`, `stages.py:153-156`). 빈 바닥 4 m² 미만이면 fail | pass · fail |
+| 03 | `diagnose` | 진단 | 충돌 바닥 층수 · 보이는 바닥 · 보이는 바닥 두 높이 · 낮은 턱 · 물체 일치 · 다닐 수 있는 모양(`drivable`) · 천장 · (Stray) 복원 정확도. `defects_before.json` 씀. 지도가 없으면(`--force`) fail `"Nav2 지도가 없어 진단할 수 없음"` (`stages.py:256-257`) | pass · warn · fail |
+| 04 | `correct` | 보정 · 다시 진단 | 두 겹 바닥, 또는 (GLB · Stray) 보이는 바닥 없음이 있을 때만 다시 빌드 · 다시 진단 (5-4). `defects_after.json` 씀 | pass · warn · fail · skip |
 | 05 | `bundle` | 묶음 만들기 | `bundle/` 만들기, 끝에 `preview.glb` 쓰기 | pass · warn |
-| 06 | `verify` | 주행 검증 | 지금은 항상 skip (Isaac Sim 자리, `stages.py:429-431`) | skip |
-| 07 | `report` | 보고서 | `report.md` · `report.json`. 앞 단계가 실패해도 항상 돎 | pass · warn (**fail 이 되지 않음**, `stages.py:480`) |
+| 06 | `verify` | 주행 검증 | 지금은 항상 skip (Isaac Sim 자리, `stages.py:616-618`) | skip |
+| 07 | `report` | 보고서 | `report.md` · `report.json`. 앞 단계가 실패해도 항상 돎 | pass · warn (**fail 이 되지 않음**, `stages.py:680`) |
+
+- 11/24 까지 nav2 는 도구가 없으면 `skip` 이었고, 그러면 진단이 `KeyError` 로 죽었다. 지도가 없으면 진단 · 보정 · 묶음이 모두 못 돌아서 `fail` 로 바꿨다 (R12).
 
 ### 3-4. 엔진의 `report.json`
 
-`stages.py:479`: `{"name": <장면 이름>, "verdict": "pass|warn|fail", "stages": [단계 dict …]}`
+`stages.py:679`: `{"name": <장면 이름>, "verdict": "pass|warn|fail", "stages": [단계 dict …]}`
 
-- `verdict` = `input` ~ `verify` 단계 중 가장 나쁜 것 (`fail` > `warn` > `pass`, `skip` 은 무시) (`stages.py:437`).
+- `verdict` = `input` ~ `verify` 단계 중 가장 나쁜 것 (`fail` > `warn` > `pass`, `skip` 은 무시) (`stages.py:624`).
+- **단, 실패한 단계가 없어도 `verdict` 가 `fail` 일 수 있다** (C `105591c`, `stages.py:625-628`).
+  - 진단이 "이 맵으로는 주행할 수 없음" 이유를 남기면(`ctx["unusable"]`, 걸어간 길이 막힘 · 끊김, 5-4) `verdict` 를 `fail` 로 바꾼다. 진단 단계는 그 이유를 주의로 보여 `warn` 이다.
+  - 단계는 끝까지 돌아 묶음 · `preview.glb` 가 나온다. 엔진 종료 코드 0 · 서버 상태 `done` · `verdict` `fail` 이 된다 (4-3).
+  - `report.md` 의 판정은 `"쓸 수 없음 — <첫 이유>"`, `report` 단계 요약은 `"report.md — 쓸 수 없음 — <첫 이유>"`.
+  - 그래서 화면 · 시험 · 다른 도구는 판정을 단계 상태에서 짐작하지 말고 `verdict` 를 본다.
 - `stages` 에는 `report` 단계 자신이 **없다** (쓰는 시점에 아직 결과가 없음).
 - `report` 단계의 `status` 는 `verdict` 가 `fail` 이면 `pass` 로 바뀐다. 그래서 전체 판정은 `report` 단계가 아니라 `verdict` 를 본다.
 
 ### 3-5. 단계별 `metrics` 의 키 (지금 코드)
 
-약속은 "있으면 이 이름" 이다. 화면이 쓰는 것은 `diagnose` 의 `samples` · `floor_single_pct` · `floor_double` · `visible_floor_missing_pct` 뿐 (`index.html:244-247` `renderCompare`).
+약속은 "있으면 이 이름" 이다. 화면이 쓰는 것은 `diagnose` 의 `samples` · `floor_single_pct` · `floor_double` · `visible_floor_missing_pct` 뿐 (`index.html:258-261` `renderCompare`).
 
 | 단계 | 키 |
 |---|---|
-| `input` (GLB · Stray) | `parts` · `textured` · `triangles` · `extent_m` · `floor_tilt_deg` · `floor_area_m2` · `floor_spread_m` · `floor_main_share_pct` · `floor_flat` · `ceiling_area_m2` · `ceiling_over_floor_pct` · `has_ceiling` · `wall_top_m` (`detect.py:74-77`). Stray 면 여기에 `stray` (= `stray_meta.json` 전체, `stages.py:77`). Stray 는 형상 메쉬를 잰 값이다. 형상 메쉬를 못 만들면 `stray` 만 있음 (`stages.py:58`) |
-| `input` (맵 폴더) | `main_keyframes` · `main_poses` · `extra_sets` · `geometry_mesh` · `has_validation` (`detect.py:91-92`). 진단이 같은 dict 에 `ceiling_over_floor_pct` · `has_ceiling` 을 더함 (`stages.py:295-298`) |
+| `input` (GLB · Stray) | `parts` · `textured` · `triangles` · `extent_m` · `floor_tilt_deg` · `floor_area_m2` · `floor_spread_m` · `floor_main_share_pct` · `floor_flat` · `ceiling_area_m2` · `ceiling_over_floor_pct` · `has_ceiling` · `wall_top_m` (`detect.py:74-77`). Stray 면 여기에 `stray` (= `stray_meta.json` 전체, `stages.py:89`) · `pose_fix` (아래). Stray 는 형상 메쉬를 잰 값이다. 형상 메쉬를 못 만들면 `stray` 만 있음 (`stages.py:70`) |
+| `input` (맵 폴더) | `main_keyframes` · `main_poses` · `extra_sets` · `geometry_mesh` · `has_validation` (`detect.py:91-92`). 진단이 같은 dict 에 `ceiling_over_floor_pct` · `has_ceiling` 을 더함 (`stages.py:367-370`) |
 | `convert` | `mesh_mb` · `prims` ({prim 이름: 삼각형 수}) · `collision` · `clean`. 실패 시 `check_input` |
 | `nav2` | `cells` [가로, 세로] · `resolution` · `free_m2` · `occupied_cells` |
-| `diagnose` | `samples` · `floor_single_pct` · `floor_double` · `floor_double_pct` · `floor_under` · (`visual.ply` 가 있으면) `floor_two_levels` {samples, pct, gap_cm_median} · `visible_floor_missing_pct` · `visible_minus_collision_cm` {p5, median, p95} · `low_bumps` {samples_over_3cm_pct, runs_over_0p6m, longest} · `obstacle_match` {…} · `has_ceiling` · `shadow_fix` · `defects` ({type: 개수}) |
-| `correct` (돌았을 때) | `fixed` (예: `["double_floor"]`) · `before` · `after` (각각 `diagnose` 의 metrics 와 같은 모양) |
+| `diagnose` | `samples` · `floor_single_pct` · `floor_double` · `floor_double_pct` · `floor_under` · (`visual.ply` 가 있으면) `floor_two_levels` {samples, pct, gap_cm_median} · `visible_floor_missing_pct` · `visible_minus_collision_cm` {p5, median, p95} · (판에 맞은 표본이 있으면) `floor_patch_samples` · `low_bumps` {samples_over_3cm_pct, runs_over_0p6m, longest} · `obstacle_match` {…} · `drivable` (아래) · `has_ceiling` · `shadow_fix` · (Stray) `stray_quality` {frames, median_cm, p90_cm, within_2cm_pct, hit_pct, verdict} · `defects` ({type: 개수}) |
+| `correct` (돌았을 때) | `fixed` (예: `["double_floor"]`. `no_visible_floor` 는 판을 깐 칸이 있을 때만) · `before` · `after` (각각 `diagnose` 의 metrics 와 같은 모양) · `floor_patch` (아래, 보정이 `no_visible_floor` 를 다루지 않았으면 `null`). 덮을 자리가 없어 `skip` 이면 `floor_patch` 만 |
 | `bundle` | `start_pose` (= `start_pose.json`) · `files` (개수) · `shadow_overrides` · `preview` ({prims, triangles, triangles_in, mb, seconds, cell_m}, 못 만들면 {error}) |
 
+- `input` 의 `pose_fix` (Stray, R11 · C `be8310e`, `stages.py:99-101`) = `build/tsdf_meta.json` 의 `pose_fix` (6-4) 에서 `method` · `applied` · `status` · `reasons` · `flags` 만, 있는 키만 옮긴 것. 그 정보가 없으면 `{}`. 이 값으로 내는 문장은 6-3.
+- `diagnose` 의 `drivable` (C `105591c`, `checks.drivable`, `checks.py:48-80`) = `{clearance_m, free_m2, pieces, main_share_pct, path}`.
+  - `clearance_m` = 0.3 (`ROBOT_RADIUS_M`). `free_m2` = Nav2 지도 빈 칸 넓이.
+  - 장애물 · 미지 칸과 0.3 m 이상 떨어진 빈 칸을 8방향으로 잇는다. `pieces` = 그 덩어리 중 1 m² 이상인 것의 수. `main_share_pct` = 덩어리 전체 넓이 중 가장 큰 덩어리의 비율(%).
+  - `path` = `{length_m, blocked_m, blocked_pct, main_piece_pct}` — Stray 입력만 (촬영 경로가 있을 때). 뜻은 5-4 `path_blocked`. `main_piece_pct` = 빈 칸을 0.15 m 넓혀 이은 덩어리 중, 걸어간 길의 점이 가장 많이 든 덩어리에 든 점의 비율 (지도 밖 점은 어느 덩어리에도 안 듦).
+- `correct` 의 `floor_patch` (R9) = `{cells, area_m2, regions: [{center, area_m2, low_pct, ring_floor_pct, reason, patched}]}` — 판을 깐 Nav2 지도 칸 수 · 넓이와 보정 전 `no_visible_floor` 에 걸친 구멍마다 덮었는지와 덮지 않은 이유 (`stages.py:438-447`, `:471`). 넓은 것부터.
 - **단계 파일과 엔진 `report.json` 의 `input` metrics 가 다르다.** 진단 단계가 입력 단계의 dict 에 나중에 키를 더하는데, 입력 단계 파일은 그 전에 쓰였기 때문이다.
-  - 모든 입력: `shadow_fix` (`stages.py:302`). 맵 폴더는 `ceiling_over_floor_pct` · `has_ceiling` 도 (`stages.py:295-298`).
+  - 모든 입력: `shadow_fix` (`stages.py:374`). 맵 폴더는 `ceiling_over_floor_pct` · `has_ceiling` 도 (`stages.py:367-370`).
   - 이 키들은 단계 파일 · 상태 응답의 `metrics.input` 에는 없고 엔진 `report.json` 에만 있다 (`room` 에서 확인).
 - **천장 기준이 둘이다.**
-  - `has_ceiling` = 빈 바닥 위 천장 덮음 > 30% (`detect.py:76`, 맵 폴더는 `stages.py:298`).
-  - `shadow_fix` = `has_ceiling` 이거나 덮음 ≥ 10% (`stages.py:302`, C `ed35a87`). 참이면 씬 루트에 그림자 설정을 넣는다 (2-4).
+  - `has_ceiling` = 빈 바닥 위 천장 덮음 > 30% (`detect.py:76`, 맵 폴더는 `stages.py:370`).
+  - `shadow_fix` = `has_ceiling` 이거나 덮음 ≥ 10% (`stages.py:374`, C `ed35a87`). 참이면 씬 루트에 그림자 설정을 넣는다 (2-4).
   - `room` 은 덮음 26.8% 라 `has_ceiling` 거짓 · `shadow_fix` 참이다.
 - `convert` 의 `prims` 이름
   - GLB: `Visual` (부분 하나) 또는 `Visual0` · `Visual1` … (부분이 여럿, `pipeline/glb_to_usd.py:530`) + `FloorFill` (`:606`) + `Collision` · `Boundary`.
   - Stray: 형상 메쉬가 한 덩어리라 `Visual` · `FloorFill` · `Collision` · `Boundary` (`room` 확인). 11/23 까지는 맵 폴더 길의 prim 이었다.
+  - GLB · Stray 에서 보정이 보이는 바닥 구멍을 덮었으면 보이는 prim `FloorPatch` 가 하나 더 있다 (R9, `pipeline/glb_to_usd.py:646-650`). 충돌 prim 은 그대로다.
   - Stray 의 보이는 prim 은 **정점 색만** 있다 (사진 텍스처 없음).
 
-`diagnose` 실제 예 (`room` 의 `stages/03_diagnose.json`):
+`diagnose` 실제 예 (`room` 의 `stages/03_diagnose.json`. `be8310e` 전 판이라 `drivable` · `stray_quality` 가 없다):
 
 ```json
 {"stage": "diagnose", "status": "warn",
@@ -404,30 +431,30 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 ## 4. 웹 API
 
-서버: `python -m scan2sim.web.server [--port 8000] [--host 127.0.0.1] [--jobs ~/scan2sim_jobs] [--code <접속 코드>]` (`web/server.py:262-273`).
+서버: `python -m scan2sim.web.server [--port 8000] [--host 127.0.0.1] [--jobs ~/scan2sim_jobs] [--code <접속 코드>] [--keep 5]` (`web/server.py:314-329`). `--keep` 은 2-1 의 작업 폴더 정리 (D `533bffe`).
 
 **배포 (D, `deploy/`)** — 팀 ThinkPad 에서 켜는 방법. 약속에 닿는 것만 적는다.
 
-- `deploy/start.sh` 가 서버를 `--host 127.0.0.1 --port $S2S_PORT --jobs $S2S_JOBS --code <코드>` 로 켠다 (`deploy/start.sh:34`). 기본 포트 8000, 작업 폴더 `~/scan2sim_jobs` (`deploy/common.sh:8-11`).
+- `deploy/start.sh` 가 서버를 `--host 127.0.0.1 --port $S2S_PORT --jobs $S2S_JOBS --code <코드>` 로 켠다 (`deploy/start.sh:34`). 기본 포트 8000, 작업 폴더 `~/scan2sim_jobs` (`deploy/common.sh:8-11`). `--keep` 은 넘기지 않아 기본 5 다.
 - **접속 코드를 늘 준다.**
   - 처음 켤 때 6자리 숫자를 만들어 `~/scan2sim_run/code` (권한 600)에 두고 계속 쓴다. `S2S_CODE=<코드>` 로 정할 수 있다 (`deploy/start.sh:18-21`).
   - 주소 · 코드는 `deploy/status.sh` 가 보여 준다.
 - 밖에서는 Cloudflare 임시 터널(`cloudflared tunnel --url http://127.0.0.1:<포트>`, `deploy/start.sh:53`)로 들어온다.
   - 주소 `https://<이름>.trycloudflare.com` 은 켤 때마다 바뀐다. `S2S_TUNNEL=0` 이면 터널 없이 이 컴퓨터에서만.
-- 서버가 죽으면 2초 뒤 다시 켠다 (`deploy/start.sh:31-37`). 그때 처리 중이던 작업은 `failed` · `"서버가 다시 켜져서 끊김"` 이 된다 (4-3).
+- 서버가 죽으면 2초 뒤 다시 켠다 (`deploy/start.sh:31-37`). 그때 기다리던 · 처리 중이던 작업은 줄에 다시 들어가 처음부터 돈다 (작업마다 한 번, 4-3).
 - 환경: Python 3.12 가상 환경 `~/scan2sim_env` 에 `recon/requirements.txt` 를 설치 (`deploy/install.sh`).
 
 ### 4-1. 공통
 
-- **접속 코드:** `--code` 를 주면 `/api/` 로 시작하는 모든 요청에 코드가 있어야 한다 (`web/server.py:72-75`).
+- **접속 코드:** `--code` 를 주면 `/api/` 로 시작하는 모든 요청에 코드가 있어야 한다 (`web/server.py:119-122`).
   - 머리말 `X-Code: <코드>` 또는 쿼리 `?code=<코드>`. 머리말이 있으면 머리말만 본다.
   - 없거나 틀리면 `401` `{"error": "접속 코드가 맞지 않음"}`.
   - `GET /` 와 `/static/…` 은 코드를 보지 않는다.
   - 화면은 `fetch` 에는 머리말을 (`index.html:149`), `<img>` · GLB 로더 · 내려받기 링크에는 `?code=` 를 붙인다 (`index.html:157`).
 - **오류 응답:** 400 · 401 · 409 는 JSON `{"error": "문장", …}`.
   - **404 는 JSON 이 아니라 Flask 기본 HTML** 이다 (`abort(404)`). 클라이언트는 상태 코드만 보고 판단한다.
-  - 작업 번호가 `^[0-9a-f]{12}$` 가 아니거나(`web/server.py:47-48`), 그 작업이 메모리에도 `job.json` 에도 없으면 404 (`:58-59`).
-- **진행 상태는 화면이 `GET /api/jobs/<id>` 를 1.5초마다 불러서 본다** (`index.html:202`). SSE · WebSocket 없음.
+  - 작업 번호가 `^[0-9a-f]{12}$` 가 아니거나(`web/server.py:47-48`), 그 작업이 메모리에도 `job.json` 에도 없으면 404 (`:57-59`).
+- **진행 상태는 화면이 `GET /api/jobs/<id>` 를 1.5초마다 불러서 본다** (`index.html:216`). SSE · WebSocket 없음.
 - 응답 JSON 의 키 순서는 알파벳 순이다 (Flask 기본). 순서에 기대지 않는다.
 
 ### 4-2. 경로
@@ -435,22 +462,22 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | 메서드 · 경로 | 요청 | 성공 응답 | 실패 |
 |---|---|---|---|
 | `GET /` | — | `index.html` | — |
-| `GET /api/info` | — | `{"ok": true, "stages": [{"name", "label"} ×8], "accept": [".zip", ".glb"]}` (`:83-85`) | 401 |
-| `POST /api/jobs` | JSON `{"name": 파일 이름, "size": 바이트}` (`Content-Type` 은 안 봄) | `{"id": "<12자리>"}` (`:88-103`) | 400 `{"error": "받는 파일은 .zip · .glb 임"}` (확장자, 대소문자 무시) · 400 `{"error": "파일 크기가 0 이거나 4 GB 를 넘음"}` · 401 |
-| `PUT /api/jobs/<id>/chunk?offset=N` | 본문 = 파일 조각의 날것 바이트. `N` = 지금까지 받은 바이트 수 | `{"received": 누적 바이트}` (`:106-123`) | 409 `{"error": "조각 순서가 맞지 않음", "received": n}` (상태가 `uploading` 이 아니거나 `N ≠ received`) · 400 `{"error": "알린 크기보다 많이 옴"}` · 401 · 404 |
-| `POST /api/jobs/<id>/start` | 본문 없음 | `{"status": "queued"}` (`:126-134`) | 409 `{"error": "파일이 다 오지 않음", "received": n}` (상태가 `uploading` 이 아니거나 `received ≠ size` — 이미 넣은 작업을 다시 넣어도 이 문장) · 401 · 404 |
-| `GET /api/jobs/<id>` | — | 작업 상태 (4-3) (`:173-196`) | 401 · 404 |
-| `GET /api/jobs/<id>/preview.glb` | — | `model/gltf-binary`. 화면 좌표 (1-1). 엔진이 써 둔 `out/preview.glb` (`:199-216`) | 404 (파일이 없고 USD 도 없음, 또는 서버가 만들다 실패) · 401 |
-| `GET /api/jobs/<id>/map.png` | — | `image/png`. `bundle/nav2/map.pgm` 을 PNG 로 (`:219-229`) | 404 · 401 |
-| `GET /api/jobs/<id>/report.md` | `?dl=<아무 값>` 이면 내려받기 | `text/markdown; charset=utf-8`. 내려받기 이름 `scan2sim_report_<id>.md` (`:232-238`) | 404 · 401 |
-| `GET /api/jobs/<id>/bundle.zip` | — | 내려받기 `scan2sim_<id>.zip` (`:241-259`) | 404 (`bundle/usd/` 없음) · 401 |
+| `GET /api/info` | — | `{"ok": true, "stages": [{"name", "label"} ×8], "accept": [".zip", ".glb"]}` (`:130-132`) | 401 |
+| `POST /api/jobs` | JSON `{"name": 파일 이름, "size": 바이트}` (`Content-Type` 은 안 봄) | `{"id": "<12자리>"}` (`:135-150`) | 400 `{"error": "받는 파일은 .zip · .glb 임"}` (확장자, 대소문자 무시) · 400 `{"error": "파일 크기가 0 이거나 4 GB 를 넘음"}` · 401 |
+| `PUT /api/jobs/<id>/chunk?offset=N` | 본문 = 파일 조각의 날것 바이트. `N` = 지금까지 받은 바이트 수. 서버는 붙이기 전에 파일을 `received` 바이트로 자른다 (`:161`) | `{"received": 누적 바이트}` (`:153-171`) | 409 `{"error": "조각 순서가 맞지 않음", "received": n}` (상태가 `uploading` 이 아니거나 `N ≠ received`) · 400 `{"error": "알린 크기보다 많이 옴"}` · 401 · 404 |
+| `POST /api/jobs/<id>/start` | 본문 없음 | `{"status": "queued"}` (`:174-182`) | 409 `{"error": "파일이 다 오지 않음", "received": n}` (상태가 `uploading` 이 아니거나 `received ≠ size` — 이미 넣은 작업을 다시 넣어도 이 문장) · 401 · 404 |
+| `GET /api/jobs/<id>` | — | 작업 상태 (4-3) (`:225-248`) | 401 · 404 |
+| `GET /api/jobs/<id>/preview.glb` | — | `model/gltf-binary`. 화면 좌표 (1-1). 엔진이 써 둔 `out/preview.glb` (`:251-268`) | 404 (파일이 없고 USD 도 없음, 또는 서버가 만들다 실패) · 401 |
+| `GET /api/jobs/<id>/map.png` | — | `image/png`. `bundle/nav2/map.pgm` 을 PNG 로 (`:271-281`) | 404 · 401 |
+| `GET /api/jobs/<id>/report.md` | `?dl=<아무 값>` 이면 내려받기 | `text/markdown; charset=utf-8`. 내려받기 이름 `scan2sim_report_<id>.md` (`:284-290`) | 404 · 401 |
+| `GET /api/jobs/<id>/bundle.zip` | — | 내려받기 `scan2sim_<id>.zip` (`:293-311`) | 404 (`bundle/usd/` 없음) · 401 |
 
 **`preview.glb`**
 
 - **만드는 곳은 엔진**이다. 묶음 단계 끝에 `build/usd/<이름>_mesh.usdc` 로 `out/preview.glb` 를 쓴다 (`stages.py:420-425` → `preview.write`, `preview.py:46-116`, C `2a6e89f`).
   - 못 만들면 묶음 단계 `metrics.preview` 에 `{"error": …}` 와 메시지가 남고, 묶음은 그대로 나온다 (`stages.py:423-425`).
 - **서버는 주기만 한다** (D `ed7220e`).
-  - `out/preview.glb` 가 없거나 `build/usd/*_mesh.usdc`(이름순 첫 파일)보다 오래됐을 때만 같은 엔진 함수로 한 번 만들어 둔다 (`web/server.py:207-213`). 예: 묶음 단계 전에 멈춘 작업, `preview.py` 가 생기기 전의 작업 폴더.
+  - `out/preview.glb` 가 없거나 `build/usd/*_mesh.usdc`(이름순 첫 파일)보다 오래됐을 때만 같은 엔진 함수로 한 번 만들어 둔다 (`web/server.py:258-265`). 예: 묶음 단계 전에 멈춘 작업, `preview.py` 가 생기기 전의 작업 폴더.
   - 한 서버 안에서는 잠금(`PREVIEW_LOCK`)으로 한 번에 하나만 만든다.
   - 만들다 실패하면 서버 로그에 경고만 남기고, 파일이 없으면 404.
   - 서버가 만들 때는 서버 환경에 엔진 패키지(`pxr` · `trimesh` · `numpy` · `PIL`)가 있어야 한다. 엔진이 써 둔 파일을 줄 때는 필요 없다.
@@ -466,22 +493,27 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 **`bundle.zip`**
 
 - 안의 구조: `bundle/…` (2-4 의 `bundle/` 전체) + 맨 위에 `report.md` · `defects_before.json` · `defects_after.json` (있는 것만).
-- `out/bundle.zip` 에 한 번 만들면 **다시 만들지 않는다** (`web/server.py:249`).
+- `out/bundle.zip` 에 한 번 만들면 **다시 만들지 않는다** (`web/server.py:301`).
 - `room` 실제: 파일 11개 (`bundle/` 9개 + `report.md` + `defects_before.json`).
 
-**올리기 순서 (화면이 하는 것, `index.html:179-187`)**
+**올리기 순서 (화면이 하는 것, `index.html:179-201`)**
 
 1. `POST /api/jobs {name, size}` → `id`
-2. `offset = 0, 8 MiB, 16 MiB …` 차례로 `PUT …/chunk?offset=…`. 조각 크기 8 MiB (`index.html:144`)
+2. `offset = 0` 부터 `PUT …/chunk?offset=…`, 다음 `offset` 은 응답의 `received`. 조각 크기 8 MiB (`index.html:144`)
 3. `POST …/start`
 4. 주소에 `#<id>` 를 붙이고 `GET /api/jobs/<id>` 를 1.5초마다 부름. `done` · `failed` 면 멈춤
 
-- 이어 올리기: 서버는 받은 만큼(`received`, 409 응답에도 들어 있음)부터 다시 받는다. 단, 같은 서버 프로세스 안에서만 된다 (재시작하면 `uploading` 작업은 `failed`). **화면은 아직 이어 올리기를 하지 않는다.**
+- **이어 올리기** (D `533bffe`)
+  - 서버: 조각마다 파일을 `received` 바이트로 먼저 자르고 붙인다 (`web/server.py:161`). 앞 요청이 도중에 끊겨 받다 만 바이트가 남아도, 같은 `offset = received` 로 다시 보내면 된다. `received` 는 409 응답 · 상태 응답에 들어 있다.
+  - 서버를 다시 켜도 된다. `uploading` 작업은 읽을 때 `received` 를 올린 파일의 크기로 되찾는다 (4-3).
+  - 화면 (`index.html:182-195`): 조각이 실패하면 1 · 2 · 4 … 초(최대 30초) 기다렸다가 `GET /api/jobs/<id>` 의 `received` 부터 다시 보낸다. 8번까지 (`RETRIES`). 접속 코드 오류는 다시 시도하지 않고, 작업이 `uploading` 이 아니면 멈춘다. 서버에 닿지 않으면 같은 `offset` 으로 다시 시도한다.
+  - 화면은 같은 페이지 안에서만 이어 올린다. 페이지를 다시 열면 파일을 다시 골라 새 작업으로 올린다.
+  - [D 측정, `533bffe` 커밋 설명] 실제 촬영본 540 MB 를 3 MB 에서 끊고 서버를 죽인 뒤 이어 올려 md5 같음. 화면의 다시 시도는 브라우저에서 돌려 보지 않았다.
 - `deploy/check.py` 도 같은 순서다. 조각 크기는 `--chunk-mb` 로 바꿀 수 있다 (기본 8).
 
 ### 4-3. 작업 상태 (`GET /api/jobs/<id>`)
 
-`job.json` 의 필드 (2-2) 전부 + 아래 필드 (`web/server.py:173-196`).
+`job.json` 의 필드 (2-2) 전부 + 아래 필드 (`web/server.py:225-248`).
 
 | 필드 | 형 | 언제 | 뜻 |
 |---|---|---|---|
@@ -489,7 +521,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `queue_ahead` | 정수 | 항상 | `queued` 일 때만 계산, 그 밖은 0. 나보다 먼저 줄에 선 `queued` · `running` 작업 수 (**처리 중인 것도 셈**) |
 | `defects_before` | 객체 또는 `null` | `done` · `failed` | `defects_before.json` 내용 (5장). 파일이 없으면 `null` |
 | `defects_after` | 객체 또는 `null` | `done` · `failed` | `defects_after.json` 내용. **보정을 안 했으면 `null`** |
-| `verdict` | 문자열 | `done` · `failed` | 엔진 `report.json` 의 `verdict` (`pass` · `warn` · `fail`). 없으면 `report` 단계의 `status` (8-3 의 2번: `pending` 이 나올 수 있음) (`:191`) |
+| `verdict` | 문자열 | `done` · `failed` | 엔진 `report.json` 의 `verdict` (`pass` · `warn` · `fail`). 없으면 `report` 단계의 `status` (8-3 의 2번: `pending` 이 나올 수 있음) (`:243`). **단계 상태와 따로 볼 것** — `done` 이어도 `fail` 일 수 있다 (3-4) |
 | `has_bundle` | 참거짓 | `done` · `failed` | `out/bundle/usd/` 가 있음 = `bundle.zip` 을 받을 수 있음 |
 | `metrics` | 객체 | `done` · `failed` | `{"before": …, "after": …, "input": …}` (아래) |
 
@@ -504,16 +536,21 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `uploading` | 자리를 만들고 조각을 받는 중 |
 | `queued` | 줄에 들어감 |
 | `running` | 엔진이 돌고 있음 (한 번에 한 건) |
-| `done` | 엔진이 끝났고, `out/report.md` 가 있고, **종료 코드가 0 이고, 단계 파일에 `fail` 이 없음** (`web/server.py:149-150`, D `98da703`). 그래서 `verdict` 는 `pass` 또는 `warn` |
-| `failed` | 그 밖의 끝남. ① 단계가 하나라도 `fail` — 엔진 종료 코드 1, `verdict` `fail`, `report.md` · 결함 목록은 있음. ② 엔진이 중간에 죽음 — `report.md` 없음 (8-3 의 1번). ③ 엔진을 못 띄움 (`error`). ④ 서버가 다시 켜져서 끊김 (`error`) |
+| `done` | 엔진이 끝났고, `out/report.md` 가 있고, **종료 코드가 0 이고, 단계 파일에 `fail` 이 없음** (`web/server.py:196-198`, D `98da703`). `verdict` 는 대개 `pass` 또는 `warn` 이지만, 진단이 "주행할 수 없음" 이유를 남기면 `fail` 이다 (3-4, C `105591c`) |
+| `failed` | 그 밖의 끝남. ① 단계가 하나라도 `fail` — 엔진 종료 코드 1, `verdict` `fail`, `report.md` · 결함 목록은 있음. 단계 안의 `SystemExit` 도 11/25 (C `6ec3237`) 부터 여기 든다. ② 엔진 프로세스가 중간에 죽음 — `report.md` 없음. ③ 엔진을 못 띄움 (`error`). ④ 서버가 다시 켜졌는데 그 작업을 이미 한 번 다시 돌렸음 (`error`, 아래) |
 
 - 11/23 까지는 `report.md` 만 있으면 `done` 이었다. 그래서 단계가 실패해도 `done` 이 됐다 (`e2e_glb`: `done` · `exit_code 1` · `verdict fail`). 지금은 ① 이 `failed` 다 (통합 기록 R2).
 - `failed` 여도 엔진이 만든 것(단계 결과 · 결함 목록 · `report.md` · 있으면 `preview.glb` · `map.png`)은 그대로 받을 수 있다. 화면은 `failed` 면 "실패" 로 적고, 3D · 결함 목록은 같이 보여 준다 (`index.html` `finish`).
-- 서버를 다시 켜면 `uploading` · `queued` · `running` 이던 작업은 읽을 때 `failed` + `error: "서버가 다시 켜져서 끊김"` 이 된다 (`web/server.py:61-62`). 이것은 메모리에서만 바뀌고 `job.json` 에는 다시 쓰지 않는다.
+- **서버를 다시 켰을 때** (D `533bffe`)
+  - 켤 때 `recover()` 가 `job.json` 이 `queued` · `running` 인 작업을 `queued_at` 차례로 줄에 다시 넣는다 (`web/server.py:71-89`, `:324`). 상태는 `queued`, `restarts` 를 1 올려 `job.json` 에 쓴다. 엔진은 처음부터 다시 돈다 (같은 `out/` 에, `--resume` 없이).
+  - 이미 한 번 다시 넣은 작업(`restarts` ≥ 1)은 `failed` · `error: "서버가 다시 켜져서 끊김 (두 번째)"` · `finished` 를 `job.json` 에 쓴다. 서버를 죽이는 작업이 끝없이 되돌지 않게 하려는 것이다.
+  - `uploading` 작업은 읽을 때 `received` 를 `input/<file>` 크기(최대 `size`)로 되찾는다 (`:61-63`). 그 자리부터 이어 올릴 수 있다 (4-2).
+  - `recover()` 가 살리지 못했는데 `job.json` 이 `queued` · `running` 인 작업은 읽을 때 `failed` + `error: "서버가 다시 켜져서 끊김"` 이 된다 (`:64-65`). 이것은 메모리에서만 바뀐다.
+  - [D 측정, `533bffe` 커밋 설명] 처리 중에 서버를 죽이면 다시 켜져 그 작업을 끝냄.
 
 **`stages[].status`**
 
-- 3-2 의 `pass` · `warn` · `fail` · `skip` 에 더해 두 값이 있다 (`web/server.py:177-185`).
+- 3-2 의 `pass` · `warn` · `fail` · `skip` 에 더해 두 값이 있다 (`web/server.py:229-237`).
   - `pending` = 아직 결과 파일이 없음
   - `running` = 작업이 `running` 이고, 결과 파일이 없는 첫 단계
 - `uploading` · `queued` 일 때는 단계 파일을 읽지 않으므로 8개 모두 `pending`.
@@ -558,19 +595,21 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 }
 ```
 
+- 이 예는 `be8310e` 전 판이다. 지금 엔진은 입력 단계 둘째 문장 자리에 자세 보정 문장(6-3)을 내고, `metrics.input` 에 `pose_fix`, `metrics.before` 에 `drivable` · `stray_quality` 가 더 있다.
+
 처리 중(`running`)이면 `verdict` · `has_bundle` · `metrics` · `defects_*` 가 없고, `stages` 는 예를 들어 `input warn · convert running · nav2 pending · …` 처럼 나온다.
 
 ---
 
 ## 5. 결함 목록 (`defects_before.json` · `defects_after.json`)
 
-`stages._defects` 가 쓴다 (`stages.py:158-210`). 진단 단계(`s_diagnose`)의 끝에서 불린다 (`stages.py:307`).
+`stages._defects` 가 쓴다 (`stages.py:184-246`). 진단 단계(`s_diagnose`)의 끝에서 불린다 (`stages.py:390`).
 
 ### 5-1. 파일
 
 | 필드 | 형 | 뜻 |
 |---|---|---|
-| `phase` | `"before"` · `"after"` | 보정 전 / 보정 뒤 다시 진단 (`stages.py:204`) |
+| `phase` | `"before"` · `"after"` | 보정 전 / 보정 뒤 다시 진단 (`stages.py:240`) |
 | `T_input_to_scene` | 4×4 수 배열 | `build/transform.json` 의 값. 없으면 단위행렬 (1-3) |
 | `up_input` | [3] 수 | 장면의 +Z 를 입력 좌표로 나타낸 단위 벡터 = `T⁻¹` 의 셋째 열 (소수 5자리) |
 | `floor_point_input` | [3] 수 | 장면 원점 (0, 0, 0) 을 입력 좌표로 나타낸 점 = `T⁻¹` 의 이동 부분 (소수 4자리). 장면 바닥 z = 0 위의 한 점 |
@@ -580,22 +619,22 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 | 필드 | 형 | 뜻 |
 |---|---|---|
-| `id` | 문자열 | `D1`, `D2` … 정렬한 뒤 순서대로 매김 (`stages.py:201`). 한 파일 안에서만 유일. **보정 전과 뒤의 번호는 서로 관계없음** |
-| `type` | 문자열 | `double_floor` · `no_visible_floor` · `low_bump` · `floor_two_levels` (5-4) |
+| `id` | 문자열 | `D1`, `D2` … 정렬한 뒤 순서대로 매김 (`stages.py:237`). 한 파일 안에서만 유일. **보정 전과 뒤의 번호는 서로 관계없음** |
+| `type` | 문자열 | `double_floor` · `no_visible_floor` · `low_bump` · `floor_two_levels` · `path_blocked` (5-4) |
 | `title` | 문자열 | 화면에 보일 이름 (한국어) |
-| `severity` | `"fail"` · `"warn"` | `double_floor` 만 `fail` |
-| `fixable` | 참거짓 | `true` = 자동 보정 대상 (`double_floor` 만) |
+| `severity` | `"fail"` · `"warn"` | `double_floor` · `path_blocked` 만 `fail` |
+| `fixable` | 참거짓 | `true` = 자동 보정 대상: `double_floor`, 그리고 GLB · Stray 의 보정 전(`defects_before.json`) `no_visible_floor` (R9, `stages.py:198-199`). 보정 뒤 목록의 `no_visible_floor` 와 맵 폴더의 것은 `false`. `true` 여도 보정이 덮지 않을 수 있다 (5-4) |
 | `center_scene` | [x, y, z] 수 | 장면 좌표의 중심. x · y = 묶인 표본의 평균, z = 그 자리의 바닥 높이(`ground.height`, 1-2) (소수 3자리) |
 | `center_input` | [x, y, z] 수 | `T⁻¹ · center_scene` (소수 4자리). 입력 좌표 (1-3) |
 | `radius_m` | 수 | 중심에서 가장 먼 표본까지 거리 **+ 지도 2칸(0.1 m)** (`checks.py:43`) |
 | `extent_m` | 수 | 묶인 표본의 x · y 범위 상자의 대각선 **+ 지도 1칸(0.05 m)** (`checks.py:44`) |
-| `samples` | 정수 | 묶인 표본 수 |
+| `samples` | 정수 | 묶인 표본 수. `path_blocked` 는 걸어간 길 위 10 cm 마다 찍은 점의 수 |
 | `basis` | 문자열 | 판정 근거 문장 |
 | `action` | 문자열 | 처리 방법 문장 |
-| `near_low_bump` | 참 | **있을 때만** (C `3ea14ff`). `double_floor` 가 `low_bump` 결함과 붙어 있으면 `true` (값은 늘 `true`, 아니면 키가 없음). `basis` 끝에 "낮은 턱 의심 자리와 붙어 있음 — …" 이 덧붙음 (`stages.py:188-192`) |
+| `near_low_bump` | 참 | **있을 때만** (C `3ea14ff`). `double_floor` 가 `low_bump` 결함과 붙어 있으면 `true` (값은 늘 `true`, 아니면 키가 없음). `basis` 끝에 "낮은 턱 의심 자리와 붙어 있음 — …" 이 덧붙음 (`stages.py:224-228`) |
 
-- **정렬:** `fail` 먼저, 그 안에서 `samples` 가 많은 순 (`stages.py:193`).
-- **최대 30개:** 정렬한 뒤 앞 30개만 남김 (`stages.py:158` `top=30`, `:194`).
+- **정렬:** `fail` 먼저, 그 안에서 `samples` 가 많은 순 (`stages.py:229`). `path_blocked` 의 `samples` 는 길 위 점 수라 다른 종류와 단위가 다르다.
+- **최대 30개:** 정렬한 뒤 앞 30개만 남김 (`stages.py:184` `top=30`, `:230`).
 - 화면은 `center_scene` · `radius_m` · `extent_m` · `severity` · `fixable` · `title` · `basis` · `action` · `id` 를 쓴다.
 - "붙어 있음" = 두 결함 중심 사이 거리 < 두 `radius_m` 의 합.
 
@@ -630,44 +669,64 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 ### 5-3. 표본과 묶기
 
-- **표본** (`stages._free_xy`, `stages.py:147-155`, 부르는 곳 `:220`)
+- **표본** (`stages._free_xy`, `stages.py:173-181`, 부르는 곳 `:258`)
   - Nav2 지도의 빈 칸 중 장애물 · 미지 칸에서 0.3 m(`ROBOT_RADIUS_M`, `stages.py:20`) 넘게 떨어진 칸의 중심.
   - 그 칸들을 행 우선 순서로 세서 4개마다 하나 (`step=4`).
-  - 표본 하나가 대표하는 넓이를 `4 × 칸²` 로 친다 (= 0.01 m², `stages.py:163`).
-  - 표본이 50개 미만이면 진단 단계가 `fail` (`stages.py:221-222`).
-- **위에서 쏘는 광선:** 표본마다 그 자리 바닥 높이 + 1.0 m 에서 아래로 (`stages.py:226`, `:246`).
+  - 표본 하나가 대표하는 넓이를 `4 × 칸²` 로 친다 (= 0.01 m², `stages.py:189`).
+  - 표본이 50개 미만이면 진단 단계가 `fail` (`stages.py:259-260`).
+  - `path_blocked` 만 이 표본이 아니라 걸어간 길 위의 점을 쓴다 (5-4).
+- **위에서 쏘는 광선:** 표본마다 그 자리 바닥 높이 + 1.0 m 에서 아래로 (`stages.py:264`, `:289`).
 - **묶기** (`checks.clusters`, `checks.py:26-45`)
   - 걸린 표본을 Nav2 지도 칸에 찍고, `join_cells` 칸 넓혀(`binary_dilation`) 8방향으로 이어진 것끼리 한 덩어리.
-  - `join_cells` 는 기본 2칸(0.1 m). **`double_floor` 만 `round(0.5 / 칸)` = 10칸(0.5 m)** 이라 표본 사이가 약 1 m 안이면 한 결함이 된다 (`stages.py:165`, C `3ea14ff`). 얇은 판 · 턱의 가장자리가 여러 결함으로 쪼개지지 않게 하려는 것.
+  - `join_cells` 는 기본 2칸(0.1 m). **`double_floor` · `path_blocked` 는 `round(0.5 / 칸)` = 10칸(0.5 m)** 이라 표본 사이가 약 1 m 안이면 한 결함이 된다 (`stages.py:191`, `:219`, C `3ea14ff` · `105591c`). 얇은 판 · 턱의 가장자리가 여러 결함으로 쪼개지지 않게 하려는 것.
   - 덩어리마다 `center` · `radius_m` · `extent_m` · `samples`.
 
 ### 5-4. 결함 종류 (지금 구현의 기준값)
 
 | `type` | `severity` · `fixable` | 걸리는 표본 | 결함으로 남기는 덩어리 | 근거 위치 |
 |---|---|---|---|---|
-| `double_floor` 충돌 바닥 두 겹 | `fail` · `true` | 충돌 prim `Collision` 에 쏜 광선이 맨 위 면을 만난 뒤, 그 바로 아래(1e-4 m)에서 다시 쏜 광선이 **3 cm 안**에서 면을 또 만남 | 모든 덩어리 (크기 하한 없음). 약 1 m 안은 하나로 묶음 (5-3) | `tools/check_floor_layers.py:57-60`, `stages.py:165-168` |
-| `no_visible_floor` 보이는 바닥 없음 | `warn` · `false` | `build/visual.ply` 에 쏜 광선이 안 맞거나, 맞은 높이가 충돌 바닥과 **0.3 m 이상** 차이 | `samples × 0.01 m² ≥ 0.25 m²` (= 표본 25개 이상, 칸 0.05 m 기준) | `stages.py:249`, `:170-174` |
-| `low_bump` 낮은 턱 의심 | `warn` · `false` | 보이는 바닥이 충돌 바닥보다 **3 cm 초과 12 cm 미만** 높음 | `extent_m ≥ 0.6` | `stages.py:272`, `:175-179` |
-| `floor_two_levels` 바닥이 두 높이로 찍힘 (C `ed35a87`) | `warn` · `false` | 보이는 바닥이 있는 표본(`no_visible_floor` 가 아닌 것)에서, `visual.ply` 의 맨 위 면 1 mm 아래에서 다시 쏜 광선이 **3 cm 초과 30 cm 미만** 아래에서 수평에 가까운 면(법선 z 성분의 절댓값 > 0.7)을 또 만남 | `samples × 0.01 m² ≥ 0.25 m²` | `stages.py:250-257`, `:180-187` |
+| `double_floor` 충돌 바닥 두 겹 | `fail` · `true` | 충돌 prim `Collision` 에 쏜 광선이 맨 위 면을 만난 뒤, 그 바로 아래(1e-4 m)에서 다시 쏜 광선이 **3 cm 안**에서 면을 또 만남 | 모든 덩어리 (크기 하한 없음). 약 1 m 안은 하나로 묶음 (5-3) | `tools/check_floor_layers.py:57-60`, `stages.py:191-194` |
+| `no_visible_floor` 보이는 바닥 없음 | `warn` · GLB · Stray 의 보정 전은 `true` (R9), 그 밖 `false` | `build/visual.ply` 에 쏜 광선이 안 맞거나, 맞은 높이가 충돌 바닥과 **0.3 m 이상** 차이. 보정 뒤에는 판(`floor_patch.ply`)에 맞아도 보이는 바닥으로 셈 | `samples × 0.01 m² ≥ 0.25 m²` (= 표본 25개 이상, 칸 0.05 m 기준) | `stages.py:293`, `:195-204` |
+| `low_bump` 낮은 턱 의심 | `warn` · `false` | 보이는 바닥이 충돌 바닥보다 **3 cm 초과 12 cm 미만** 높음 | `extent_m ≥ 0.6` | `stages.py:319`, `:205-209` |
+| `floor_two_levels` 바닥이 두 높이로 찍힘 (C `ed35a87`) | `warn` · `false` | 보이는 바닥이 있는 표본(`no_visible_floor` 가 아닌 것)에서, `visual.ply` 의 맨 위 면 1 mm 아래에서 다시 쏜 광선이 **3 cm 초과 30 cm 미만** 아래에서 수평에 가까운 면(법선 z 성분의 절댓값 > 0.7)을 또 만남 | `samples × 0.01 m² ≥ 0.25 m²` | `stages.py:294-301`, `:210-217` |
+| `path_blocked` 걸어간 길이 장애물로 찍힘 (C `105591c`) | `fail` · `false` | **Stray 만.** 촬영 경로(`input_map/trajectory_camera_optical.txt` 의 카메라 위치 = 자세 보정 전)를 `T_input_to_scene` 으로 장면에 옮겨 10 cm 마다 찍은 점 중, Nav2 지도에서 장애물 칸이고 가장 가까운 빈 칸까지 **0.15 m 넘는** 점 | 약 1 m 안끼리 묶어(5-3) 점 5개 이상 (= 0.5 m 넘게) | `checks.py:64-79`, `stages.py:340-346`, `:218-223` |
 
-- `no_visible_floor` · `low_bump` · `floor_two_levels` 는 `build/visual.ply` 가 있을 때만 찾는다 (`stages.py:242`).
+- `no_visible_floor` · `low_bump` · `floor_two_levels` 는 `build/visual.ply` 가 있을 때만 찾는다 (`stages.py:280`). `path_blocked` 는 Stray 이고 `trajectory_camera_optical.txt` · `transform.json` 이 있을 때만 (`stages.py:341`).
 - **`double_floor` 와 `floor_two_levels` 는 다른 것이다.**
   - `double_floor` 는 **충돌** 메쉬가 3 cm 안에서 겹친 것이다. 물리 엔진을 멈출 수 있어 자동으로 보정한다.
   - `floor_two_levels` 는 **보이는** 메쉬에 바닥이 3~30 cm 아래로 한 겹 더 있는 것이다. 촬영 중 자세가 위아래로 틀어진 흔적으로 보고, 재촬영 후보로 둔다.
   - `floor_two_levels` 의 `basis` 에 나오는 간격은 그 덩어리 안 표본의 간격 중앙값(cm)이다.
-- 진단 단계 `metrics.floor_two_levels` = `{samples, pct, gap_cm_median}` (`stages.py:257`). 빈 바닥 표본의 1% 를 넘으면 진단이 `warn` (`stages.py:258-260`). 보정 대상은 아니다.
-- `diagnose` metrics 의 `low_bumps.runs_over_0p6m` 은 **다른 방법**(지도에서 이은 영역의 상자 대각선)으로 센 값이다 (`stages.py:274-282`). 결함 목록의 `low_bump` 개수와 다를 수 있다.
+- 진단 단계 `metrics.floor_two_levels` = `{samples, pct, gap_cm_median}` (`stages.py:301`). 빈 바닥 표본의 1% 를 넘으면 진단이 `warn` (`stages.py:302-304`). 보정 대상은 아니다.
+- `diagnose` metrics 의 `low_bumps.runs_over_0p6m` 은 **다른 방법**(지도에서 이은 영역의 상자 대각선)으로 센 값이다 (`stages.py:321-329`). 결함 목록의 `low_bump` 개수와 다를 수 있다.
 - `low_bump` 의 `basis` 문장은 11/24 에 "충돌 바닥은 평평해서" → "충돌 바닥에는 이 솟음이 없어" 로 바뀌었다 (C `3ea14ff`). 문장은 약속이 아니다.
+- `no_visible_floor` 의 `basis` · `action` 은 R9 로 바뀌었다. GLB · Stray 보정 전은 "둘레 바닥 색의 판(FloorPatch)으로 덮음 …", 보정 뒤 남은 것은 "보정 단계에서 덮지 않음 — …", 맵 폴더는 전과 같이 "고치지 않음 — …" (`stages.py:202-204`).
 
-**보정 (`s_correct`, `stages.py:312-339`)**
+**걸어간 길과 판정 "쓸 수 없음"** (C `105591c`, `stages.s_diagnose` `stages.py:336-360`, 수치 `drivable` 은 3-5)
 
-- 진단에서 `double_floor` 가 하나라도 나오면 돈다 (`ctx["needs"]`, `stages.py:236`). 다른 종류로는 돌지 않는다.
-- 하는 일
-  - GLB · **Stray**: 충돌 메쉬에서 바닥 위 5 cm 아래를 지움 (`collision.low_h_m: 0.05`, `stages.py:322-324`). Stray 는 11/24 부터 이쪽이다 (GLB 길로 가므로).
-  - 맵 폴더: 바닥 위 10 cm 안의 낮은 조각과 6 cm 안의 수평 면을 지움 (`single_floor.collision_low_h_m: 0.10`, `collision_flat_h_m: 0.06`, `stages.py:325-327`)
-- 그 뒤 `convert` → `nav2` → `diagnose` 를 다시 돌린다 (`stages.py:330-334`). 이때 `defects_after.json` 을 쓴다.
+- 막힌 길이 걸어간 길의 **10% 넘음**, 또는 한 덩어리로 이어진 길이 **80% 미만** → 이유를 `ctx["unusable"]` 에 남기고 진단 주의로 보인다. 판정(`verdict`)은 `fail` 이 된다 (3-4).
+- 막힌 길 2~10% → 주의만. 빈 바닥의 가장 큰 덩어리가 60% 미만 → 주의만 (모든 입력).
+- 막힘은 자세 보정 전 경로로 잰다. 그래서 0.15 m 를 봐준다 (`checks.py:53`).
+- 문턱(10% · 80% · 60%)은 촬영본 두 건으로 잡은 잠정값이다 (`stages.py:350`). [C 측정, `C_TRACK.md` 2-6] 복도 왕복 `922acd4755`: 막힌 길 36.5% (61.7 m) · 이어진 길 62.4% · 가장 큰 덩어리 53.2% → "쓸 수 없음", `path_blocked` 4곳. 방 한 바퀴 `6bc1ae021f`: 0.2% · 100% · 89.5% → 판정 그대로.
+
+**보정 (`s_correct`, `stages.py:450-495`)**
+
+- 진단에서 `double_floor` 가 하나라도 나오거나, GLB · Stray 에서 `no_visible_floor` 가 하나라도 나오면 돈다 (`ctx["needs"]`, `stages.py:274`, `:391-392`). 다른 종류로는 돌지 않는다.
+- 두 겹 바닥 (`double_floor` 가 있을 때)
+  - GLB · **Stray**: 충돌 메쉬에서 바닥 위 5 cm 아래를 지움 (`collision.low_h_m: 0.05`, `stages.py:462-464`). Stray 는 11/24 부터 이쪽이다 (GLB 길로 가므로).
+  - 맵 폴더: 바닥 위 10 cm 안의 낮은 조각과 6 cm 안의 수평 면을 지움 (`single_floor.collision_low_h_m: 0.10`, `collision_flat_h_m: 0.06`, `stages.py:465-467`)
+- 보이는 바닥 구멍 덮기 (R9, C `be8310e`. GLB · Stray 만, `stages._patch_mask` `stages.py:397-447`, `:468-477`)
+  - Nav2 지도의 빈 칸마다 바닥 + 10 cm 에서 `visual.ply` 로 아래로 쏜다. 면이 없거나 바닥보다 band(평평한 바닥 5 cm · 아니면 8 cm) 넘게 아래에서 맞은 칸을 8방향으로 이어 구멍으로 본다. 보정 전 `no_visible_floor` 결함의 원(`center_scene` · `radius_m`)에 걸친 구멍만 본다.
+  - 덮지 않는 구멍: 바닥 아래에서 맞은 칸이 10% 넘음(꺼진 자리 · 계단) · 둘레 약 20 cm 띠의 보이는 바닥이 50% 미만 · 4 m² 넘음. 그 이유는 `correct` 의 `messages` 와 `metrics.floor_patch.regions[].reason`.
+  - 덮을 구멍은 한 칸 넓혀(빈 칸 안에서만) `build/floor_patch_mask.npz` 에 쓰고, 보정 설정 `floor_patch: {mask_file, depth_m: 0.005}` 로 다시 빌드한다.
+  - 빌드가 보이는 prim **`FloorPatch`** 와 `build/floor_patch.ply` 를 만든다 (`pipeline/glb_to_usd.py:399-422` `floor_patch_from_mask`, `:642-652`). 높이 = 바닥 − 0.5 cm, 색 = 둘레 스캔 바닥 정점의 색. 충돌 · Nav2 지도에는 넣지 않는다.
+  - 다시 진단할 때 판에 맞은 표본은 보이는 바닥으로 세지만, `visible_minus_collision_cm` 에서는 빼고 `floor_patch_samples` 로 센다. `floor_two_levels` 는 판을 두 번째 면으로 세지 않는다 (`stages.py:284-309`).
+  - 구멍 찾기는 진단이 만든 광선 구조(판이 없는 보정 전 장면)를 다시 쓴다 — `visual.ply` 의 경로 · 수정 시각이 같을 때만 (`ctx["_vis_scene"]`, `stages.py:286`, `:414-419`).
+  - 덮은 자리는 `report.md` 의 "이 맵이 가정한 것과 바꾼 것" 에 위치와 함께 적힌다 (`stages.py:671-673`).
+  - 두 겹 바닥도 없고 덮을 구멍도 없으면 `correct` 는 `skip` ("고칠 수 있는 자리가 없어 보정하지 않음", `stages.py:478-479`). 이때 `defects_after.json` 은 없다.
+  - [C 측정, `C_TRACK.md` 2-5] 방 촬영본 `6bc1ae021f`: 후보 2곳 모두 "둘레에 보이는 바닥이 적음" 으로 덮지 않음.
+- 그 뒤 `convert` → `nav2` → `diagnose` 를 다시 돌린다 (`stages.py:482-486`). 이때 `defects_after.json` 을 쓴다.
 - **`defects_after.json` 은 보정이 돌았을 때만 생긴다.** 보정 단계가 `skip` 이면 없고, 상태 응답의 `defects_after` 는 `null`.
-- 보정 뒤에도 두 겹 바닥이 남으면 `correct` 단계가 `fail` (`stages.py:231-232`). 그러면 작업 상태는 `failed` 다 (4-3).
+- 보정 뒤에도 두 겹 바닥이 남으면 `correct` 단계가 `fail` (`stages.py:269-270`). 그러면 작업 상태는 `failed` 다 (4-3).
 
 ---
 
@@ -745,15 +804,14 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
   - `no_confidence`: `confidence/` 폴더가 없으면. 3 m(`near_conf1_m`) 안의 깊이를 모두 쓴다. `fallback_reason` 은 없고, 주의는 입력 검사의 "`confidence/` 가 없음 — 신뢰도로 거르지 않고 깊이를 모두 씀" (실제로는 3 m 까지).
     - `confidence/` 가 있는데 비었으면 `no_confidence` 가 아니라 바닥을 못 찾아 `dist` 가 된다. 신뢰도 그림이 없는 장은 `min` 이 아닌 규칙이면 3 m 안 깊이를 모두 쓴다 (`min` 은 `max_depth_m` 까지 모두).
   - `min`: `--conf-rule min` · `convert(conf_rule="min")` 로만. 예전 규칙 = 신뢰도 `min_conf` 이상 · `max_depth_m` 까지.
-- **엔진에서:** `stages.s_input` 이 `stray.convert` 를 기본값으로 부르므로 **`hf` 규칙 · 5 m 는 지금 엔진에서도 쓰인다.** 그러나 형상 메쉬는 아직 `pipeline/tsdf.py` (깊이 3 m)라 3~5 m 의 신뢰도 2 깊이(천장 · 먼 벽)는 메쉬에 들어가지 않는다. 5 m 까지 쓰려면 R10 (또는 R11 — `detect.config_tsdf` 의 `depth_trunc` 를 5.0 으로), 8-2.
+- **엔진에서:** `stages.s_input` 이 `stray.convert` 와 `stray_mesh.build` 를 기본값으로 부르므로 **`hf` 규칙 · 5 m · 수평 자세 보정이 엔진에서 쓰인다** (R10, C `be8310e`). 11/24 까지는 형상 메쉬가 `pipeline/tsdf.py` (깊이 3 m)라 3~5 m 의 신뢰도 2 깊이(천장 · 먼 벽)가 메쉬에 들어가지 않았다.
 - B 측정 (기준 촬영본, R10 을 넣은 복사본 엔진, 통합 기록 11/24 저녁): 예전 규칙(신뢰도 1 이상) · 3 m 대비 `floor_two_levels` 15.8 → 3.2% (자세 보정 없이), 천장 덮음 28 → 56% (`has_ceiling` 참), 보이는 바닥 없음 0.8 → 6.9%.
 
-- 형상 메쉬 — 지금 엔진 (`detect.config_tsdf`, `detect.py:130-137` → `pipeline/tsdf.py`, `stages.s_input`)
-  - TSDF 칸 2 cm, 깊이 3 m 까지, 키프레임 모두(`frame_step: 1`). 결과는 `build/mesh_raw.ply` · `build/tsdf_meta.json`.
-  - 변환은 5 m 까지 남기지만 메쉬에는 3 m 까지만 들어간다. 자세 보정도 없다.
-  - `pipeline/tsdf.py` 의 `tsdf.image_step`(그림을 줄여 읽기, C `39c02e6`)은 선택 사항이고 엔진은 쓰지 않는다.
-  - 형상 메쉬를 못 만들면 입력 단계 `fail` · `"촬영본에서 형상을 만들지 못함"`.
-- 형상 메쉬 — R10 뒤 (`stray_mesh.build` 기본값): 칸 2 cm · sdf 폭 칸 × 4 · 깊이 5 m · 키프레임 모두, 합치기 전에 자세 보정 (6-4). 못 만들면 `stray_mesh.MeshError` (`CaptureError` 의 한 종류)의 문장이 `messages` 에 들어간다 [R10 diff 대로면].
+- 형상 메쉬 — 지금 엔진 (`stray_mesh.build` 기본값, `stages.py:64-70`, R10 · C `be8310e`)
+  - 칸 2 cm · sdf 폭 칸 × 4 · 깊이 5 m · 키프레임 모두, 합치기 전에 자세 보정 (6-4). 그림 줄여 읽기(`image_step`)는 기본 1 그대로.
+  - 결과는 `build/mesh_raw.ply` · `build/tsdf_meta.json` · `build/pose_fix.json`. 메쉬 로그는 `out/log.txt` 에 붙는다.
+  - 못 만들면 (`stray.CaptureError` — `stray_mesh.MeshError` 도 그 한 종류) 입력 단계 `fail` · 요약 `"촬영본에서 형상을 만들지 못함"` · `messages` = 그 문장 하나 · metrics `{stray}`.
+  - `build/tsdf_config.yaml` 은 더 생기지 않는다 (`detect.config_tsdf` 지움). 11/24 까지는 `pipeline/tsdf.py` (칸 2 cm · 깊이 3 m · 보정 없음)였다.
 
 ### 6-3. `input_map/stray_meta.json` (`stray.convert` 끝)
 
@@ -818,18 +876,23 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
   - 깊이가 적음: `valid_depth_pct < 50` (규칙과 상관없는 촬영 상태로 봄, 위 표)
   - 촬영이 빠름: `speed_median_mps > 0.8`
   - `checks.warnings` 의 문장 모두 (R4, C `620a2b0`)
-  - 되돌아온 자리 보정 없음: **항상** 붙음. 그래서 Stray 입력의 `input` 단계는 언제나 `warn` 이상이다. R10 뒤에는 수평 자세 보정(6-4)이 있어 이 문장이 맞지 않는다 — `tsdf_meta.json` 의 `pose_fix` (status · reasons · flags)를 보여 주자는 것이 R11 의 둘째 항목이다 (8-2).
-- GLB 와 같이 형상 메쉬를 보고 내는 판정 (`stages.py:66-73`, 11/24 부터 Stray 에도)
+- 자세 보정 문장 (R11, C `be8310e`, `stages.py:98-109`) — `build/tsdf_meta.json` 의 `pose_fix` (6-4)를 읽는다. 수치는 `metrics.pose_fix` (3-5).
+  - `applied` 가 참: **알림만** (`messages` 에 넣고 상태는 그대로) `"촬영 중 틀어진 자세를 고쳐서 합침"` (+ `reasons` 가 있으면 괄호 안에 ` · ` 로 이어 붙임).
+  - `pose_fix` 가 있는데 `applied` 가 거짓 (`skipped` · `refused` · `error` · `off`): 주의 `"촬영 중 틀어진 자세를 고치지 않음 — 긴 구간은 틀어진 채일 수 있음"` (+ `reasons`).
+  - `pose_fix` 가 없음: 주의 `"아이폰 자세에는 되돌아온 자리를 맞추는 보정이 없음 — …"`. `stray_mesh.build` 는 늘 `pose_fix` 를 쓰므로(끄면 status `off`) 지금은 `--resume` 으로 11/24 전 빌드(`pipeline/tsdf.py` 의 `tsdf_meta.json`)를 그대로 쓸 때만 나온다.
+  - `flags` 의 문장은 하나씩 주의 (예: `"수평: u 축(…): 벽을 못 본 구간이 최대 16 초 — …"`).
+  - 11/24 까지는 "되돌아온 자리 보정 없음" 주의가 늘 붙어 Stray 입력의 `input` 단계가 언제나 `warn` 이상이었다. 지금은 보정이 됐고 다른 주의가 없으면 `pass` 일 수 있다.
+- GLB 와 같이 형상 메쉬를 보고 내는 판정 (`stages.py:78-85`, 11/24 부터 Stray 에도)
   - 실패: 범위가 1 m 미만 · 300 m 초과, 바닥(위 향한 면) 2 m² 미만.
   - 주의: 바닥이 평평하지 않음. 바닥 대부분(75% 이상)이 한 높이면 "바닥의 n% 가 다른 높이에 찍힘" 으로 적는다.
-- "사진 텍스처가 없음" 주의는 Stray 에는 붙지 않는다 (`stages.py:74`).
-- 요약은 `"아이폰 원본 → 형상 메쉬 · 천장 … · 바닥 … · 범위 …"` (`stages.py:65`). 11/23 까지는 `"아이폰 원본 → 맵 폴더 · …"` 였다.
+- "사진 텍스처가 없음" 주의는 Stray 에는 붙지 않는다 (`stages.py:86`).
+- 요약은 `"아이폰 원본 → 형상 메쉬 · 천장 … · 바닥 … · 범위 …"` (`stages.py:77`). 11/23 까지는 `"아이폰 원본 → 맵 폴더 · …"` 였다.
 
 `input_map/trajectory_camera_optical.txt` 의 형식: `시각 x y z qx qy qz qw id` (카메라 광학 → 입력 세계, 첫 줄은 `#` 주석). **자세 보정 전** 자세다 (6-4).
 
 ### 6-4. 자세 보정과 그 결과 파일 (B `stray_fix.py` · `stray_mesh.py`)
 
-**지금 엔진은 이것을 쓰지 않는다.** 엔진(`stages.s_input`)은 Stray 형상 메쉬를 아직 `pipeline/tsdf.py` (깊이 3 m · 보정 없음)로 만든다. 아래는 C 가 통합 기록 R10 (Stray 분기에서 `stray_mesh.build` 를 부르게)을 넣은 뒤의 약속이다. 그 전까지 엔진 출력에는 `build/pose_fix.json` 이 없고, `build/tsdf_meta.json` 에 `pose_fix` 가 없으며, `stray_quality` 는 보정 없이 잰다.
+**엔진은 11/25 (R10, C `be8310e`) 부터 이것을 쓴다.** `stages.s_input` 이 Stray 형상 메쉬를 `stray_mesh.build` 기본값(`fix "xy"`)으로 만든다. 그래서 엔진 출력에 `build/pose_fix.json` 이 있고, `build/tsdf_meta.json` 에 `pose_fix` 가 있으며, `stray_quality` 는 보정한 자세로 잰다. 입력 단계는 그 요약을 문장(6-3)과 `metrics.pose_fix`(3-5)로 내보낸다. 11/24 까지의 엔진(`pipeline/tsdf.py`)은 이 파일들이 없었다.
 
 **하는 일** — `stray_mesh.build(map_root, build_dir, …, depth_trunc=5.0, fix=…)` 가 깊이를 합치기 전에 키프레임 자세를 고친다 (`stray_fix.fix_poses`).
 
@@ -919,12 +982,14 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 **`stray_quality` 와의 관계** (`stray_quality._pose_fix` · `_rule` · `_depth`, `measure` · `drift` 같음)
 
+- **[B 정하는 중 — C5]** 진단이 만든 광선 구조를 `stray_quality.measure` 가 넘겨받아 쓰는 방법 (`C_TRACK.md` C5). 정해지면 여기에 적는다.
+
 - 보정 info 찾기
   - 새 빌드 (`tsdf_meta.json` 의 `pose_fix` 에 `sha256` 이 있음): `pose_fix.applied` 가 거짓이면 읽지 않는다. 참이면 `build/<file>` → `input_map/<같은 이름>` 차례로 찾아 **파일 sha256 이 같은 것만** 적용한다. 같은 것이 없으면 적용하지 않고 `notes` 에 문장을 남긴다.
   - `sha256` 이 없는 예전 빌드 (`595d439` 까지의 `stray_mesh` 와 `af65f1b` 판): `input_map/pose_fix.json` → `input_map/floor_fix.json` 차례. `tsdf_meta.json` 이 보정 없이 만든 맵이면 (`pipeline/tsdf.py` · `--no-fix`) 적용하지 않는다.
   - 적용하면 안 쓴 프레임 자세에도 같은 보정을 건다 (`apply_fix`).
 - 안 쓴 프레임의 깊이는 맵의 `depth_rule` 을 그대로 쓴다 (`stray.depth_keep`). `hf` 의 높이 조건은 **보정 전 자세**와 `camera_matrix.csv` 한 값을 깊이 크기로 줄인 내부 파라미터로 잰다 (`stray.py` 와 같게 — `--k-source` 와 상관없음). `no_confidence` 맵은 3 m 까지. `depth_rule` 이 없는 예전 맵이나 `min_conf` 를 주면 신뢰도 기준만 쓴다.
-  - 깊이 한계 = min(`tsdf_meta.json` 의 `tsdf.depth_trunc`, `select.max_depth_m`). `tsdf_meta.json` 이 없으면 5 m (`depth_rule` 이 없는 예전 맵은 3 m). 지금 엔진(`pipeline/tsdf.py`)은 3 m.
+  - 깊이 한계 = min(`tsdf_meta.json` 의 `tsdf.depth_trunc`, `select.max_depth_m`). `tsdf_meta.json` 이 없으면 5 m (`depth_rule` 이 없는 예전 맵은 3 m). 지금 엔진(`stray_mesh.build`)은 5 m (11/24 까지의 `pipeline/tsdf.py` 는 3 m).
 - 안 쓴 프레임 고르기 (`held_out.method "time_grid"`): 촬영 시간(처음 1 초 뒤 ~ 끝)을 n 구간으로 나눠 구간마다 목표 시각(seed 0 = 가운데)에 가장 가까운, 가장 가까운 키프레임에서 0.1 초 넘게 떨어진 장. 그런 장이 없는 구간만 기준을 낮춘다 (`held_out.relaxed_cells`, `notes`). 키프레임 수가 바뀌어도 같은 구간 · 거의 같은 시각을 잰다.
 - **`input_map/stray_quality.json`** 의 관련 키
   - `pose_fix`: `{applied, status, file, steps: [{kind, applied, status}], (높이) dz_p5_p95_cm · dz_max_abs_cm, (수평) xy_axes · xy_shift_cm_p50_p95 · xy_shift_max_cm, (적용 못 했으면) note}`. 새 빌드면 `file` = `"build/pose_fix.json"`.
@@ -941,28 +1006,33 @@ B 측정 (기준 촬영본, 통합 기록 11/24 저녁 · R10): 자세 보정 �
 
 | 항목 | 값 | 위치 |
 |---|---|---|
-| 받는 확장자 | `.zip` · `.glb` (대소문자 무시). 화면도 같은 검사 | `web/server.py:37`, `:92-94` · `index.html:95`, `:162` |
-| 파일 크기 | 1 바이트 ~ `MAX_BYTES` = 4 × 1024³ = 4,294,967,296 바이트 | `web/server.py:38`, `:95` |
-| 조각 크기 | 화면이 8 MiB(8,388,608 바이트)로 나눔. 서버는 조각 크기를 제한하지 않고 1 MiB 씩 읽음 | `index.html:144` · `web/server.py:115` |
-| 작업 번호 | `^[0-9a-f]{12}$` | `web/server.py:47` · `index.html:358` |
-| 파일 이름 저장 길이 | 앞 120자 | `web/server.py:99` |
-| 동시 처리 | 처리 스레드 **하나** (한 번에 한 작업, 나머지는 줄). 요청 받기는 Flask 내장 서버 `threaded=True` | `web/server.py:271`, `:273` |
-| 기본 주소 | `127.0.0.1:8000`. 밖에 열 때는 `--code` 를 줄 것. 배포 스크립트는 늘 127.0.0.1 + 터널 + 접속 코드 (4장) | `web/server.py:264-265` · `deploy/start.sh:34` |
-| 결함 수 | 파일마다 최대 30 | `stages.py:158` |
-| 화면 폴링 | 1.5초 | `index.html:202` |
+| 받는 확장자 | `.zip` · `.glb` (대소문자 무시). 화면도 같은 검사 | `web/server.py:37`, `:139-141` · `index.html:95`, `:162` |
+| 파일 크기 | 1 바이트 ~ `MAX_BYTES` = 4 × 1024³ = 4,294,967,296 바이트 | `web/server.py:38`, `:142` |
+| 조각 크기 | 화면이 8 MiB(8,388,608 바이트)로 나눔. 서버는 조각 크기를 제한하지 않고 1 MiB 씩 읽음 | `index.html:144` · `web/server.py:163` |
+| 조각 다시 보내기 (화면) | 8번까지, 1 · 2 · 4 … 초 (최대 30초) 기다림 | `index.html:144`, `:187-189` |
+| 작업 번호 | `^[0-9a-f]{12}$` | `web/server.py:47` · `index.html:372` |
+| 파일 이름 저장 길이 | 앞 120자 | `web/server.py:146` |
+| 동시 처리 | 처리 스레드 **하나** (한 번에 한 작업, 나머지는 줄). 요청 받기는 Flask 내장 서버 `threaded=True` | `web/server.py:327`, `:329` |
+| 서버를 다시 켤 때 다시 넣기 | 작업마다 한 번 (`restarts` 1). 두 번째는 `failed` | `web/server.py:80-83` |
+| 작업 폴더 정리 | 끝난 작업마다 `out/input_map/_unzip` 을 지움. 최근 `--keep` 건(기본 5)보다 오래된 끝난 작업은 `input/` · `out/input_map` · `out/build` 도 (2-1) | `web/server.py:92-112`, `:320` |
+| 기본 주소 | `127.0.0.1:8000`. 밖에 열 때는 `--code` 를 줄 것. 배포 스크립트는 늘 127.0.0.1 + 터널 + 접속 코드 (4장) | `web/server.py:316-317` · `deploy/start.sh:34` |
+| 결함 수 | 파일마다 최대 30 | `stages.py:184` |
+| 화면 폴링 | 1.5초 | `index.html:216` |
 | 화면용 GLB | 정점 색 삼각형 30만 · 텍스처 긴 변 2048 화소 | `preview.py:46` |
 | Stray 키프레임 | 최대 2,000장 (넘으면 간격을 넓힘) | `stray.MAX_KEYFRAMES` |
-| Stray 깊이 거리 | 신뢰도 2 는 5 m · 신뢰도 1 은 3 m (`hf`). 지금 엔진 메쉬는 3 m 까지 (R10 뒤 5 m) | `stray.convert` 기본값 · `detect.py:136` · `stray_mesh.build` |
-| Stray 자세 보정 | 키프레임 보정이 40 cm 넘으면 그 단계 · 축을 거부 (R10 뒤) | `stray_fix.GATES` · `XY_GATES` |
+| Stray 깊이 거리 | 신뢰도 2 는 5 m · 신뢰도 1 은 3 m (`hf`). 엔진 메쉬도 5 m 까지 (R10) | `stray.convert` 기본값 · `stray_mesh.build` 기본값 |
+| Stray 자세 보정 | 키프레임 보정이 40 cm 넘으면 그 단계 · 축을 거부 | `stray_fix.GATES` · `XY_GATES` |
+| 보이는 바닥 구멍 덮기 (R9) | 구멍 하나 4 m² 까지. 바닥 아래에서 맞은 칸 10% 이하 · 둘레 띠의 보이는 바닥 50% 이상 | `stages.py:397` (`_patch_mask` 인자) |
+| 걸어간 길 (Stray) | 막힌 길 10% 초과 또는 이어진 길 80% 미만이면 판정 `fail`. 막힌 길 2% 초과 · 빈 바닥 가장 큰 덩어리 60% 미만은 주의. 막힘 봐주기 0.15 m | `stages.py:351-357` · `checks.py:48` |
 | Stray zip | 파일 10만 개 · 풀면 6 GB | `stray.ZIP_MAX_FILES` · `ZIP_MAX_BYTES` |
-| 엔진 쪽 실패 기준 (참고) | GLB · Stray 범위 1 m 미만 · 300 m 초과, 바닥 2 m² 미만 · 빈 바닥 4 m² 미만 · 진단 표본 50개 미만 | `stages.py:66-69`, `:142-143`, `:221-222` |
-| 처리 시간 제한 | 없음 (엔진이 끝날 때까지 기다림) | `web/server.py:146` |
+| 엔진 쪽 실패 기준 (참고) | GLB · Stray 범위 1 m 미만 · 300 m 초과, 바닥 2 m² 미만 · Nav2 도구 없음 · 빈 바닥 4 m² 미만 · 진단 표본 50개 미만 | `stages.py:78-81`, `:154-156`, `:168-169`, `:259-260` |
+| 처리 시간 제한 | 없음 (엔진이 끝날 때까지 기다림) | `web/server.py:194` |
 
 ---
 
 ## 8. 계획과 다른 점
 
-계획 = `docs/implementation.md` 5장 (2판, 11/23). 위가 코드에서 확인한 것이다. 11/24 에 C · D 가 고친 것은 **고침** 으로 적고 커밋을 붙였다.
+계획 = `docs/implementation.md` 5장 (2판, 11/23). 위가 코드에서 확인한 것이다. 11/24 · 11/25 에 C · D 가 고친 것은 **고침** 으로 적고 커밋을 붙였다.
 
 ### 8-1. 계획이 틀렸던 것
 
@@ -982,11 +1052,12 @@ B 측정 (기준 촬영본, 통합 기록 11/24 저녁 · R10): 자세 보정 �
    - GLB · Stray 에만 생기고 맵 폴더에는 없다. Stray 는 11/24 (C `0534d95`) 부터 생긴다.
    - 촬영 경로가 아니라 바닥 빈 곳의 뼈대로 만든 가상 경로다 (2-4).
 6. **`out/input_map/` 에 `_unzip/`(원본 촬영 전체, 사람이 찍힌 `rgb.mp4` 포함)과 `keyframes/` 가 더 있다.** 개인정보 정리(계획 10장) 대상이다.
+   - 서버는 작업이 끝나면 `_unzip/` 을 지우고, 최근 5건보다 오래된 작업은 `input/` · `input_map/` 도 지운다 (D `533bffe`, 2-1). 최근 작업의 `keyframes/` 와 올린 zip(`input/`)은 남는다. CLI 는 지우지 않는다.
 7. **[고침 — D `98da703`, 통합 기록 R2]** 상태 `done` 이 "엔진이 성공함" 이 아니었다.
    - 지금은 `report.md` 가 있고 종료 코드 0 이고 실패 단계가 없어야 `done` 이다 (4-3).
    - 11/23 의 `e2e_glb` 는 `done` · `exit_code 1` · `verdict fail` 이었다. 지금 규칙으로는 `failed`.
 8. **404 응답은 `{error}` JSON 이 아니라 HTML 이다.** 계획 5-6 은 "오류는 `{error}`" 라고 적었다.
-9. 상태 응답에 계획 예시에 없는 필드가 있다: `file` · `queued_at` · `error`.
+9. 상태 응답에 계획 예시에 없는 필드가 있다: `file` · `queued_at` · `error` · `restarts` (2-2).
 10. **맵 폴더 zip 은 웹으로 올릴 수 없다.**
     - `web/server.py:6` 의 설명은 "맵 폴더를 묶은 zip" 을 받는다고 적었다.
     - 그러나 엔진의 `detect.kind_of` 는 Stray 가 아닌 zip 을 알아보지 못한다 (`detect.py:13-20`). 입력 단계에서 `"입력을 알아볼 수 없음"` 으로 실패한다.
@@ -998,31 +1069,29 @@ B 측정 (기준 촬영본, 통합 기록 11/24 저녁 · R10): 자세 보정 �
 ### 8-2. 계획에는 있고 아직 없는 것
 
 - `GET /api/samples`, `POST /api/samples/<name>/jobs`, `GET /api/health` (계획 5-6 "추가하기로 한 것", D 담당) — 서버에 없다. 지금 경로는 4-2 표가 전부다.
-- 화면의 이어 올리기. 서버는 같은 프로세스 안에서만 된다 (`received` 를 `job.json` 에 조각마다 저장하지 않음).
+- ~~화면의 이어 올리기~~ — 됨 (D `533bffe`). 화면이 끊긴 조각을 서버가 받은 자리부터 다시 보내고, 서버를 다시 켜도 받은 자리를 파일 크기로 되찾는다 (4-2). 페이지를 다시 연 뒤에는 이어 올리지 않는다.
 - `bundle/` 을 D 의 `sim/add_site.py` 형식에 맞추기 (계획 3-2 · 5-2). 아직 지금 형식 그대로다.
-- **B 의 Stray 형상 메쉬 단계가 엔진에 아직 없다** (통합 기록 R10 · R11, C, 둘 다 열림).
-  - 지금 엔진은 `stray.convert` (`hf` 규칙 · 5 m)를 쓰지만, 메쉬는 `pipeline/tsdf.py` (3 m · 자세 보정 없음)로 만든다 (6-2, 6-4).
-  - R10: `stages.s_input` 의 Stray 분기에서 `pipeline/tsdf.py` 대신 `stray_mesh.build` 를 부르기. 파일 이름 · 좌표는 그대로다.
-  - R11 (R10 을 바로 못 넣을 때만): `detect.config_tsdf` 의 `depth_trunc: 3.0` → `5.0`. 그리고 입력 단계의 "아이폰 자세에는 되돌아온 자리를 맞추는 보정이 없음" 주의를 `build/tsdf_meta.json` 의 `pose_fix` (status · reasons · flags)로 바꾸기.
-  - R10 이 들어가면 B 가 이 문서에서 `build/tsdf_config.yaml` 을 지우고 "R10 뒤" 표시를 정리한다.
+- ~~B 의 Stray 형상 메쉬 단계가 엔진에 아직 없다~~ — 들어감 (R10 · R11, C `be8310e`). 엔진이 Stray 형상 메쉬를 `stray_mesh.build` 기본값(깊이 5 m · 수평 자세 보정)으로 만들고, 입력 단계가 `pose_fix` 를 문장 · 수치로 보여 준다 (6-2 ~ 6-4). `build/tsdf_config.yaml` 은 더 생기지 않는다. 이 문서의 "R10 뒤" 표시는 정리했다.
 - ~~Stray 복원 정확도를 진단 · 보고서에 붙이기~~ — 붙음 (R3, C `620a2b0`). 진단 수치 `stray_quality` = `{frames, median_cm, p90_cm, within_2cm_pct, hit_pct, verdict}`, 요약 문장은 `messages`, 통과가 아니면 이유가 주의(실패여도 주의). `report.md` 에 "복원 정확도 (아이폰 원본)" 절. [C 측정] 방 촬영본 중앙 2.17 cm · 2 cm 안 47.2% · 맵에 닿음 98.8% → 통과
 - **[고침 — C `736eb68`]** "같은 입력에 같은 결과" (계획 5-3). 11/23 판에는 "아직 보장하지 않음" 이었다.
   - GLB · Stray 의 바닥 평면 찾기에서 무작위 표본(RANSAC)을 없앴다. 화면용 GLB 도 무작위를 쓰지 않는다.
   - C 측정 (Windows): 복도 GLB 4번 · 가상의 방 Stray 2번에서 변환 행렬 차이 0 · 결함 목록 같음 (`C_TRACK.md` 1장).
+  - D 측정 (Ubuntu 24.04 서버 · 32 코어, main `533bffe` = R10 포함 · `105591c` 전, `6afb822` 커밋 설명): 실제 촬영본 540 MB 를 서버로 두 번 — 각 약 40초. `mesh_raw.ply` · USD · `map.pgm` · 결함 목록 · `preview.glb` · 시작 자세의 md5 가 같음. 11/24 오전 엔진 `98da703` 에서는 `transform.json` 부터 달랐다.
   - `tests/repeat.py` 가 계속 검사한다.
 
 ### 8-3. 버그로 보이는 것 (고칠 사람이 정할 것)
 
 | # | 위치 | 내용 | 상태 |
 |---|---|---|---|
-| 1 | `core.py:53` + `pipeline/glb_to_usd.py:66`, `:88` (`detect.profile_glb` 경유, `detect.py:42-44`) | 단계가 `except Exception` 만 잡아서 `SystemExit` 이 새어 나간다. 이때 단계 파일도 `report.md` 도 없이 엔진이 끝난다. 그러면 서버 상태는 `failed`, 그 단계부터는 모두 `pending`, `verdict` 는 `"pending"` (#2) 이 된다. 예: 바닥을 못 찾는 GLB. **11/24 부터 Stray 도 해당한다** — 입력 단계가 형상 메쉬에 `profile_glb` 를 부르므로, 형상 메쉬에 위 향한 면이 거의 없으면 같은 길로 죽는다 [추정: 그런 촬영본으로 돌려 보지 않음]. (`stray.py` 쪽은 B 가 `CaptureError` 로 바꿔 고침, `ba960b4`) | 열림 |
-| 2 | `web/server.py:191` | `report.json` 이 없으면 `verdict` 를 `report` 단계 상태로 대신하는데, 그 단계가 없으면 `"pending"` 이 들어간다. 화면은 그 글자를 그대로 보인다 (`job.verdict \|\| "fail"` 이라 `"pending"` 은 걸러지지 않음) | 열림 |
-| 3 | `web/server.py:113-122` | 조각이 알린 크기를 넘으면 400 을 돌려주지만(`:119-120`), 그 전까지 읽은 부분은 이미 파일에 붙은 채이고 `received` 는 그대로다. 같은 `offset` 으로 다시 보내면 파일이 어긋난다 | 열림 |
-| 4 | `web/server.py:249` | `bundle.zip` 을 한 번 만들면 다시 만들지 않는다. 처리 중(`bundle` 단계 뒤 · `report` 전)에 요청하면 `report.md` 가 빠진 zip 이 남는다 | 열림 |
-| 5 | `web/server.py:91`, `:109` | `size` · `offset` 이 숫자가 아니면 `int()` 예외로 500 이 난다 (400 이 아님) | 열림 |
+| 1 | `core.py:53` + `pipeline/glb_to_usd.py:66`, `:88` (`detect.profile_glb` 경유, `detect.py:42-44`) | 단계가 `except Exception` 만 잡아서 `SystemExit` 이 새어 나간다. 이때 단계 파일도 `report.md` 도 없이 엔진이 끝난다. 그러면 서버 상태는 `failed`, 그 단계부터는 모두 `pending`, `verdict` 는 `"pending"` (#2) 이 된다. 예: 바닥을 못 찾는 GLB. **11/24 부터 Stray 도 해당한다** — 입력 단계가 형상 메쉬에 `profile_glb` 를 부르므로, 형상 메쉬에 위 향한 면이 거의 없으면 같은 길로 죽는다 [추정: 그런 촬영본으로 돌려 보지 않음]. (`stray.py` 쪽은 B 가 `CaptureError` 로 바꿔 고침, `ba960b4`) | **고침** C `6ec3237`: `core.run` 이 `SystemExit` 도 받아 그 문장을 요약으로 하는 `fail` 단계로 남긴다 (`core.py:53-56`, 3-1). 뒤 단계 `skip` · `report.md` · `report.json` 있음. [C 측정] 세로 벽 한 장뿐인 GLB: 입력 단계 실패 · 종료 코드 1 · 단계 파일 8개 |
+| 2 | `web/server.py:243` | `report.json` 이 없으면 `verdict` 를 `report` 단계 상태로 대신하는데, 그 단계가 없으면 `"pending"` 이 들어간다. 화면은 그 글자를 그대로 보인다 (`job.verdict \|\| "fail"` 이라 `"pending"` 은 걸러지지 않음). 1번이 고쳐져 지금은 엔진 프로세스가 죽은 경우(메모리 부족 등)에만 생긴다 | 열림 |
+| 3 | `web/server.py:153-171` | 조각이 알린 크기를 넘으면 400 을 돌려주지만, 그 전까지 읽은 부분은 이미 파일에 붙은 채이고 `received` 는 그대로다. 같은 `offset` 으로 다시 보내면 파일이 어긋난다 | **고침** D `533bffe`: 조각마다 먼저 파일을 `received` 로 자른다 (`:161`). 같은 `offset` 으로 다시 보내면 남은 바이트가 지워진다 |
+| 4 | `web/server.py:301` | `bundle.zip` 을 한 번 만들면 다시 만들지 않는다. 처리 중(`bundle` 단계 뒤 · `report` 전)에 요청하면 `report.md` 가 빠진 zip 이 남는다 | 열림 |
+| 5 | `web/server.py:138`, `:156` | `size` · `offset` 이 숫자가 아니면 `int()` 예외로 500 이 난다 (400 이 아님) | 열림 |
 | 6 | `web/server.py:6` vs `detect.py:13-20` | 맵 폴더 zip 을 받는다는 설명과 실제 동작이 다르다 (8-1 의 10번) | 열림 |
 | 7 | `recon/requirements.txt` | GLB 빌드가 쓰는 `scikit-image`, Stray 의 `opencv`, 서버의 `flask` · `pillow` 가 목록에 없었다 (`e2e_glb` 가 `ModuleNotFoundError: No module named 'skimage'` 로 `convert` 실패) | **고침** (D `98da703`, R1): `opencv-python-headless==5.1.0.95` · `scikit-image==0.26.0` · `Flask==3.1.3` · `pillow==13.0.0` |
-| 8 | 상태 응답의 `status` (`web/server.py:149-150`) | 엔진 단계가 실패해도 `done` 이었다 (8-1 의 7번) | **고침** (D `98da703`, R2) |
+| 8 | 상태 응답의 `status` (`web/server.py:196-198`) | 엔진 단계가 실패해도 `done` 이었다 (8-1 의 7번) | **고침** (D `98da703`, R2) |
 | 9 | `stages.py:52` · `core.py:53-54` | Stray 촬영본 오류가 `"예외: CaptureError: <문장>"` 요약과 traceback 6줄로 나간다. 사용자 문장만 보이고, `checks.warnings` 도 입력 단계 주의로 보이게 해 달라고 요청함 (통합 기록 R4, C) | **고침** C `620a2b0` |
-| 10 | `web/static/index.html:311-312` | 화면이 "천장이 있는가" 를 진단 `messages` 의 문장(`"천장이 있음"`)으로 판단해 3D 위쪽을 자른다. 문장이 바뀌면 깨지고, 지금도 천장이 일부만 찍힌 경우(`room`: 덮음 27%, 문장 "천장이 일부만 찍힘")는 자르지 않는다. 상태 응답의 `metrics.before.has_ceiling` · `shadow_fix` 를 보는 편이 약속에 맞다 [추정: 화면에서 직접 확인하지 않음] | 열림 (A) |
-| 11 | `stages.s_input` (Stray 분기, `--resume`) | `--resume` 이면 `input_map/stray_meta.json` 이 있을 때 변환을, `build/mesh_raw.ply` 가 **있기만 하면** 형상 메쉬를 건너뛴다. 앞 실행이 변환 중에 멈췄다면 `stray.convert` 가 `stray_meta.json` 을 지운 채라 다시 변환하지만, 예전 `mesh_raw.ply` 는 남아 있어 새 키프레임 · 자세와 맞지 않는 메쉬를 그대로 쓸 수 있다 [추정: 그렇게 멈춰 본 적은 없음, 코드로만 봄]. 제안: 이번 실행에서 변환을 했으면 메쉬도 다시 만들기 (또는 `mesh_raw.ply` 가 `stray_meta.json` 보다 새것일 때만 건너뛰기). 서버는 `--resume` 을 쓰지 않아 웹 작업에는 닿지 않는다 | 제안 (C) |
+| 10 | `web/static/index.html:325-326` | 화면이 "천장이 있는가" 를 진단 `messages` 의 문장(`"천장이 있음"`)으로 판단해 3D 위쪽을 자른다. 문장이 바뀌면 깨지고, 지금도 천장이 일부만 찍힌 경우(`room`: 덮음 27%, 문장 "천장이 일부만 찍힘")는 자르지 않는다. 상태 응답의 `metrics.before.has_ceiling` · `shadow_fix` 를 보는 편이 약속에 맞다 [추정: 화면에서 직접 확인하지 않음] | 열림 (A) |
+| 11 | `stages.s_input` (Stray 분기, `--resume`) | `--resume` 이면 `input_map/stray_meta.json` 이 있을 때 변환을, `build/mesh_raw.ply` 가 **있기만 하면** 형상 메쉬를 건너뛴다. 앞 실행이 변환 중에 멈췄다면 `stray.convert` 가 `stray_meta.json` 을 지운 채라 다시 변환하지만, 예전 `mesh_raw.ply` 는 남아 있어 새 키프레임 · 자세와 맞지 않는 메쉬를 그대로 쓸 수 있다 [추정: 그렇게 멈춰 본 적은 없음, 코드로만 봄]. 제안: 이번 실행에서 변환을 했으면 메쉬도 다시 만들기 (또는 `mesh_raw.ply` 가 `stray_meta.json` 보다 새것일 때만 건너뛰기). 서버는 `--resume` 을 쓰지 않아 웹 작업에는 닿지 않는다 | **메쉬는 고침** C `be8310e` (제안 두 가지 모두, `stages.py:53`, `:62-63`). **남은 것 — 열림 (C):** 메쉬를 다시 만들어도 `convert` 는 `build/report.json` 이 있으면 건너뛴다 (`stages.py:128-129`). 그래서 USD · `visual.ply` · `transform.json` 이 예전 메쉬로 만든 것일 수 있다. 같은 입력 · 같은 코드면 메쉬가 같아(8-2 의 md5) 차이가 없고, 코드나 입력이 바뀐 뒤 `--resume` 을 쓸 때만 닿는다 [추정: 돌려 보지 않음, 코드로만 봄]. 제안: 이번 실행에서 메쉬를 다시 만들었으면 `convert` 도 건너뛰지 않기 |
+| 12 | `web/static/index.html:241-243` | 판정 `fail` 의 문구가 `"쓸 수 없음 — 실패한 단계를 볼 것"` 으로 고정돼 있다. `105591c` 부터는 실패한 단계 없이 `verdict` 만 `fail` 인 경우가 있다 (3-4). 이유는 `report` 단계 요약 · 진단 주의 · 결함 `path_blocked` 에 있다 (`C_TRACK.md` C11 ①) | 열림 (A) |
