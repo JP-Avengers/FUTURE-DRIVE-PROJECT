@@ -55,7 +55,8 @@ def s_input(ctx):
             sm = json.load(open(mj, encoding="utf-8"))
         else:
             try:
-                sm = stray.convert(stray.find_capture(ctx["input"], os.path.join(mp, "_unzip")), mp)
+                ctx["capture"] = stray.find_capture(ctx["input"], os.path.join(mp, "_unzip"))
+                sm = stray.convert(ctx["capture"], mp)
             except stray.CaptureError as e:
                 return Result(FAIL, str(e))
         path = os.path.join(build, "mesh_raw.ply")
@@ -65,9 +66,11 @@ def s_input(ctx):
             from . import stray_mesh                            # B 의 형상 메쉬 (통합 기록 R10): 깊이 규칙 · 자세 보정이 이 안에 있음. 파일 이름 · 좌표는 pipeline/tsdf.py 때와 같음
             try:
                 with open(ctx.path("log.txt"), "a", encoding="utf-8") as fh:
-                    stray_mesh.build(mp, build, log=lambda s: print(s, file=fh, flush=True))
+                    # capture = 높이 보정 자동 고르기(fix "auto")가 원래 자세를 잴 촬영 원본 (통합 기록 R20). 폴더 입력은 input_map/_unzip 이 없어 넘겨야 잼
+                    stray_mesh.build(mp, build, log=lambda s: print(s, file=fh, flush=True), capture=ctx.get("capture") or ctx["input"])
             except stray.CaptureError as e:                     # stray_mesh.MeshError 도 여기로 — 쓸 장 없음 · 해상도 불일치 · 메쉬 빔
                 return Result(FAIL, "촬영본에서 형상을 만들지 못함", metrics=dict(stray=sm), messages=[str(e)])
+            ctx["mesh_rebuilt"] = True                          # --resume 이어도 변환(USD · visual.ply · transform.json)을 다시 — 예전 메쉬 것이 남지 않게 (통합 기록 R15)
         ctx["source"], ctx["map_root"], ctx["kind"], k, up = "stray", mp, "glb", "glb", "z"
     if k == "glb":
         if path is None:
@@ -98,7 +101,7 @@ def s_input(ctx):
             # 자세 보정 요약 (B 의 stray_mesh 가 build/tsdf_meta.json 의 pose_fix 에 남김, 통합 기록 R11): 고쳤으면 알리기만, 못 고쳤거나 표시가 있으면 주의
             tm = os.path.join(build, "tsdf_meta.json")
             pf = (json.load(open(tm, encoding="utf-8")).get("pose_fix") if os.path.exists(tm) else None) or {}
-            p["pose_fix"] = {k_: pf.get(k_) for k_ in ("method", "applied", "status", "reasons", "flags") if k_ in pf}
+            p["pose_fix"] = {k_: pf.get(k_) for k_ in ("method", "applied", "status", "reasons", "flags", "auto") if k_ in pf}   # auto = 높이 보정을 자동으로 고른 근거 (재지 못해 xy 로 간 까닭 포함, R20)
             if pf.get("applied"):
                 r.messages.append("촬영 중 틀어진 자세를 고쳐서 합침" + (f" ({' · '.join(pf['reasons'])})" if pf.get("reasons") else ""))
             elif pf:
@@ -125,7 +128,7 @@ def s_input(ctx):
 def s_convert(ctx):
     """기존 파이프라인으로 메쉬 · 충돌 · USD 를 만든다 (GLB: glb_to_usd.py · 맵 폴더: check_input.py + build_usd.py)."""
     py, log, out = sys.executable, ctx.path("log.txt"), os.path.dirname(ctx["config"])
-    if ctx.get("resume") and os.path.exists(os.path.join(out, "report.json")):
+    if ctx.get("resume") and not ctx.get("mesh_rebuilt") and os.path.exists(os.path.join(out, "report.json")):
         rc = 0                                                  # --resume: 이미 만든 빌드를 그대로 씀 (진단 · 묶음만 다시)
     elif ctx["kind"] == "map_folder":
         if _call([py, os.path.join(PIPE, "check_input.py"), "--config", ctx["config"]], log):
@@ -283,6 +286,7 @@ def s_diagnose(ctx):
         sc.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(vis))
         pp, pid = os.path.join(ctx["build"], "floor_patch.ply"), -1
         # 판이 없는(보정 전) 장면은 보정 단계의 구멍 찾기(_patch_mask)가 다시 씀 — 큰 메쉬(방 하나 240만 삼각형)는 이 구조를 만드는 데만 수 초~수십 초
+        # 이 구조에는 visual.ply 말고 넣지 말 것 — stray_quality.measure(visual_scene=…) 가 visual.ply 하나로 만든 구조라고 가정함 (통합 기록 R14)
         ctx["_vis_scene"] = None if os.path.exists(pp) else (vp, os.path.getmtime(vp), sc)
         if os.path.exists(pp):                                # 보정 뒤: 구멍을 덮은 판(FloorPatch)도 보이는 바닥 (통합 기록 R9)
             pid = sc.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(o3d.io.read_triangle_mesh(pp)))
@@ -356,6 +360,9 @@ def s_diagnose(ctx):
             ctx["unusable"].append(f"촬영자가 걸어간 길이 지도에서 끊겨 있음 — 한 덩어리로 이어진 구간이 {pa['main_piece_pct']}% 뿐. 처음부터 끝까지 주행할 수 없음")
     if dv["main_share_pct"] < 60:
         r.warn(f"빈 바닥이 여러 조각으로 끊겨 있음 — 로봇이 다닐 수 있는 바닥(장애물과 {ROBOT_RADIUS_M} m 띄움) 중 가장 큰 덩어리가 {dv['main_share_pct']}% · 1 m² 넘는 조각 {dv['pieces']}개")
+    if dv["turn_area_m2"] < 5.0:                                # sim/add_site.py 의 맵 판정이 "실패 예상"으로 보는 기준 (5.0 m² 미만, D docs/isaac_check.md) — 같은 수치 · 같은 문턱
+        r.warn(f"로봇이 제자리에서 돌 수 있는 넓이가 {dv['turn_area_m2']} m² 뿐임 (5 m² 미만) — 주행 공간이 좁아 주행 실패가 예상됨 (sim 쪽 맵 판정의 '실패 예상'과 같은 기준). "
+               f"빈 바닥은 {dv['free_m2']} m² 지만 장애물과 {dv['turn_radius_m']} m 넘게 떨어진 자리가 적음 — 책상 · 가구가 촘촘하거나 좁은 곳")
     for u in ctx["unusable"]:
         r.warn(u)
     if om["visible_cells"] > 200 and om["collision_cells"] > 200:
@@ -379,7 +386,7 @@ def s_diagnose(ctx):
     if ctx.get("source") == "stray":                            # 아이폰 원본: 안 쓴 프레임 깊이 ↔ 맵 (B 의 stray_quality, 통합 기록 R3)
         from . import stray_quality
         try:
-            q = ctx.get("stray_quality") or stray_quality.measure(ctx["out"], capture=ctx["input"])
+            q = ctx.get("stray_quality") or stray_quality.measure(ctx["out"], capture=ctx["input"], visual_scene=ctx.get("_vis_scene"))
             ctx["stray_quality"] = q
             m["stray_quality"] = {k: q.get(k) for k in ("frames", "median_cm", "p90_cm", "within_2cm_pct", "hit_pct", "verdict")}
             r.messages.append(q["summary"])
@@ -387,6 +394,21 @@ def s_diagnose(ctx):
                 r.warn(w)                                       # fail 이어도 주의로만 (맵은 만들어짐)
         except (SystemExit, Exception) as e:                    # measure 는 SystemExit 을 냄
             r.messages.append(f"복원 정확도를 재지 못함: {e}")
+        # 되돌아온 자리 어긋남 (B 의 stray_revisit, 통합 기록 R19): 같은 곳을 다시 본 깊이끼리 맞춰 그 사이에 쌓인 자세 틀어짐을 직접 잼.
+        # 복원 정확도는 키프레임 바로 옆 장과 견주어 이것을 못 봄 (복도 왕복 촬영본: 6.13 cm 로 주의에 그쳤지만 맵은 못 썼음).
+        # 판정은 주의까지만 — "쓸 수 없음"은 걸어간 길이 실제로 막혔을 때(drivable)만
+        from . import stray_revisit
+        try:
+            rv = ctx.get("stray_revisit") or stray_revisit.measure(ctx["out"], capture=ctx["input"])
+            ctx["stray_revisit"] = rv
+            keys = ("pairs", "reliable", "h_max_cm", "z_max_cm", "yaw_max_deg", "h_worst", "z_worst")
+            m["revisit"] = dict(verdict=rv.get("verdict"), **{k: {kk: (rv[k].get("summary") or {}).get(kk) for kk in keys} for k in ("raw", "fixed") if rv.get(k)})
+            for w in rv.get("reasons") or []:
+                r.warn(w)
+            if rv.get("verdict") == "fail":
+                r.warn("되돌아온 자리가 크게 어긋나 있음 — 같은 곳이 두 번 겹쳐 찍혔을 수 있음. 다시 찍기를 권함 (긴 복도는 한 방향으로만)")
+        except (SystemExit, Exception) as e:
+            r.messages.append(f"되돌아온 자리 어긋남을 재지 못함: {e}")
     m["defects"] = _defects(ctx, ground, xy, where, lay, ok, hi, two, h2, blocked_xy)
     if m["defects"].get("no_visible_floor") and ctx.get("kind") == "glb" and not ctx.get("corrected") and not ctx.get("diagnose_only"):
         ctx.setdefault("needs", {})["no_visible_floor"] = True  # 보정 단계에서 둘레 바닥 색 판으로 덮음 (통합 기록 R9)
@@ -655,6 +677,17 @@ def s_report(ctx):
             v = m["visible_minus_collision_cm"]
             L += [f"| 보이는 바닥 − 충돌 바닥 (5% / 중앙 / 95%) | {v['p5']} / {v['median']} / {v['p95']} cm | ±5 cm 안 |", f"| 보이는 바닥이 없는 빈 바닥 | {m.get('visible_floor_missing_pct')}% | 10% 아래 |"]
         L += [f"| 천장 | {'있음 → 그림자 설정 넣음' if m.get('has_ceiling') else '없음'} | — |"]
+    rv = ctx.get("stray_revisit")
+    if rv and rv.get("verdict") not in (None, "skip"):
+        def _rv(k, name):
+            sm_ = (rv.get(k) or {}).get("summary") or {}
+            if not sm_.get("pairs"):
+                return None
+            hw, zw = sm_.get("h_worst") or {}, sm_.get("z_worst") or {}
+            return (f"- {name}: 수평 최대 {sm_.get('h_max_cm')} cm" + (f" ({hw.get('t_a')} 초 ↔ {hw.get('t_b')} 초)" if hw else "")
+                    + f" · 높이 최대 {sm_.get('z_max_cm')} cm" + (f" ({zw.get('t_a')} 초 ↔ {zw.get('t_b')} 초)" if zw else "") + f" · 다시 본 쌍 {sm_.get('pairs')} (믿을 쌍 {sm_.get('reliable')})")
+        L += ["", "## 되돌아온 자리 어긋남 (아이폰 원본)", "", f"- 판정: {MARK.get(rv.get('verdict'), rv.get('verdict'))} (기준: 높이 3 cm 이하 통과 · 15 cm 넘으면 실패, 수평 10 cm 이하 통과 · 30 cm 넘으면 실패)"]
+        L += [x for x in (_rv("raw", "원래 자세"), _rv("fixed", "고친 자세 (맵을 만든 것)")) if x]
     sq = ctx.get("stray_quality")
     if sq and sq.get("median_cm") is not None:
         L += ["", "## 복원 정확도 (아이폰 원본)", "", f"- {sq['summary']} · 90% {sq.get('p90_cm')} cm → {MARK.get(sq.get('verdict'), sq.get('verdict'))} (기준: 중앙 3 cm 이하)"]
