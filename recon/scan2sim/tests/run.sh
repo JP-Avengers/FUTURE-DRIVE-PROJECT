@@ -2,7 +2,8 @@
 # scan2sim 자동 시험 — 커밋 전 · 매일 통합 때 돌린다.
 #
 #   cd recon
-#   bash scan2sim/tests/run.sh            # 전체 (약 5~8분): 가상의 방 GLB · 가상 Stray 촬영본, 같은 입력 두 번, 복원 정확도, Stray 경계 사례
+#   bash scan2sim/tests/run.sh            # 전체 (약 5~8분): 가상의 방 GLB · 가상 Stray 촬영본, 같은 입력 두 번, 복원 정확도, Stray 경계 사례,
+#                                         #   되돌아온 자리 어긋남
 #   bash scan2sim/tests/run.sh --quick    # GLB + Stray 경계 사례 (약 1분)
 #
 # 시험 자료는 samples/ 의 스크립트로 저장소 밖 임시 폴더에 만든다(SCAN2SIM_TEST_DIR 로 바꿀 수 있음, 있으면 다시 만들지 않음).
@@ -51,6 +52,10 @@ r = q.measure(sys.argv[1], write=False)
 print('  ', r['summary'])
 sys.exit(0 if r['verdict'] == 'pass' else 1)
 " "$D/repeat_stray/run0"
+
+    step "Stray: 되돌아온 자리 어긋남 — 두 바퀴 가상 촬영본에 알려진 틀어짐을 넣고 되찾는지 · 결과 폴더 꼴 · 다시 지나간 곳 없음 (서버 없이)"
+    # 50 초 · 10 장/초 가상 촬영본은 처음 한 번만 만듦 ($D/revisit, 약 40초) — 시험은 약 10초
+    run revisit $PY -m scan2sim.tests.revisit --fixtures "$D/revisit" --room "$D/room" --work "$D/revisit_work" --json "$D/revisit.json"
 fi
 
 echo

@@ -86,7 +86,7 @@ FLOOR_MIN_PX, FLOOR_MIN_SHARE, FLOOR_BELOW_CAM_M = 5000, 0.3, 0.6    # 바닥 ±
                                                                      # — 이보다 적거나 낮지 않으면 바닥을 못 찾은 것 → dist 규칙
 
 
-STALE = ("stray_meta.json", "trajectory_camera_optical.txt", "pose_fix.json", "floor_fix.json", "stray_quality.json")   # convert 가 시작할 때 지우는 예전 결과
+STALE = ("stray_meta.json", "trajectory_camera_optical.txt", "pose_fix.json", "floor_fix.json", "stray_quality.json", "stray_revisit.json")   # convert 가 시작할 때 지우는 예전 결과
 
 
 class CaptureError(Exception):
