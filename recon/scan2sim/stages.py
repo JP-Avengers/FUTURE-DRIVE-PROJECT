@@ -561,6 +561,8 @@ def s_bundle(ctx):
     root = ctx["name"][:1].upper() + ctx["name"][1:]
     vis = [p for p in ctx["prims"] if p not in ("Collision", "Boundary")]
     shadow = "".join(f'        over "{p}"\n        {{\n            bool primvars:doNotCastShadows = 1\n        }}\n\n' for p in vis) if ctx["profile"].get("shadow_fix", ctx["profile"].get("has_ceiling")) else ""
+    # 아래 맵 경로 줄 @../../../data/usd/<이름>/usd/<파일>@ 의 꼴을 바꾸지 말 것: D 의 sim/add_site.py 가 이 줄을 정규식으로 하나만 찾아 서버 위치로 바꿔 씀 (C12, 6e88feb).
+    # 줄이 0개 · 2개 이상이면 묶음의 씬 루트를 버리고 새로 써서 그림자 설정이 빠짐
     usda = f'''#usda 1.0
 (
     customLayerData = {{
