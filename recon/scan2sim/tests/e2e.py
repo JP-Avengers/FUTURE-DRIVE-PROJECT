@@ -9,7 +9,7 @@
   정답 자리는 결함의 center_input(glTF 좌표, Y 위)을 이 작업의 T_input_to_scene 으로 옮겨 씬 좌표로 견준다.
   Stray 입력(zip)이면 그 앞에 stray.py 와 같은 Y_UP_TO_Z_UP 을 먼저 곱한다 (입력 좌표 = input_map 세계, docs/CONTRACT.md 1장).
   정답 하나에 잡힌 결함 하나만 짝지음(같은 결함이 정답 둘을 맞추지 못함). 정답이 있는데 견줄 것이 하나도 없으면 실패.
-검사 항목: 접속 코드 없이 401 · 조각 순서가 틀리면 409 · 상태가 done · 상태 응답 필드 · 결함 목록 필드(보정 전 · 뒤)
+검사 항목: 접속 코드 없이 401 · 조각 순서가 틀리면 409 · offset 이 숫자가 아니면 400 · 상태가 done · 상태 응답 필드 · 결함 목록 필드(보정 전 · 뒤)
            · 엔진 단계에 실패 없음 · 결과 파일 4개(preview.glb · map.png · report.md · bundle.zip)
 --allow-fail: 일부러 나쁘게 찍은 입력처럼 엔진이 실패하는 것이 맞을 때. 단계 실패를 허용하고, 실패한 단계 뒤의 결과 파일은 404 가 맞는지 본다.
 종료 코드: 0 = 모두 통과 · 1 = 하나라도 실패 · 2 = 서버가 안 뜸 · 연결이 끊김 · 시간 초과
@@ -150,6 +150,8 @@ def upload(api, path, C):
     jid = r["id"]
     st, r = api.call("PUT", f"/api/jobs/{jid}/chunk?offset=5", b"x", ctype="application/octet-stream")
     C.add("조각 순서가 틀리면 409", st == 409 and isinstance(r, dict) and r.get("received") == 0, f"HTTP {st}")
+    st, r = api.call("PUT", f"/api/jobs/{jid}/chunk?offset=abc", b"x", ctype="application/octet-stream")
+    C.add("offset 이 숫자가 아니면 400", st == 400 and isinstance(r, dict) and r.get("received") == 0, f"HTTP {st}")
     t = time.time()
     with open(path, "rb") as f:
         off = 0

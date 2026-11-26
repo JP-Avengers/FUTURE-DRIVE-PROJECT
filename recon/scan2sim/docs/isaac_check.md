@@ -42,7 +42,7 @@ FD_USD_PY=<pxr 파이썬> FD_RECON_PY=<recon 파이썬> FD_GATE_DIR=<맵 판정 
 ### 걸린 것
 
 1. **`add_site.py`가 출발 x가 음수면 맵 판정을 못 돌림 — 고침.** `--start -0.226,…`처럼 값을 따로 넘겨서 `map_gate.py`의 argparse가 값을 옵션으로 읽고 멈춤(끝 줄은 `SITE_WARN`). `--start=<값>` 한 덩어리로 넘기게 한 줄 고침. 고친 뒤 위 표의 결과가 나옴.
-2. **씬 루트에 그림자 설정이 빠짐 — 열림(C · D가 정할 것).** 실제 촬영본 맵은 천장이 있는데, `add_site.py`가 새로 쓴 씬 루트(`sim/scenes/<장소>/<이름>.usda`)에는 `doNotCastShadows`가 없음. 묶음의 `scene_root.usda`에는 들어 있지만 `add_site.py`는 `scene_suggestion/<장소>_<판>.usda`만 찾으므로 쓰지 않음. 이 씬 루트를 Isaac Sim에서 열어 보지는 않았음 — 묶음을 만드는 쪽 설명대로면 화면이 검게 나옴. 정할 것: 묶음이 씬 루트를 `scene_suggestion/`에 넣을지, `add_site.py`가 묶음의 `scene_root.usda`를 받을지.
+2. **씬 루트에 그림자 설정이 빠짐 — 열림(C · D가 정할 것).** 실제 촬영본 맵은 천장이 있는데, `add_site.py`가 새로 쓴 씬 루트(`sim/scenes/<장소>/<이름>.usda`)에는 `doNotCastShadows`가 없음. 묶음의 `scene_root.usda`에는 들어 있지만 `add_site.py`는 `scene_suggestion/<장소>_<판>.usda`만 찾으므로 쓰지 않음. 이 씬 루트를 Isaac Sim에서 열어 보지는 않았음 — 묶음을 만드는 쪽 설명대로면 화면이 검게 나옴. 정할 것: 묶음이 씬 루트를 `scene_suggestion/`에 넣을지, `add_site.py`가 묶음의 `scene_root.usda`를 받을지. **정함(11.26, C12): `add_site.py`가 묶음의 것을 받음.** 받는 파일은 팀 시뮬 배치용 `scene_root_sim.usda`임(`scene_root.usda`는 로봇 · 센서가 없어 씬 루트로 못 씀). 패키지 안에 그 파일이 있으면 맵 경로 한 줄만 `data/usd/<장소>_<판>/`으로 바꿔 `sim/scenes/<장소>/<이름>.usda`로 씀 — 출발 자세와 그림자 설정이 그대로 옴. 없으면 예전처럼 새로 씀. 따로 주려면 `--scene-root <파일>`. 실제 촬영본 묶음으로 들여 `doNotCastShadows` 2곳이 들어간 것까지 확인했고, **Isaac Sim에서 열어 보지는 않았음.**
 3. **이름.** 묶음 안의 이름은 모두 `input`(`input_mesh.usdc` · `input_scene.usda`). 들이는 데는 문제없고, 놓인 폴더 이름은 `<장소>_<판>`이 됨.
 4. **출발 자세가 서로 다름.** 실제 촬영본에서 위치는 같고((−0.226, −2.147)) 방향만 다름 — 묶음 126.1°, `add_site.py` 90.0°. 경로 없이 들이면 `add_site.py`는 묶음의 `start_pose.json` · `route.csv`를 쓰지 않고 지도에서 다시 잡음.
 

@@ -1,6 +1,7 @@
 """Polycam 등 사진 텍스처 메쉬 (GLB · glTF) → Isaac Sim 용 USD. 키프레임 · 자세 없이 메쉬 하나만 받았을 때.
 
     python recon/pipeline/glb_to_usd.py --config recon/configs/<장소>.yaml [--out $OUT]
+    python recon/pipeline/glb_to_usd.py --config <보정 설정> --patch-only   # 이미 만든 빌드에 바닥 구멍 판(FloorPatch)만 더함
     (run.py 가 input.format: glb 이면 build 단계에서 이걸 부름)
 
 1) 불러오기: 노드 변환 적용, Y-up → Z-up (glTF 규약), 단위 m (input.scale 로 바꿀 수 있음)
@@ -8,7 +9,8 @@
 3) 보이는 부분: GLB 의 부분(primitive)마다 Visual<k> prim — UV · 사진 텍스처 그대로 (정점 색만 있으면 정점 색)
 4) 충돌: 합친 메쉬를 정리 · 줄이고, 스캔 바닥 대신 평평한 바닥 한 장 + 경계벽 (겹친 바닥 = PhysX 멈춤)
 5) 주행 경로가 없으므로 바닥 빈 곳의 뼈대(skeleton)를 따라 가상 경로 → drive_path.json (visibility · 미리보기용)
-출력: <out>/usd/<name>_scene.usda · _mesh.usdc · textures/, visual.ply (점검용), transform.json, report.json, drive_path.json
+출력: <out>/usd/<name>_scene.usda · _mesh.usdc · textures/, visual.ply (점검용), transform.json, report.json, drive_path.json,
+      floor_samples.npz (보이는 바닥 정점 xy · 색 — 받침 바닥 색과 --patch-only 의 판 색)
 """
 import argparse
 import json
@@ -422,6 +424,52 @@ def floor_patch_from_mask(path, ground, depth, pts, cols, k=64, wide=1024, blend
     return m, len(ix)
 
 
+def save_floor_samples(path, pts, cols):
+    """보이는 바닥 정점 xy · 색을 저장 (float32). 전체 빌드와 --patch-only 가 같은 값으로 판 색을 정하도록 둘 다 이 값을 씀. → (pts, cols)"""
+    pts, cols = np.asarray(pts, np.float32), np.asarray(cols, np.float32)
+    np.savez(path, pts=pts, cols=cols)
+    return pts.astype(np.float64), cols.astype(np.float64)
+
+
+def patch_only(cfg, here, out):
+    """이미 만든 빌드에 보이는 바닥 구멍 판(FloorPatch)만 더함 (scan2sim 보정 단계, 통합 기록 R16).
+    판은 보이는 부분이고 충돌 · 바닥 높이 · 경로는 그대로라, 전체를 다시 만든 결과와 판 prim 의 순서만 다름 (복도 왕복 촬영본: 전체 다시 190초).
+    쓰는 것: report.json · floor_samples.npz · ground.npz(있으면) · 메쉬 .usdc. 없으면 SystemExit(2) — 부른 쪽이 전체 빌드로 감."""
+    from pxr import Usd
+    from usd_utils import add_mesh
+    t0 = time.time()
+    rp, sp, fpc = os.path.join(out, "report.json"), os.path.join(out, "floor_samples.npz"), cfg.get("floor_patch") or {}
+    if not (os.path.exists(rp) and os.path.exists(sp) and fpc.get("mask_file")):
+        print("      판만 더할 수 없음 (report.json · floor_samples.npz · floor_patch.mask_file 중 없는 것이 있음) — 전체를 다시 만들 것")
+        raise SystemExit(2)
+    report = json.load(open(rp, encoding="utf-8"))
+    mesh_path, scene_path = report["usd"]["mesh"], report["usd"]["scene"]
+    gp = os.path.join(out, "ground.npz")
+    ground = Ground.load(gp) if os.path.exists(gp) else None
+    z = np.load(sp)
+    pts, cols = z["pts"].astype(np.float64), z["cols"].astype(np.float64)
+    patch, n = floor_patch_from_mask(os.path.join(here, fpc["mask_file"]), ground, fpc.get("depth_m", 0.005), pts, cols)
+    pp = os.path.join(out, "floor_patch.ply")
+    if os.path.exists(pp):
+        os.remove(pp)
+    st = Usd.Stage.Open(mesh_path)
+    path = st.GetDefaultPrim().GetPath().AppendChild("FloorPatch")
+    if st.GetPrimAtPath(path):
+        st.RemovePrim(path)
+    if n:
+        add_mesh(st, path, patch, double_sided=True)            # 전체 빌드에서도 보이는 부분은 모두 양면
+        o3d.io.write_triangle_mesh(pp, patch)
+    st.GetRootLayer().Save()
+    report["floor_patch"] = dict(cells=n, color_samples=len(pts), depth_m=fpc.get("depth_m", 0.005), patch_only=True)
+    problems, counts = verify_scene(scene_path, mesh_path)
+    report["usd"].update(mesh_mb=round(os.path.getsize(mesh_path) / 1e6, 2), problems=problems, prims=counts)
+    report["patch_seconds"] = round(time.time() - t0, 1)
+    json.dump(report, open(rp, "w", encoding="utf-8"), ensure_ascii=False, indent=1, default=str)
+    print(f"      보이는 바닥 구멍 판만 더함: 칸 {n:,} · {report['patch_seconds']}s | {'검증 통과' if not problems else '문제: ' + '; '.join(problems)}")
+    if problems:
+        raise SystemExit(1)
+
+
 def free_space(mesh, c):
     """바닥 빈 곳 격자: 바닥 범위 안에서, 로봇 높이(0.05 ~ robot_h_m) 물체로부터 clearance_m 떨어진 칸. → (Footprint, free bool)"""
     v = np.asarray(mesh.vertices)
@@ -488,9 +536,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", required=True)
     ap.add_argument("--out")
+    ap.add_argument("--patch-only", action="store_true", help="이미 만든 빌드에 floor_patch 판만 더함 (충돌 · 지도는 그대로)")
     args = ap.parse_args()
     cfg = config.load(args.config)
     out = os.path.expanduser(args.out or cfg["out"])
+    if args.patch_only:
+        return patch_only(cfg, os.path.dirname(os.path.abspath(args.config)), out)
     os.makedirs(out, exist_ok=True)
     t0 = time.time()
     inp = cfg["input"]
@@ -635,15 +686,16 @@ def main():
     fp, free = free_space(flat, fs_cfg)
     floor_fp = Footprint(np.vstack([np.asarray(whole.vertices)[:, :2], base_xy]), cc.get("floor_cell_m", 0.1), margin=cc.get("floor_margin_m", 0.3))
     colliders["Collision"] = col + floor_fp.plane(0.0, ground=ground) if cc.get("flat_floor", True) else col
+    # 보이는 바닥 정점 xy · 색: 받침 바닥 색 · 구멍 판 색. 저장해 두어 보정 단계가 판만 더할 때(--patch-only) 같은 값을 씀 (통합 기록 R16)
+    pts, cols = save_floor_samples(os.path.join(out, "floor_samples.npz"), *floor_samples(visuals, materials, cc.get("floor_band_m", 0.03), ground))
     if cc.get("floor_fill", True):                              # 보이는 바닥 받침: 스캔 바닥 아래 한 장 (스캔 가장자리 · 벽 밑 틈 · 바닥 구멍이 하얗게 비치지 않게)
         fill = floor_fp.plane(-cc.get("floor_fill_depth_m", 0.02), ground=ground)   # 스캔 바닥이 몇 mm 출렁여도 뚫고 나오지 않게 2 cm 아래
-        fill.paint_uniform_color(floor_color(visuals, materials, cc.get("floor_band_m", 0.03), ground))
+        fill.paint_uniform_color(np.median(cols, axis=0) if len(cols) else np.array([0.5, 0.5, 0.5]))   # = floor_color
         visuals["FloorFill"] = fill
     fpc, pp = cfg.get("floor_patch") or {}, os.path.join(out, "floor_patch.ply")
     if os.path.exists(pp):                                      # 전에 만든 판이 다음 진단에 섞이지 않게
         os.remove(pp)
     if fpc.get("mask_file"):                                    # 보이는 바닥 구멍을 둘레 바닥 색 판으로 (scan2sim 보정 단계가 칸을 고름, 통합 기록 R9). 충돌은 그대로
-        pts, cols = floor_samples({k: v for k, v in visuals.items() if k != "FloorFill"}, materials, cc.get("floor_band_m", 0.03), ground)
         patch, n = floor_patch_from_mask(os.path.join(here, fpc["mask_file"]), ground, fpc.get("depth_m", 0.005), pts, cols)
         if n:
             visuals["FloorPatch"] = patch
