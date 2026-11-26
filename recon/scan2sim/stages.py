@@ -137,6 +137,11 @@ def s_convert(ctx):
         rc = _call([py, os.path.join(PIPE, "run.py"), "--config", ctx["config"], "--from", "tsdf", "--no-preview"], log)
     else:
         rc = _call([py, os.path.join(PIPE, "glb_to_usd.py"), "--config", ctx["config"]], log)
+    return _built(ctx, out, rc)
+
+
+def _built(ctx, out, rc):
+    """빌드 결과(report.json)를 읽어 ctx 에 USD 경로 · prim 을 둠 — 변환 단계와 보정 단계(판만 더할 때)가 같이 씀."""
     rp = os.path.join(out, "report.json")
     if rc or not os.path.exists(rp):
         return Result(FAIL, f"빌드 실패 (종료 코드 {rc})", messages=["자세한 내용: log.txt"])
@@ -501,7 +506,18 @@ def s_correct(ctx):
         return Result(SKIP, "고칠 수 있는 자리가 없어 보정하지 않음", metrics=dict(floor_patch=patch), messages=how)
     open(cfg2, "w", encoding="utf-8", newline=chr(10)).write(chr(10).join(lines))
     ctx["config"], ctx["corrected"], ctx["resume"] = cfg2, True, False   # 보정은 반드시 다시 만듦 (--resume 이어도)
-    for nm, fn in (("convert", s_convert), ("nav2", s_nav2)):
+    steps = (("convert", s_convert), ("nav2", s_nav2))
+    if set(needs) == {"no_visible_floor"} and glb:
+        # 판만 더함: 판은 보이는 부분이라 충돌 · Nav2 지도 · 바닥 높이가 그대로 — 변환 · 지도를 처음부터 다시 하지 않음 (통합 기록 R16, 복도 왕복 촬영본의 보정 단계 209초 → 10초, 결과 USD 는 prim 순서만 다름).
+        # 판을 더할 수 없는 빌드(floor_samples.npz 가 없는 예전 빌드 등)면 종료 코드 2 → 전과 같이 처음부터
+        rc = _call([sys.executable, os.path.join(PIPE, "glb_to_usd.py"), "--config", cfg2, "--patch-only"], ctx.path("log.txt"))
+        if rc != 2:
+            r = _built(ctx, os.path.dirname(cfg2), rc)
+            if r.status == FAIL:
+                return Result(FAIL, f"보정 뒤 판 더하기 실패: {r.summary}", messages=r.messages)
+            steps = ()
+            how.append("판만 기존 USD 에 더함 — 변환 · Nav2 지도는 다시 하지 않음 (충돌이 그대로라 지도도 같음)")
+    for nm, fn in steps:
         r = fn(ctx)
         if r.status == FAIL:
             return Result(FAIL, f"보정 뒤 {nm} 단계 실패: {r.summary}", messages=r.messages)
@@ -511,7 +527,7 @@ def s_correct(ctx):
     S = [f"두 겹 바닥 {before.get('floor_double')} → {after.get('floor_double')} · 바닥 한 겹 {before.get('floor_single_pct')} → {after.get('floor_single_pct')}%"] if needs.get("double_floor") else []
     if patch:
         S.append(f"보이는 바닥 없음 {before['defects'].get('no_visible_floor', 0)} → {after['defects'].get('no_visible_floor', 0)}곳 (판 {patch['area_m2']} m²)")
-    out = Result(r.status, " · ".join(S), metrics=dict(fixed=[k for k in needs if k != "no_visible_floor" or (patch and patch["cells"])], before=before, after=after, floor_patch=patch),
+    out = Result(r.status, " · ".join(S), metrics=dict(fixed=[k for k in needs if k != "no_visible_floor" or (patch and patch["cells"])], before=before, after=after, floor_patch=patch, patch_only=not steps),
                  messages=how + r.messages)
     ctx["floor_patch"] = patch
     return out
