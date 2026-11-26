@@ -353,6 +353,7 @@ def main():
     ap.add_argument("--dirs", default="cw,ccw", help="--route 가 이미 있는 .csv 일 때 맵 판정에 쓸 두 방향 이름(열린 경로면 fwd,back)")
     ap.add_argument("--group", help="씬 루트를 둘 sim/scenes/ 아래 폴더(기본: 장소 이름) — parking_polycam_v1 을 sim/scenes/parking/ 에 둘 때처럼")
     ap.add_argument("--keepout", help="sim/nav2/make_map.py --keepout 에 넘길 yaml(가운데 섬을 채운 경로 계획 지도도 만듦)")
+    ap.add_argument("--scene-root", help="씬 루트로 쓸 scan2sim 묶음의 scene_root_sim.usda (안 주면 패키지 안의 것을 찾음). 맵 경로만 <이름> 으로 바꿔 씀")
     ap.add_argument("--dest", default=REPO, help="제자리(기본: 이 레포)")
     ap.add_argument("--work", help="작업 폴더(기본: <dest>/logs/add_site/<이름>)")
     ap.add_argument("--no-install", action="store_true", help="제자리에 놓지 않고 만들어 보고 대조만")
@@ -500,7 +501,23 @@ def main():
         scene_t = os.path.join(T, rel_scene)
         os.makedirs(os.path.dirname(scene_t))
         sug = os.path.join(pkg_t, "scene_suggestion", f"{stem}.usda")
-        if os.path.isfile(sug):
+        # scan2sim 묶음의 팀 시뮬 배치용 씬 루트 — 출발 자세와 (천장이 있는 맵이면) 그림자 설정이 들어 있음. 새로 쓰는 루트에는 그 설정이 없어 화면이 검게 나옴 (C12)
+        if a.scene_root and not os.path.isfile(a.scene_root):
+            raise Stop(f"--scene-root 파일이 없음: {a.scene_root}")
+        bsim, btxt = a.scene_root or os.path.join(pkg_t, "scene_root_sim.usda"), None
+        if os.path.isfile(bsim) and (a.scene_root or not os.path.isfile(sug)):
+            import re
+            btxt, n = re.subn(r"@\.\./\.\./\.\./data/usd/[^/@]+/usd/[^/@]+@", f"@../../../data/usd/{stem}/usd/{os.path.basename(scene_usdas[0])}@", open(bsim, encoding="utf-8").read())
+            if n != 1:
+                R.add("scene", "warn", f"묶음의 씬 루트({os.path.basename(bsim)})에서 맵 경로 줄을 {n}개 찾음(1개여야 함) — 쓰지 않고 새로 씀")
+                btxt = None
+        if btxt:
+            with open(scene_t, "w", encoding="utf-8", newline="\n") as f:
+                f.write(btxt)
+            shadow = btxt.count("doNotCastShadows = 1")
+            info["scene"] = dict(source="bundle scene_root_sim", shadow_prims=shadow)
+            R.add("scene", "ok", f"{rel_scene} — 묶음의 씬 루트를 맵 경로만 data/usd/{stem}/ 로 바꿔 씀 · 그림자 설정 prim {shadow}개")
+        elif os.path.isfile(sug):
             shutil.copy(sug, scene_t)
             info["scene"] = dict(source="package scene_suggestion")
             R.add("scene", "ok", f"{rel_scene} — 패키지의 씬 루트 제안 그대로")
