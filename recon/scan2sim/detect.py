@@ -98,7 +98,9 @@ def config_glb(path, name, build_dir, prof, up="y"):
          f"base: {os.path.join(TEMPLATES, 'polycam_glb.yaml').replace(os.sep, '/')}", f"name: {name}", f"out: {build_dir.replace(os.sep, '/')}",
          "input:", f"  root: {os.path.dirname(os.path.abspath(path)).replace(os.sep, '/')}", f"  mesh: {os.path.basename(path)}"] + ([f"  up: {up}"] if up != "y" else []) + [
          "orient:", "  origin: center",
-         "collision:", "  tris: 100000", "  floor_margin_m: 0.0"]
+         # 충돌 물체 삼각형 15만 (11.26, 통합 기록 R22 — B 측정: 10만 대비 물체 표면 ↔ 충돌 거리 95% 1.39 → 0.92 cm · 최대 24 → 14 cm, USD +1 MB, 시간 같음).
+         # 라이다는 보이는 형상을 보고 지도는 충돌로 만들므로 둘이 가까운 쪽이 낫다. 스캔 바닥은 줄이기 전에 빼므로 바닥이 이 예산을 먹지 않음
+         "collision:", "  tris: 150000", "  floor_margin_m: 0.0"]
     if prof["floor_flat"]:
         L += ["  floor_band_m: 0.05"]
     else:                                                       # 경사 · 굴곡 있는 바닥 (실외 등): 스캔으로 바닥 높이 지도
