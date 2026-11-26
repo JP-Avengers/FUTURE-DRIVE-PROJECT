@@ -568,8 +568,11 @@ def main():
                 v = json.load(open(vp, encoding="utf-8"))
                 bad = [i for i in v.get("items", []) if i.get("level") != "통과"]
                 info["gate"] = dict(verdict=v["verdict"], items=bad)
+                # 이 판정은 "이 맵에서 주행이 될지"를 말함 — 맵이 깨졌다는 뜻이 아님. 웹앱(scan2sim)의 판정은 맵 상태만 말하고 주행 공간은 따로 한 줄로 보임 (C13)
+                fails = [i for i in bad if i.get("level") == "실패 예상"]
+                room = " · 맵은 만들어졌고 로봇이 돌 자리가 좁은 장소임(책상이 촘촘한 방 등) — 다시 찍을 일은 아님" if fails and all(i.get("what") == "주행 공간" for i in fails) else ""
                 R.add("gate", {"통과": "ok", "주의": "warn"}.get(v["verdict"], "fail"),
-                      f"{v['verdict']}" + (" — " + " / ".join(f"{i.get('level')}: {i.get('what')} {i.get('value')}" for i in bad[:6]) if bad else ""))
+                      f"주행 판정: {v['verdict']}" + (" — " + " / ".join(f"{i.get('level')}: {i.get('what')} {i.get('value')}" for i in bad[:6]) if bad else "") + room)
 
         # ── place
         arts = [("dir", rel_usd), ("dir", rel_nav), ("file", rel_scene)]

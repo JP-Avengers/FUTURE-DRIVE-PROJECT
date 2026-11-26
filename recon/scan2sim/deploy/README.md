@@ -15,6 +15,21 @@
 | `check.py` | 켜진 서버에 파일을 올려 끝까지 돌려 보고 결과 4종을 받아 봄(화면과 같은 순서). 마지막 줄 `CHECK_OK` / `CHECK_FAIL` |
 | `common.sh` | 위 스크립트가 함께 쓰는 값. 직접 실행하지 않음 |
 
+## 다시 켜진 뒤 알아서 켜지게 (`autostart.sh`)
+
+ThinkPad가 꺼졌다 켜지면 서버와 터널도 꺼져 있음. 알아서 켜지게 하려면 한 번만:
+
+```bash
+S2S_TTL_HOURS=0 S2S_KEEP=-1 bash recon/scan2sim/deploy/autostart.sh on     # 이때 준 S2S_* 값이 같이 적힘
+bash recon/scan2sim/deploy/autostart.sh status                            # 넣어 둔 줄 보기
+bash recon/scan2sim/deploy/autostart.sh off                               # 빼기
+```
+
+- 사용자 crontab에 `@reboot` 한 줄을 넣음(sudo 없음, 다른 줄은 그대로 둠). 다시 켜지면 30초 뒤 `start.sh`를 부르고 `~/scan2sim_run/boot.log`에 적음.
+- 접속 코드는 그대로이고, **터널 주소는 바뀜** — 다시 켜진 뒤 `status.sh`로 새 주소를 봄.
+- 값을 바꾸려면 `on`을 새 값으로 다시 부름(줄이 바뀜). `S2S_CODE`는 줄에 적지 않음.
+- 확인한 것(11.26, server207): 넣기 · 빼기 · 다른 줄이 남는 것, 넣은 줄의 명령을 깨끗한 환경에서 돌려 서버가 뜨는 것. **실제로 컴퓨터를 껐다 켜서 본 것은 아님** — ThinkPad에서 한 번 해 볼 것(다시 켠 뒤 로그인하지 않고 1분쯤 기다려 `status.sh`).
+
 ## 순서
 
 ```bash
@@ -60,6 +75,7 @@ cd recon && PY=~/scan2sim_env/bin/python bash scan2sim/tests/run.sh
 | `S2S_MAX_WAIT` | 서버 기본 5 | 기다리는 작업이 이만큼이면 새 작업을 거절함(429) |
 | `S2S_TTL_HOURS` | 서버 기본 24 | 끝난 지 이만큼 지난 작업 폴더를 통째로 지움. 미리 끝내 둔 결과를 시연 날까지 두려면 늘리거나 `0`(지우지 않음) |
 | `S2S_KEEP` | 서버 기본 5 | 올린 파일 · 중간 파일까지 남겨 둘 최근 작업 수. 더 오래된 끝난 작업은 결과만 남김. `-1`이면 올린 파일을 지우지 않음(같은 촬영본을 다시 돌릴 일이 있으면) |
+| `S2S_CODE_TRIES` | 서버 기본 30 | 같은 주소에서 10분 안에 접속 코드를 이만큼 틀리면 그 주소를 5분 동안 막음(429). `0`이면 세지 않음. 같은 와이파이의 사람들은 밖에서 보면 한 주소라 함께 막힘 — ThinkPad 자체 화면(127.0.0.1)은 따로 셈 |
 | `S2S_QR` | `1` | `0`이면 `status.sh`가 QR을 그리지 않음 |
 
 ## ThinkPad에서 확인해서 알려 줄 것
