@@ -33,6 +33,7 @@ if [ -d "$S2S_SAMPLES" ]; then EXTRA+=(--samples "$S2S_SAMPLES"); fi
 if [ -n "${S2S_TIMEOUT_MIN:-}" ]; then EXTRA+=(--timeout-min "$S2S_TIMEOUT_MIN"); fi
 if [ -n "${S2S_MAX_WAIT:-}" ]; then EXTRA+=(--max-wait "$S2S_MAX_WAIT"); fi
 if [ -n "${S2S_TTL_HOURS:-}" ]; then EXTRA+=(--ttl-hours "$S2S_TTL_HOURS"); fi
+if [ -n "${S2S_KEEP:-}" ]; then EXTRA+=(--keep "$S2S_KEEP"); fi
 if [ "$(free_gb)" -lt "${S2S_MIN_FREE_GB%.*}" ]; then
     say "주의: 디스크 여유가 $(free_gb) GB 로 기준($S2S_MIN_FREE_GB GB)보다 적어 서버가 새 작업을 받지 않음 — 자리를 비우거나 S2S_MIN_FREE_GB 를 낮춰 다시 켤 것"
 fi

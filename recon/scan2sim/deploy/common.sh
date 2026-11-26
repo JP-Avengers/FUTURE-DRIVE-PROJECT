@@ -13,7 +13,7 @@ S2S_TUNNEL="${S2S_TUNNEL:-1}"                                 # 0 이면 터널 
 S2S_SAMPLES="${S2S_SAMPLES:-$HOME/scan2sim_samples}"          # 예시 파일(.zip · .glb) 폴더 — 있을 때만 서버에 넘김
 S2S_MIN_FREE_GB="${S2S_MIN_FREE_GB:-20}"                      # 디스크 여유가 이보다 적으면 새 작업을 거절(507)
 S2S_QR="${S2S_QR:-1}"                                         # 0 이면 status.sh 가 QR 을 그리지 않음
-# 줄 때만 서버에 넘기는 것(안 주면 서버 기본값): S2S_TIMEOUT_MIN(20) · S2S_MAX_WAIT(5) · S2S_TTL_HOURS(24)
+# 줄 때만 서버에 넘기는 것(안 주면 서버 기본값): S2S_TIMEOUT_MIN(20) · S2S_MAX_WAIT(5) · S2S_TTL_HOURS(24) · S2S_KEEP(5)
 
 PY="$S2S_ENV/bin/python"
 CLOUDFLARED="$S2S_BIN/cloudflared"

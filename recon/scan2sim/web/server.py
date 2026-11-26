@@ -318,7 +318,10 @@ def create():
 @app.put("/api/jobs/<jid>/chunk")
 def chunk(jid):
     j = job(jid)
-    off = int(request.args.get("offset", -1))
+    try:
+        off = int(request.args.get("offset", -1))
+    except ValueError:
+        return jsonify(error="offset 은 숫자여야 함", received=j["received"]), 400
     if j["status"] != "uploading" or off != j["received"]:
         return jsonify(error="조각 순서가 맞지 않음", received=j["received"]), 409
     n = 0
@@ -399,20 +402,20 @@ def worker():
                     rc = None
                     log.write(f"\n[서버] 처리 제한 시간 {CFG['timeout_min']:g}분을 넘어 엔진을 멈춤\n")
             if rc is None:
-                j["status"], j["timed_out"] = "failed", True
+                final, j["timed_out"] = "failed", True
                 j["error"] = f"처리가 {CFG['timeout_min']:g}분을 넘어 멈춤 — 촬영본이 너무 길거나 넓을 수 있음. 더 짧게 나눠 찍어 다시 올릴 것"
             else:
                 # report 단계는 앞 단계가 실패해도 report.md 를 쓰므로, 종료 코드와 단계 결과도 봄 (엔진은 실패 단계가 있으면 1 로 끝남)
                 bad = rc != 0 or any(d.get("status") == "fail" for d in stage_results(out).values())
-                j["status"] = "done" if os.path.exists(os.path.join(out, "report.md")) and not bad else "failed"
+                final = "done" if os.path.exists(os.path.join(out, "report.md")) and not bad else "failed"
             j["exit_code"] = rc
         except Exception as e:
-            j["status"], j["error"] = "failed", f"{type(e).__name__}: {e}"
+            final, j["error"] = "failed", f"{type(e).__name__}: {e}"
         try:
             make_bundle(out)                                    # 내려받기를 처음 누를 때가 아니라 지금 만들어 둠 (큰 맵이면 첫 요청이 오래 걸림)
         except Exception as e:
             app.logger.warning("bundle.zip 을 미리 만들지 못함 (%s): %s: %s", jid, type(e).__name__, e)
-        j["finished"] = time.time()
+        j["status"], j["finished"] = final, time.time()   # 상태와 끝난 때를 같이 씀 — bundle.zip 을 만드는 동안은 running 으로 보임 (R21)
         save(j)
         try:
             tidy(CFG["keep"])
@@ -465,7 +468,10 @@ def status(jid):
     if j["status"] in ("done", "failed"):
         j["defects_before"], j["defects_after"] = _json(os.path.join(out, "defects_before.json")), _json(os.path.join(out, "defects_after.json"))
         rep = _json(os.path.join(out, "report.json")) or {}
-        j["verdict"] = rep.get("verdict") or next((s["status"] for s in st if s["name"] == "report"), None)
+        v = rep.get("verdict") or next((s["status"] for s in st if s["name"] == "report"), None)
+        if j["status"] == "failed" and v in (None, "pending", "running", "skip"):
+            v = "fail"                                          # 입력 검사 · 제한 시간 · 재시작으로 끝난 작업은 report 가 없음 — 이유는 error 에 있음 (R21)
+        j["verdict"] = v
         j["has_bundle"] = os.path.isdir(os.path.join(out, "bundle", "usd"))
         d = res.get("diagnose", {}).get("metrics") or {}
         c = res.get("correct", {}).get("metrics") or {}
@@ -550,7 +556,7 @@ def main():
     ap.add_argument("--host", default="127.0.0.1", help="다른 컴퓨터에서 직접 들어오게 하려면 0.0.0.0 (터널을 쓰면 127.0.0.1 그대로)")
     ap.add_argument("--jobs", default=CFG["jobs"], help="작업 폴더 (올린 파일과 결과). 저장소 밖에 둘 것")
     ap.add_argument("--code", help="접속 코드 — 주면 화면에서 이 코드를 넣어야 올릴 수 있음")
-    ap.add_argument("--keep", type=int, default=CFG["keep"], help="올린 파일 · 중간 파일까지 남겨 둘 최근 작업 수. 더 오래된 끝난 작업은 결과만 남김 (-1 이면 지우지 않음)")
+    ap.add_argument("--keep", type=int, default=CFG["keep"], help="올린 파일 · 중간 파일까지 남겨 둘 최근 작업 수. 더 오래된 끝난 작업은 결과만 남김 (-1 이면 올린 파일 · 중간 파일을 지우지 않음. zip 을 풀어 둔 사본은 늘 지우고, 폴더를 통째로 지우는 것은 --ttl-hours 가 따로 함)")
     ap.add_argument("--samples", help="예시 파일(.zip · .glb) 폴더 — 주면 /api/samples 로 알려 주고, 올리기 없이 그 파일로 작업을 만들 수 있음. 이름표는 폴더의 samples.json {파일 이름: 이름표}")
     ap.add_argument("--timeout-min", type=float, default=CFG["timeout_min"], help="엔진 처리 제한 시간(분). 넘으면 죽이고 failed (0 이면 끝날 때까지 기다림)")
     ap.add_argument("--max-wait", type=int, default=CFG["max_wait"], help="기다리는 작업이 이 수면 새 작업을 429 로 거절 (0 이면 제한 없음)")
