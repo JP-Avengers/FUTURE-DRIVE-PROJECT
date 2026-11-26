@@ -7,8 +7,9 @@
 **고침 11/25 (`4823a6e`):** C 의 `be8310e` (R9 ~ R12 · `--resume`) · `105591c` (걸어간 길 진단) · `6ec3237` (`SystemExit`), D 의 `533bffe` (이어 올리기 · 작업 되살리기 · 작업 폴더 정리) · `6afb822` 를 반영했다 (C 의 요청 C1 · C2, `C_TRACK.md` 6장). `core.py` · `checks.py` · `web/server.py` · `web/static/index.html` 의 줄 번호는 모두 `4823a6e` 기준이다. `stages.py` 는 이번에 고친 곳만 `4823a6e` 기준이고, 다른 곳은 앞뒤로 어긋날 수 있다 — 함수 이름으로 찾을 것.
 **고침 11/25 저녁 (`35063bc`, main `5db0573` 을 합친 것):** D 의 `9b2c95f` (서버 보호 · 예시 파일 · `/api/health`) · `1e70ddb` (`sim/add_site.py`) · `bef9cda` (`bundle.zip` 맨 위를 폴더 하나로 · 배포 스크립트의 새 선택 사항)를 반영했다 (2장 · 4장 · 7장 · 8장). **`web/server.py` 와 `deploy/*.sh` 의 줄 번호는 이제 `35063bc` 기준이다.** `core.py` · `checks.py` · `stages.py` · `web/static/index.html` 은 `4823a6e` 뒤로 바뀌지 않아 줄 번호가 그대로다. B 의 `5db0573` (6-4 자동 고르기 · 6-5)은 그 커밋에서 고쳤다.
 **고침 11/26 (`647e3c7`, main `13d1c4d` 를 합친 것):** C 의 `13d1c4d` (R14 · R15 · R19 · R20 · 제자리 회전 가능 넓이)를 반영했다 (3-1 · 3-5 · 5-4 · 6-4 · 6-5 · 8-3 의 11번). 고친 곳의 `stages.py` · `checks.py` 줄 번호만 `647e3c7` 기준이다 — `13d1c4d` 가 `stages.py` 에 줄을 더해 다른 곳의 `stages.py:줄` 은 앞을 가리킬 수 있으니 함수 이름으로 찾을 것. D 의 `d03388f` (화면 Nav2 지도 숨기기 버튼)는 약속에 닿지 않는다.
+**고침 11/26 낮 (`6bdab12`, main `9706eee` 를 합친 것):** C 의 `ecaae53` (충돌 물체 삼각형 15만) · `29a05ba` (R16 판만 더하기) · `9706eee` (C12 · C13 닫음), D 의 `6ad7114` (R17 · R21 — 끝난 작업 표시 · `offset` 400 · `--keep` 도움말 · `S2S_KEEP`) · `6e88feb` (`sim/add_site.py` 가 묶음의 `scene_root_sim.usda` 를 받음)를 반영했다 (2-1 · 2-4 · 4장 · 5-4 · 8장). 고친 곳의 `web/server.py` · `stages.py` 줄 번호만 `6bdab12` 기준이다.
 
-작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영 · B 의 Stray 깊이 규칙 · 자세 보정) · 고침 2026-11-25 (C · D 의 11/25 변경 반영) · 고침 2026-11-25 저녁 (D 의 서버 보호 · `bundle.zip` 구조) · 고침 2026-11-26 (C 의 `13d1c4d`)
+작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영 · B 의 Stray 깊이 규칙 · 자세 보정) · 고침 2026-11-25 (C · D 의 11/25 변경 반영) · 고침 2026-11-25 저녁 (D 의 서버 보호 · `bundle.zip` 구조) · 고침 2026-11-26 (C 의 `13d1c4d`) · 고침 2026-11-26 낮 (C · D 의 11/26 오전 변경)
 
 - 이 문서는 **지금 코드가 하는 일**을 적는다. 계획(`docs/implementation.md` 5장)과 다른 곳과 버그로 보이는 것은 8장에 모았다.
 - 근거 표시: 코드 위치는 `파일:줄`. 경로는 `recon/scan2sim/` 기준이고, `pipeline/` · `tools/` · `configs/` 는 `recon/` 아래다. 코드를 읽지 않고 짐작한 것은 **[추정]** 이라고 적었다.
@@ -152,7 +153,7 @@
   - `done` · `failed`: `finished` (없으면 `job.json` 고친 시각)부터 `--ttl-hours` 시간(기본 24, `:57`, `:558`)이 지나면 작업 폴더를 통째로 지운다.
   - `uploading`: 올린 파일을 마지막으로 고친 시각 (파일이 없으면 `created`)부터 같은 시간이 지나면 지운다.
   - `queued` · `running` 작업, `job.json` 이 없는 폴더, 이름이 작업 번호 꼴이 아닌 폴더는 건드리지 않는다. 지운 작업은 메모리에서도 빠져 상태 · 결과 파일 요청이 모두 404 가 된다. 화면의 결과 주소(`#<작업 번호>`)도 더 열리지 않는다.
-  - `--ttl-hours` 가 0 이하면 하지 않는다 (`:137-138`). **`--keep -1` 은 청소를 막지 않는다** — 모두 남기려면 `--ttl-hours 0` 도 준다 (`--keep` 도움말 `:553` 은 "-1 이면 지우지 않음", 8-3 의 14번).
+  - `--ttl-hours` 가 0 이하면 하지 않는다 (`:137-138`). **`--keep -1` 은 청소를 막지 않는다** — 모두 남기려면 `--ttl-hours 0` 도 준다. 11/26 부터 `--keep` 도움말(`:559`)도 그렇게 적는다: "-1 이면 올린 파일 · 중간 파일을 지우지 않음. zip 을 풀어 둔 사본은 늘 지우고, 폴더를 통째로 지우는 것은 --ttl-hours 가 따로 함" (D `6ad7114`, 8-3 의 14번). 배포 스크립트는 `S2S_KEEP` 을 `--keep` 으로 넘긴다 (`deploy/start.sh`).
   - 미리 만들어 둔 작업 폴더를 이 서버로 열 때 조심할 것. 시연용 결과(`docs/demo_day.md` 는 당일 아침에 만들고, 전날 만들려면 `S2S_TTL_HOURS=72` 로 켜라고 적음)나 11/25 B 가 A 에게 준 작업 묶음(끝난 시각 11/25 16시쯤)을 기본값으로 열면, 24시간이 지난 뒤에는 서버가 켜질 때 지운다.
 - 엔진을 직접 돌릴 때(CLI)는 아무것도 지우지 않는다.
 
@@ -176,7 +177,7 @@
 | `finished` | 실수 | 처리 끝 | 서버가 `bundle.zip` 을 미리 만든 **뒤에** 씀 (`:411-415`, 4-3). 입력 검사에 걸릴 때 · 두 번째로 끊겨 `failed` 가 될 때도 씀 (4-3) |
 | `timed_out` | 참 | 처리 제한 시간에 걸렸을 때만 | `true` (D `9b2c95f`, `:402`) |
 | `restarts` | 정수 | 서버를 다시 켜서 줄에 다시 넣었을 때 | 다시 넣은 횟수. 지금은 1 까지 (D `533bffe`, `web/server.py:97-101`) |
-| `error` | 문자열 | 서버 쪽 실패일 때만 | 서버 쪽 예외 (`"TypeError: …"`) · 입력 검사 문장 (4-2) · 처리 제한 시간 문장 `"처리가 20분을 넘어 멈춤 — 촬영본이 너무 길거나 넓을 수 있음. 더 짧게 나눠 찍어 다시 올릴 것"` (`:403`, 분은 `--timeout-min`) · `"서버가 다시 켜져서 끊김 (두 번째)"` · `"서버가 다시 켜져서 끊김"` (4-3). 엔진 단계가 실패한 `failed` 에는 없음. **지금 화면은 이 필드를 보여 주지 않는다** (8-3 의 2번) |
+| `error` | 문자열 | 서버 쪽 실패일 때만 | 서버 쪽 예외 (`"TypeError: …"`) · 입력 검사 문장 (4-2) · 처리 제한 시간 문장 `"처리가 20분을 넘어 멈춤 — 촬영본이 너무 길거나 넓을 수 있음. 더 짧게 나눠 찍어 다시 올릴 것"` (`:403`, 분은 `--timeout-min`) · `"서버가 다시 켜져서 끊김 (두 번째)"` · `"서버가 다시 켜져서 끊김"` (4-3). 엔진 단계가 실패한 `failed` 에는 없음. **지금 화면은 이 필드를 보여 주지 않는다** — 11/26 부터 이런 작업의 `verdict` 는 `"fail"` 이라 판정 칸에 "pending" 은 안 나오지만, 이유는 여전히 안 보인다 (8-3 의 2번, A) |
 
 실제 `job.json` (`room`):
 
@@ -305,7 +306,8 @@ free_thresh: 0.25
 - **`bundle.zip` 은 11/25 (D `bef9cda`) 부터 맨 위가 `bundle/` 폴더 하나다.** `report.md` · `defects_*.json` 도 그 안에 든다 (4-2). `bundle/` 폴더 자체(엔진이 쓰는 `out/bundle/`)는 그대로다.
   - D 의 `sim/add_site.py` 는 zip 을 풀어 맨 위가 폴더 하나면 그 안을 맵 패키지로 본다 (`sim/add_site.py:400-402`). 그래서 내려받은 zip 을 풀지 않고 그대로 준다: `python3 sim/add_site.py <bundle.zip> --site <장소> --ver <판>`. 예전 구조(맨 위에 `bundle/` 과 `report.md` 가 나란히)는 `usd/` 를 못 찾고 멈춘다 [코드로만 봄].
   - [D 측정, `docs/isaac_check.md` 2장] 새 구조 묶음 두 건을 들임: 가상의 방(GLB) `SITE_OK`. 실제 촬영본(Stray)은 들여지지만 맵 판정이 "실패 예상 — 주행 공간 1.4 m²" 라 `SITE_FAIL`. 이 실행에서 출발 x 가 음수면 맵 판정이 멈추던 `add_site.py` 의 버그를 고침 (D `1e70ddb`, `sim/add_site.py:543`).
-  - 아직 안 맞는 것 (8-2): `add_site.py` 는 묶음의 `scene_root.usda` 를 쓰지 않고 `scene_suggestion/<장소>_<판>.usda` 만 찾는다 (`sim/add_site.py:502`). 없으면 씬 루트를 새로 쓰는데 거기에는 그림자 설정이 없다. 이름은 모두 `input`, `start_pose.json` · `route.csv` 도 쓰지 않는다.
+  - 씬 루트 (C12, D `6e88feb`): `add_site.py` 는 패키지에 `scene_suggestion/<장소>_<판>.usda` 가 없으면 **묶음의 `scene_root_sim.usda`** (또는 `--scene-root` 로 준 파일)를 받아 맵 경로 줄만 `@../../../data/usd/<장소>_<판>/usd/<파일>@` 로 바꿔 쓴다 — 그림자 설정이 그대로 간다 (`sim/add_site.py:503-518`). 맵 경로 줄은 정규식 `@\.\./\.\./\.\./data/usd/[^/@]+/usd/[^/@]+@` 로 **딱 하나** 찾아야 하고, 0개나 2개 이상이면 묶음의 것을 버리고 새로 쓴다(그림자 설정 빠짐). 그래서 묶음 단계의 그 줄 꼴은 약속이다 (`stages.py` `s_bundle` 의 주석, C `9706eee`). 묶음은 지금 꼴 그대로다.
+  - 아직 안 맞는 것 (8-2): 이름은 모두 `input`, `start_pose.json` · `route.csv` 도 쓰지 않는다.
 
 ---
 
@@ -491,7 +493,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 - **오류 응답:** 400 · 401 · 409 · 429 · 507 은 JSON `{"error": "문장", …}`. 화면은 `error` 문장을 그대로 `"실패: <문장>"` 으로 보인다 (`index.html:154`, `:205`).
   - **404 는 JSON 이 아니라 Flask 기본 HTML** 이다 (`abort(404)`). 클라이언트는 상태 코드만 보고 판단한다.
   - 작업 번호가 `^[0-9a-f]{12}$` 가 아니거나(`web/server.py:64-65`), 그 작업이 메모리에도 `job.json` 에도 없으면 404 (`:75-76`). 청소(2-1)로 지운 작업도 404.
-  - **500 도 HTML** 이다. 알려진 경우: 조각의 `offset` 이 숫자가 아닐 때 (8-3 의 5번).
+  - **500 도 HTML** 이다. 알려진 경우는 없다 — 조각의 `offset` 이 숫자가 아닐 때의 500 은 11/26 에 400 으로 고침 (D `6ad7114`, 8-3 의 5번).
 - **진행 상태는 화면이 `GET /api/jobs/<id>` 를 1.5초마다 불러서 본다** (`index.html:216`). SSE · WebSocket 없음.
 - 응답 JSON 의 키 순서는 알파벳 순이다 (Flask 기본). 순서에 기대지 않는다.
 
@@ -505,7 +507,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `GET /api/samples` | — | **JSON 배열** `[{"name": 파일 이름, "label": 이름표, "size": 바이트}, …]` (`:264-266`, `samples` `:224-238`). 아래 "예시 파일" | 401 |
 | `POST /api/samples/<name>/jobs` | 본문 없음. `<name>` = 목록의 `name` | `{"id": "<12자리>"}` (`:269-291`). 올리기 없이 입력 검사 → 줄에 넣음. 상태는 바로 `queued` | 404 (목록에 없는 이름, HTML) · 429 · 507 · 400 `{"error": <입력 검사 문장>, "id": …}` (작업은 `failed` 로 남음) · 401 |
 | `POST /api/jobs` | JSON `{"name": 파일 이름, "size": 바이트}` (`Content-Type` 은 안 봄) | `{"id": "<12자리>"}` (`:294-315`) | 400 `{"error": "name · size 를 읽을 수 없음"}` (`size` 가 정수로 안 바뀜) · 400 `{"error": "받는 파일은 .zip · .glb 임"}` (확장자, 대소문자 무시) · 400 `{"error": "파일 크기가 0 이거나 4 GB 를 넘음"}` · **429 · 507** (아래) · 401 |
-| `PUT /api/jobs/<id>/chunk?offset=N` | 본문 = 파일 조각의 날것 바이트. `N` = 지금까지 받은 바이트 수. 서버는 붙이기 전에 파일을 `received` 바이트로 자른다 (`:326`) | `{"received": 누적 바이트}` (`:318-336`) | 409 `{"error": "조각 순서가 맞지 않음", "received": n}` (상태가 `uploading` 이 아니거나 `N ≠ received`) · 400 `{"error": "알린 크기보다 많이 옴"}` · 401 · 404 · 500 (`N` 이 숫자가 아님, 8-3 의 5번) |
+| `PUT /api/jobs/<id>/chunk?offset=N` | 본문 = 파일 조각의 날것 바이트. `N` = 지금까지 받은 바이트 수. 서버는 붙이기 전에 파일을 `received` 바이트로 자른다 (`:326`) | `{"received": 누적 바이트}` (`:318-336`) | 409 `{"error": "조각 순서가 맞지 않음", "received": n}` (상태가 `uploading` 이 아니거나 `N ≠ received`) · 400 `{"error": "알린 크기보다 많이 옴"}` · 400 `{"error": "offset 은 숫자여야 함", "received": n}` (`N` 이 숫자가 아님, `:321-324`, D `6ad7114` — 전에는 500) · 401 · 404 |
 | `POST /api/jobs/<id>/start` | 본문 없음 | `{"status": "queued"}` (`:339-347`) | 409 `{"error": "파일이 다 오지 않음", "received": n}` (상태가 `uploading` 이 아니거나 `received ≠ size` — 이미 넣은 작업을 다시 넣어도 이 문장) · **400 `{"error": <입력 검사 문장>}`** (작업은 `failed` 로 남음, 아래) · 401 · 404 |
 | `GET /api/jobs/<id>` | — | 작업 상태 (4-3) (`:450-473`) | 401 · 404 |
 | `GET /api/jobs/<id>/preview.glb` | — | `model/gltf-binary`. 화면 좌표 (1-1). 엔진이 써 둔 `out/preview.glb` (`:476-493`) | 404 (파일이 없고 USD 도 없음, 또는 서버가 만들다 실패) · 401 |
@@ -531,11 +533,11 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 - **입력 검사** (`check_input`, `:190-208` · `enqueue`, `:211-221`): 줄에 넣기 전에 (`start` · 예시 파일 작업). 파일을 풀지 않고 앞머리 · zip 목록만 본다.
   - `.glb`: 앞 4바이트가 `glTF` 가 아니면 `"GLB 파일이 아님 (파일 앞머리가 glTF 가 아님) — 스캔 앱에서 GLB 로 다시 내보내 올릴 것"`.
   - `.zip`: 못 열면 `"zip 파일을 열 수 없음 — zip 이 아니거나 올리는 중에 깨짐. 다시 올릴 것"`. 항목이 10만 개를 넘으면 `"zip 안의 파일이 N개로 너무 많음 (최대 100,000개)"`. 풀린 크기 합이 6 GiB 를 넘으면 `"zip 을 풀면 X GB 로 너무 큼 (최대 6 GB)"`. 두 값은 `stray.ZIP_MAX_FILES` · `ZIP_MAX_BYTES` 와 같다 (`:53`) — 엔진이 받는 것을 서버가 막지 않게.
-  - 걸리면 응답 400 이고, 작업은 `failed` · `error` = 그 문장 · `finished` 로 `job.json` 에 남는다. 엔진을 돌리지 않아 `started` · `exit_code` · 단계 파일이 없고, 상태 응답의 `verdict` 는 `"pending"` 이다 (8-3 의 2번).
+  - 걸리면 응답 400 이고, 작업은 `failed` · `error` = 그 문장 · `finished` 로 `job.json` 에 남는다. 엔진을 돌리지 않아 `started` · `exit_code` · 단계 파일이 없고, 상태 응답의 `verdict` 는 `"fail"` 이다 (11/26 D `6ad7114` 부터 — 전에는 `"pending"`, 8-3 의 2번).
   - zip 안의 경로가 폴더 밖을 가리키는지 · Stray 촬영본으로서 맞는지는 엔진(`stray.py`)이 본다. 맵 폴더를 묶은 zip 도 이 검사는 통과하고 엔진 입력 단계에서 실패한다 (8-1 의 10번).
 - **처리 제한 시간** (`worker`, `:390-403`): 엔진 프로세스를 띄운 때부터 잰다 (줄에서 기다린 시간은 빠짐). `--timeout-min` 분을 넘으면 엔진과 엔진이 띄운 하위 프로세스를 함께 죽인다 (`kill_tree`, `:350-377` — Linux 는 `/proc` 로 자식을 찾아 SIGKILL, Windows 는 `taskkill /F /T`).
   - 작업은 `failed` · `timed_out: true` · `exit_code: null` · `error` = `"처리가 N분을 넘어 멈춤 — …"` (2-2). `run.txt` 끝에 `[서버] …` 줄.
-  - 그때까지 쓴 단계 파일 · 결과는 남는다. `report.md` · `report.json` 이 없어 `verdict` 는 `"pending"` (8-3 의 2번). 묶음 단계까지 갔으면 `bundle.zip` 도 만든다.
+  - 그때까지 쓴 단계 파일 · 결과는 남는다. `report.md` · `report.json` 이 없어 `verdict` 는 `"fail"` (11/26 D `6ad7114` 부터 — 전에는 `"pending"`, 8-3 의 2번). 묶음 단계까지 갔으면 `bundle.zip` 도 만든다.
   - [D 측정, `9b2c95f` 커밋 설명] 3초 제한에서 3.3초에 멈추고 남은 프로세스 없음. Windows 의 제한 시간 처리는 돌려 보지 않음.
   - 참고 [B 측정, 통합 기록 11/25]: 가장 긴 실제 촬영본 "인문대 2층" `922acd4755` (182 s)가 B 노트북에서 엔진 6~7분이다. 메모리 16 GB PC 에서는 11분 27초였다 (C 보고). 20분 안이지만 느린 PC 에서는 여유가 크지 않다.
 
@@ -589,7 +591,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
   - 서버를 다시 켜도 된다. `uploading` 작업은 읽을 때 `received` 를 올린 파일의 크기로 되찾는다 (4-3).
   - 화면 (`index.html:182-195`): 조각이 실패하면 1 · 2 · 4 … 초(최대 30초) 기다렸다가 `GET /api/jobs/<id>` 의 `received` 부터 다시 보낸다. 8번까지 (`RETRIES`). 접속 코드 오류는 다시 시도하지 않고, 작업이 `uploading` 이 아니면 멈춘다. 서버에 닿지 않으면 같은 `offset` 으로 다시 시도한다.
   - 화면은 같은 페이지 안에서만 이어 올린다. 페이지를 다시 열면 파일을 다시 골라 새 작업으로 올린다.
-  - [D 측정, `533bffe` 커밋 설명] 실제 촬영본 540 MB(인문대 2층 `922acd4755` 으로 보임 — 사용자 11/25)를 3 MB 에서 끊고 서버를 죽인 뒤 이어 올려 md5 같음. 화면의 다시 시도는 브라우저에서 돌려 보지 않았다.
+  - [D 측정, `533bffe` 커밋 설명] 실제 촬영본 540 MB(융복 2층 `6bc1ae021f` 에 D 가 풀어 둔 `rgb/` 를 더 넣은 zip — 11/26 D 답)를 3 MB 에서 끊고 서버를 죽인 뒤 이어 올려 md5 같음. 화면의 다시 시도는 브라우저에서 돌려 보지 않았다.
 - `deploy/check.py` 도 같은 순서다. 조각 크기는 `--chunk-mb` 로 바꿀 수 있다 (기본 8).
 
 ### 4-3. 작업 상태 (`GET /api/jobs/<id>`)
@@ -602,7 +604,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `queue_ahead` | 정수 | 항상 | `queued` 일 때만 계산, 그 밖은 0. 나보다 먼저 줄에 선 `queued` · `running` 작업 수 (**처리 중인 것도 셈**) |
 | `defects_before` | 객체 또는 `null` | `done` · `failed` | `defects_before.json` 내용 (5장). 파일이 없으면 `null` |
 | `defects_after` | 객체 또는 `null` | `done` · `failed` | `defects_after.json` 내용. **보정을 안 했으면 `null`** |
-| `verdict` | 문자열 | `done` · `failed` | 엔진 `report.json` 의 `verdict` (`pass` · `warn` · `fail`). 없으면 `report` 단계의 `status` (`:468`). 그래서 엔진이 보고서까지 가지 못한 `failed` — 입력 검사 · 처리 제한 시간 · 서버가 다시 켜져 끊김 · 엔진 프로세스가 죽음 — 는 `"pending"` 이다 (8-3 의 2번). **단계 상태와 따로 볼 것** — `done` 이어도 `fail` 일 수 있다 (3-4) |
+| `verdict` | 문자열 | `done` · `failed` | 엔진 `report.json` 의 `verdict` (`pass` · `warn` · `fail`). 없으면 `report` 단계의 `status`. **`failed` 인데 그 값이 없거나 `pending` · `running` · `skip` 이면 `"fail"`** (`:471-474`, D `6ad7114`) — 엔진이 보고서까지 가지 못한 `failed`(입력 검사 · 처리 제한 시간 · 서버가 다시 켜져 끊김 · 엔진 프로세스가 죽음)는 11/25 까지 `"pending"` 이었다 (8-3 의 2번). 이유는 `error`. **단계 상태와 따로 볼 것** — `done` 이어도 `fail` 일 수 있다 (3-4) |
 | `has_bundle` | 참거짓 | `done` · `failed` | `out/bundle/usd/` 가 있음 = `bundle.zip` 을 받을 수 있음 |
 | `metrics` | 객체 | `done` · `failed` | `{"before": …, "after": …, "input": …}` (아래) |
 
@@ -620,7 +622,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `done` | 엔진이 끝났고, `out/report.md` 가 있고, **종료 코드가 0 이고, 단계 파일에 `fail` 이 없음** (`web/server.py:405-407`, D `98da703`). `verdict` 는 대개 `pass` 또는 `warn` 이지만, 진단이 "주행할 수 없음" 이유를 남기면 `fail` 이다 (3-4, C `105591c`) |
 | `failed` | 그 밖의 끝남. ① 단계가 하나라도 `fail` — 엔진 종료 코드 1, `verdict` `fail`, `report.md` · 결함 목록은 있음. 단계 안의 `SystemExit` 도 11/25 (C `6ec3237`) 부터 여기 든다. ② 엔진 프로세스가 중간에 죽음 — `report.md` 없음. ③ 엔진을 못 띄움 (`error`). ④ 서버가 다시 켜졌는데 그 작업을 이미 한 번 다시 돌렸음 (`error`, 아래). ⑤ **입력 검사에 걸림** (`error`, 엔진을 돌리지 않음 — `started` · `exit_code` 없음, 단계 8개 모두 `pending`, 4-2). ⑥ **처리 제한 시간을 넘음** (`timed_out` · `error` · `exit_code: null`, 4-2). ②~⑥ 은 `verdict` 가 `"pending"` |
 
-- **`status` 가 바뀐 뒤 `finished` 가 생기기까지 틈이 있다** (D `9b2c95f`). 서버는 `status` 를 `done` · `failed` 로 바꾸고(`:402` · `:407`), `bundle.zip` 을 만든 뒤에(`:412`) `finished` 를 쓴다 (`:415`). 그 사이의 상태 응답에는 `finished` 가 없다. 큰 맵은 zip 을 만드는 데 몇 초 걸릴 수 있다 [추정: 재지 않음]. 화면은 `done` · `failed` 를 보면 조회를 멈추고 `job.finished - job.started` 로 걸린 시간을 적는다 (`index.html:240`) — 이 틈에 걸리면 `NaN초` (8-3 의 13번).
+- **`status` 와 `finished` 는 같이 바뀐다** (11/26 D `6ad7114`, `:418`). 서버는 엔진이 끝나면 결과를 정해 두고(`:410`), `bundle.zip` 을 만든 뒤에(`:415`) `status` 를 `done` · `failed` 로 바꾸면서 `finished` 를 쓴다. 그래서 `bundle.zip` 을 만드는 동안은 `running` 으로 보이고, 화면이 `done` · `failed` 를 볼 때는 늘 `finished` 가 있다. 11/25 까지는 `status` 를 먼저 바꿔 그 틈에 화면이 `NaN초` 를 적을 수 있었다 (8-3 의 13번).
 
 - 11/23 까지는 `report.md` 만 있으면 `done` 이었다. 그래서 단계가 실패해도 `done` 이 됐다 (`e2e_glb`: `done` · `exit_code 1` · `verdict fail`). 지금은 ① 이 `failed` 다 (통합 기록 R2).
 - `failed` 여도 엔진이 만든 것(단계 결과 · 결함 목록 · `report.md` · 있으면 `preview.glb` · `map.png`)은 그대로 받을 수 있다. 화면은 `failed` 면 "실패" 로 적고, 3D · 결함 목록은 같이 보여 준다 (`index.html` `finish`).
@@ -789,7 +791,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 - 막힌 길이 걸어간 길의 **10% 넘음**, 또는 한 덩어리로 이어진 길이 **80% 미만** → 이유를 `ctx["unusable"]` 에 남기고 진단 주의로 보인다. 판정(`verdict`)은 `fail` 이 된다 (3-4).
 - 막힌 길 2~10% → 주의만. 빈 바닥의 가장 큰 덩어리가 60% 미만 → 주의만 (모든 입력).
-- 제자리 회전 가능 넓이 `turn_area_m2` 가 **5 m² 미만** → 주의만 (모든 입력, C `13d1c4d`, `stages.py:363-365`): `"로봇이 제자리에서 돌 수 있는 넓이가 N m² 뿐임 (5 m² 미만) — 주행 공간이 좁아 주행 실패가 예상됨 (sim 쪽 맵 판정의 '실패 예상'과 같은 기준). …"`. 5 m² 는 `sim/add_site.py` 맵 판정의 "실패 예상" 문턱이다. 판정(`verdict`)은 바꾸지 않는다 — 올릴지는 C · D 가 정할 것 (`C_TRACK.md` 6장 C13). [C 측정] 방 촬영본 `6bc1ae021f` 1.35 m² → 주의.
+- 제자리 회전 가능 넓이 `turn_area_m2` 가 **5 m² 미만** → 주의만 (모든 입력, C `13d1c4d`, `stages.py:363-365`): `"로봇이 제자리에서 돌 수 있는 넓이가 N m² 뿐임 (5 m² 미만) — 주행 공간이 좁아 주행 실패가 예상됨 (sim 쪽 맵 판정의 '실패 예상'과 같은 기준). …"`. 5 m² 는 `sim/add_site.py` 맵 판정의 "실패 예상" 문턱이다. **판정(`verdict`)은 바꾸지 않는다** — 판정은 맵 상태만 말하고 주행 공간은 이 주의 한 줄로 따로 보인다 (11/26 C · D 결정, `C_TRACK.md` C13 닫음. D 는 `add_site.py` 의 "실패 예상" 문구를 주행 공간 뜻으로 맞추기로 함). [C 측정] 방 촬영본 `6bc1ae021f` 1.35 m² → 주의.
 - **되돌아온 자리 어긋남** (Stray, C `13d1c4d`, `stages.py:397-411`, 수치 `revisit` 은 3-5): `stray_revisit` 의 `reasons` 를 모두 진단 주의로 내고, `verdict` 가 `fail` 이면 `"되돌아온 자리가 크게 어긋나 있음 — 같은 곳이 두 번 겹쳐 찍혔을 수 있음. 다시 찍기를 권함 (긴 복도는 한 방향으로만)"` 주의를 더한다. **판정은 주의까지만** — `verdict` `fail` 은 지금처럼 걸어간 길이 막혔을 때만. `report.md` 에 "되돌아온 자리 어긋남 (아이폰 원본)" 절 (`stages.py:680-690`). [C 측정] 복도 왕복 `922acd4755`: 수평 123 → 124.6 cm(남음) · 높이 44 → 1.2 cm → `fail` → 다시 찍기 권함 주의, 판정 주의.
 - 막힘은 자세 보정 전 경로로 잰다. 그래서 0.15 m 를 봐준다 (`checks.py:53`).
 - 문턱(10% · 80% · 60%)은 촬영본 두 건으로 잡은 잠정값이다 (`stages.py:350`). [C 측정, `C_TRACK.md` 2-6] 복도 왕복 `922acd4755`: 막힌 길 36.5% (61.7 m) · 이어진 길 62.4% · 가장 큰 덩어리 53.2% → "쓸 수 없음", `path_blocked` 4곳. 방 한 바퀴 `6bc1ae021f`: 0.2% · 100% · 89.5% → 판정 그대로.
@@ -810,7 +812,10 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
   - 덮은 자리는 `report.md` 의 "이 맵이 가정한 것과 바꾼 것" 에 위치와 함께 적힌다 (`stages.py:671-673`).
   - 두 겹 바닥도 없고 덮을 구멍도 없으면 `correct` 는 `skip` ("고칠 수 있는 자리가 없어 보정하지 않음", `stages.py:478-479`). 이때 `defects_after.json` 은 없다.
   - [C 측정, `C_TRACK.md` 2-5] 방 촬영본 `6bc1ae021f`: 후보 2곳 모두 "둘레에 보이는 바닥이 적음" 으로 덮지 않음.
-- 그 뒤 `convert` → `nav2` → `diagnose` 를 다시 돌린다 (`stages.py:482-486`). 이때 `defects_after.json` 을 쓴다.
+- 그 뒤 `convert` → `nav2` → `diagnose` 를 다시 돌린다 (`stages.py:509-524`). 이때 `defects_after.json` 을 쓴다.
+  - **판만 더하기 (R16, C `29a05ba`):** 고칠 것이 `no_visible_floor` 하나뿐이고 GLB 길(GLB · Stray)이면, `pipeline/glb_to_usd.py --config <보정 설정> --patch-only` 로 이미 만든 USD 메쉬에 `FloorPatch` prim 만 더하고 `convert` · `nav2` 는 건너뛴 채 `diagnose` 만 다시 한다 (`stages.py:510-519`). 판은 보이는 부분이라 충돌 · Nav2 지도 · 바닥 높이가 그대로이기 때문이다. 결과 USD 는 처음부터 다시 만든 것과 prim 순서만 다르다 [C 확인]. [C 측정] 복도 왕복 촬영본 보정 단계 209 → 10 s.
+  - 판을 더할 수 없는 빌드 — `build/report.json` · `build/floor_samples.npz`(보이는 바닥 정점 xy · 색, 11/26 부터 빌드가 씀) · 보정 설정의 `floor_patch.mask_file` 중 없는 것이 있음 — 면 `glb_to_usd.py` 가 종료 코드 2 로 끝나고, 전처럼 처음부터 다시 만든다.
+  - `correct` 의 metrics 에 `patch_only` (참 = 판만 더함). 판만 더했으면 `messages` 에 "판만 기존 USD 에 더함 — 변환 · Nav2 지도는 다시 하지 않음 …". 판만 더한 빌드의 `build/report.json` 에는 `floor_patch.patch_only: true` · `patch_seconds`.
 - **`defects_after.json` 은 보정이 돌았을 때만 생긴다.** 보정 단계가 `skip` 이면 없고, 상태 응답의 `defects_after` 는 `null`.
 - 보정 뒤에도 두 겹 바닥이 남으면 `correct` 단계가 `fail` (`stages.py:269-270`). 그러면 작업 상태는 `failed` 다 (4-3).
 
@@ -1148,6 +1153,8 @@ B 측정 (기준 촬영본, 통합 기록 11/24 저녁 · R10): 자세 보정 �
 | 보이는 바닥 구멍 덮기 (R9) | 구멍 하나 4 m² 까지. 바닥 아래에서 맞은 칸 10% 이하 · 둘레 띠의 보이는 바닥 50% 이상 | `stages.py:397` (`_patch_mask` 인자) |
 | 걸어간 길 (Stray) | 막힌 길 10% 초과 또는 이어진 길 80% 미만이면 판정 `fail`. 막힌 길 2% 초과 · 빈 바닥 가장 큰 덩어리 60% 미만은 주의. 막힘 봐주기 0.15 m | `stages.py:351-357` · `checks.py:48` |
 | Stray zip | 파일 10만 개 · 풀면 6 GB | `stray.ZIP_MAX_FILES` · `ZIP_MAX_BYTES` |
+| 충돌 메쉬 물체 삼각형 (GLB · Stray) | 15만 (11/26 C `ecaae53`, 전 10만 — 통합 기록 R22). 스캔 바닥은 줄이기 전에 빼고 평평한 바닥 한 장을 따로 깔아 바닥은 이 수에 안 듦. 목표의 5배를 넘으면 먼저 3 cm 정점 묶기 | `detect.config_glb` (`collision.tris`) · `pipeline/glb_to_usd.py` 충돌 단계 |
+| 제자리 회전 가능 넓이 | 5 m² 미만이면 주의 (판정은 그대로) | `stages.py:363` |
 | 엔진 쪽 실패 기준 (참고) | GLB · Stray 범위 1 m 미만 · 300 m 초과, 바닥 2 m² 미만 · Nav2 도구 없음 · 빈 바닥 4 m² 미만 · 진단 표본 50개 미만 | `stages.py:78-81`, `:154-156`, `:168-169`, `:259-260` |
 
 ---
@@ -1199,17 +1206,17 @@ B 측정 (기준 촬영본, 통합 기록 11/24 저녁 · R10): 자세 보정 �
   - [D 측정, `9b2c95f` 커밋 설명] 서버를 네 번 띄워 37항목 통과. `tests/run.sh` 전체 · 브라우저 화면 · 터널 · Windows 의 제한 시간 처리는 돌려 보지 않았다. 그 뒤 `bef9cda` 에서 `tests/run.sh` 전체 `TESTS_OK` (117초, D 서버). B 도 main `bef9cda` 위에서 `TESTS_OK` (194초, B 노트북, `5db0573` 커밋 설명).
 - ~~화면의 이어 올리기~~ — 됨 (D `533bffe`). 화면이 끊긴 조각을 서버가 받은 자리부터 다시 보내고, 서버를 다시 켜도 받은 자리를 파일 크기로 되찾는다 (4-2). 페이지를 다시 연 뒤에는 이어 올리지 않는다.
 - `bundle/` 을 D 의 `sim/add_site.py` 형식에 맞추기 (계획 3-2 · 5-2). **zip 구조는 됨** (D `bef9cda`, 2-4 · 4-2) — 맨 위가 `bundle/` 하나라 `add_site.py` 가 내려받은 zip 을 그대로 받는다. 남은 것 (`docs/isaac_check.md` 2장, C · D 가 정할 것):
-  - 씬 루트: `add_site.py` 는 `scene_suggestion/<장소>_<판>.usda` 만 찾고, 없으면 새로 쓴다 (`sim/add_site.py:502-521`). 새로 쓴 씬 루트에는 그림자 설정(`doNotCastShadows`)이 없다 — 묶음의 `scene_root.usda` 에는 있다 (2-4). 묶음이 `scene_suggestion/` 을 넣을지, `add_site.py` 가 `scene_root.usda` 를 받을지 정할 것.
+  - ~~씬 루트~~ — 됨 (C12, D `6e88feb`): `add_site.py` 가 묶음의 `scene_root_sim.usda` 를 받아 맵 경로 줄만 바꿔 쓴다 (2-4).
   - 이름: 묶음 안은 모두 `input` (8-1 의 11번). 들이는 데는 문제없고 놓인 폴더 이름은 `<장소>_<판>` 이 된다 (D 확인).
   - 시작 자세: 경로 없이 들이면 `add_site.py` 는 묶음의 `start_pose.json` · `route.csv` 를 쓰지 않고 지도에서 다시 잡는다. 실제 촬영본에서 위치는 같고 방향만 다름 (묶음 126.1° · `add_site.py` 90.0°, D 측정).
-  - 두 판정: 같은 실제 촬영본이 웹앱은 "올릴 수 있으나 주의", `add_site.py` 맵 판정은 "실패 예상 (제자리 회전 가능 넓이 1.4 m²)" (D 측정). 웹앱은 지도의 빈 칸 넓이를, 맵 판정은 로봇이 돌 만큼 여유가 있는 자리의 넓이를 보는 것으로 보인다 [D 추정]. 사용자에게 어떻게 알릴지는 C · D.
+  - ~~두 판정~~ — 정함 (C13): 웹앱도 같은 수치(`drivable.turn_area_m2`)를 보고 5 m² 미만이면 주의 한 줄. 판정은 맵 상태만 (5-4).
   - Isaac Sim 에서 들인 장소로 주행해 본 것은 아직 없다 (`C_TRACK.md` C8).
 - ~~B 의 Stray 형상 메쉬 단계가 엔진에 아직 없다~~ — 들어감 (R10 · R11, C `be8310e`). 엔진이 Stray 형상 메쉬를 `stray_mesh.build` 기본값(깊이 5 m · 수평 자세 보정)으로 만들고, 입력 단계가 `pose_fix` 를 문장 · 수치로 보여 준다 (6-2 ~ 6-4). `build/tsdf_config.yaml` 은 더 생기지 않는다. 이 문서의 "R10 뒤" 표시는 정리했다.
 - ~~Stray 복원 정확도를 진단 · 보고서에 붙이기~~ — 붙음 (R3, C `620a2b0`). 진단 수치 `stray_quality` = `{frames, median_cm, p90_cm, within_2cm_pct, hit_pct, verdict}`, 요약 문장은 `messages`, 통과가 아니면 이유가 주의(실패여도 주의). `report.md` 에 "복원 정확도 (아이폰 원본)" 절. [C 측정] 방 촬영본 중앙 2.17 cm · 2 cm 안 47.2% · 맵에 닿음 98.8% → 통과
 - **[고침 — C `736eb68`]** "같은 입력에 같은 결과" (계획 5-3). 11/23 판에는 "아직 보장하지 않음" 이었다.
   - GLB · Stray 의 바닥 평면 찾기에서 무작위 표본(RANSAC)을 없앴다. 화면용 GLB 도 무작위를 쓰지 않는다.
   - C 측정 (Windows): 복도 GLB 4번 · 가상의 방 Stray 2번에서 변환 행렬 차이 0 · 결함 목록 같음 (`C_TRACK.md` 1장).
-  - D 측정 (Ubuntu 24.04 서버 · 32 코어, main `533bffe` = R10 포함 · `105591c` 전, `6afb822` 커밋 설명): 실제 촬영본 540 MB(인문대 2층 `922acd4755` 으로 보임 — 사용자 11/25. B 노트북은 같은 촬영본이 402 초라 어느 단계까지의 시간인지 D 확인 필요)를 서버로 두 번 — 각 약 40초. `mesh_raw.ply` · USD · `map.pgm` · 결함 목록 · `preview.glb` · 시작 자세의 md5 가 같음. 11/24 오전 엔진 `98da703` 에서는 `transform.json` 부터 달랐다.
+  - D 측정 (Ubuntu 24.04 서버 · 32 코어, main `533bffe` = R10 포함 · `105591c` 전, `6afb822` 커밋 설명): 실제 촬영본 540 MB(융복 2층 `6bc1ae021f` 에 D 가 풀어 둔 `rgb/` 1,137장을 더 넣은 zip — 11/26 D 답. 엔진은 `rgb.mp4` 만 읽어 덧붙은 `rgb/` 는 결과에 닿지 않음)를 서버로 두 번 — 각 약 40초(처음부터 끝까지). `mesh_raw.ply` · USD · `map.pgm` · 결함 목록 · `preview.glb` · 시작 자세의 md5 가 같음. 11/24 오전 엔진 `98da703` 에서는 `transform.json` 부터 달랐다.
   - `tests/repeat.py` 가 계속 검사한다.
 
 ### 8-3. 버그로 보이는 것 (고칠 사람이 정할 것)
@@ -1217,10 +1224,10 @@ B 측정 (기준 촬영본, 통합 기록 11/24 저녁 · R10): 자세 보정 �
 | # | 위치 | 내용 | 상태 |
 |---|---|---|---|
 | 1 | `core.py:53` + `pipeline/glb_to_usd.py:66`, `:88` (`detect.profile_glb` 경유, `detect.py:42-44`) | 단계가 `except Exception` 만 잡아서 `SystemExit` 이 새어 나간다. 이때 단계 파일도 `report.md` 도 없이 엔진이 끝난다. 그러면 서버 상태는 `failed`, 그 단계부터는 모두 `pending`, `verdict` 는 `"pending"` (#2) 이 된다. 예: 바닥을 못 찾는 GLB. **11/24 부터 Stray 도 해당한다** — 입력 단계가 형상 메쉬에 `profile_glb` 를 부르므로, 형상 메쉬에 위 향한 면이 거의 없으면 같은 길로 죽는다 [추정: 그런 촬영본으로 돌려 보지 않음]. (`stray.py` 쪽은 B 가 `CaptureError` 로 바꿔 고침, `ba960b4`) | **고침** C `6ec3237`: `core.run` 이 `SystemExit` 도 받아 그 문장을 요약으로 하는 `fail` 단계로 남긴다 (`core.py:53-56`, 3-1). 뒤 단계 `skip` · `report.md` · `report.json` 있음. [C 측정] 세로 벽 한 장뿐인 GLB: 입력 단계 실패 · 종료 코드 1 · 단계 파일 8개 |
-| 2 | `web/server.py:468` | `report.json` 이 없으면 `verdict` 를 `report` 단계 상태로 대신하는데, 그 단계가 없으면 `"pending"` 이 들어간다. 화면은 그 글자를 그대로 보인다 (`job.verdict \|\| "fail"` 이라 `"pending"` 은 걸러지지 않음, `index.html:241-243`). 1번이 고쳐져 한때 엔진 프로세스가 죽은 경우에만 생겼다. **11/25 저녁 (D `9b2c95f`) 부터 다시 흔해졌다:** 입력 검사에 걸린 작업 · 처리 제한 시간에 걸린 작업 · 서버가 다시 켜져 끊긴 작업도 `"pending"` 이다 (4-3 의 ②~⑥). 이유는 `error` 에 있지만 **화면은 `job.error` 를 결과에 쓰지 않는다** (`index.html` 에서 `error` 를 읽는 곳은 업로드 다시 시도 `:192` 뿐). [B 확인, Flask 시험 클라이언트] 깨진 zip 예시 파일 작업 → `failed` · `verdict "pending"` · `error` 있음. 제안: 서버는 `report.json` 이 없는 `failed` 의 `verdict` 를 `"fail"` 로 (D), 화면은 `failed` 면 `error` 를 보이기 (A) | 열림 (D · A) |
+| 2 | `web/server.py:468` | `report.json` 이 없으면 `verdict` 를 `report` 단계 상태로 대신하는데, 그 단계가 없으면 `"pending"` 이 들어간다. 화면은 그 글자를 그대로 보인다 (`job.verdict \|\| "fail"` 이라 `"pending"` 은 걸러지지 않음, `index.html:241-243`). 1번이 고쳐져 한때 엔진 프로세스가 죽은 경우에만 생겼다. **11/25 저녁 (D `9b2c95f`) 부터 다시 흔해졌다:** 입력 검사에 걸린 작업 · 처리 제한 시간에 걸린 작업 · 서버가 다시 켜져 끊긴 작업도 `"pending"` 이다 (4-3 의 ②~⑥). 이유는 `error` 에 있지만 **화면은 `job.error` 를 결과에 쓰지 않는다** (`index.html` 에서 `error` 를 읽는 곳은 업로드 다시 시도 `:192` 뿐). [B 확인, Flask 시험 클라이언트] 깨진 zip 예시 파일 작업 → `failed` · `verdict "pending"` · `error` 있음. 제안: 서버는 `report.json` 이 없는 `failed` 의 `verdict` 를 `"fail"` 로 (D), 화면은 `failed` 면 `error` 를 보이기 (A) | **서버는 고침** D `6ad7114` (`:471-474`, 4-4 `verdict`). **화면은 열림 (A)**: `error` 를 결과에 보이기 |
 | 3 | `web/server.py:318-336` | 조각이 알린 크기를 넘으면 400 을 돌려주지만, 그 전까지 읽은 부분은 이미 파일에 붙은 채이고 `received` 는 그대로다. 같은 `offset` 으로 다시 보내면 파일이 어긋난다 | **고침** D `533bffe`: 조각마다 먼저 파일을 `received` 로 자른다 (`:326`). 같은 `offset` 으로 다시 보내면 남은 바이트가 지워진다 |
 | 4 | `web/server.py:525` | `bundle.zip` 을 한 번 만들면 다시 만들지 않는다. 처리 중(`bundle` 단계 뒤 · `report` 전)에 요청하면 `report.md` 가 빠진 zip 이 남는다 | **줄어듦** D `9b2c95f`: 작업이 끝날 때 서버가 미리 만들므로(`:411-414`), 끝난 뒤 받는 흐름(화면 · `deploy/check.py` · `tests/e2e.py`)에서는 생기지 않는다. 처리 중에 API 로 직접 요청하면 여전히 생긴다 — 열림 (D, 낮음) |
-| 5 | `web/server.py:298`, `:321` | `size` · `offset` 이 숫자가 아니면 `int()` 예외로 500 이 난다 (400 이 아님) | **`size` 는 고침** D `9b2c95f`: 400 `"name · size 를 읽을 수 없음"` (`:297-300`). **`offset` 은 열림** (D): `PUT …/chunk?offset=abc` 가 500 HTML [B 확인, Flask 시험 클라이언트]. 화면은 늘 숫자를 보내므로 닿지 않는다 |
+| 5 | `web/server.py:298`, `:321` | `size` · `offset` 이 숫자가 아니면 `int()` 예외로 500 이 난다 (400 이 아님) | **`size` 는 고침** D `9b2c95f`: 400 `"name · size 를 읽을 수 없음"` (`:297-300`). **`offset` 도 고침** D `6ad7114`: 400 `"offset 은 숫자여야 함"` (`:321-324`) · `tests/e2e.py` 에 검사 한 줄 |
 | 6 | `web/server.py:7` vs `detect.py:13-20` | 맵 폴더 zip 을 받는다는 설명과 실제 동작이 다르다 (8-1 의 10번) | 열림 |
 | 7 | `recon/requirements.txt` | GLB 빌드가 쓰는 `scikit-image`, Stray 의 `opencv`, 서버의 `flask` · `pillow` 가 목록에 없었다 (`e2e_glb` 가 `ModuleNotFoundError: No module named 'skimage'` 로 `convert` 실패) | **고침** (D `98da703`, R1): `opencv-python-headless==5.1.0.95` · `scikit-image==0.26.0` · `Flask==3.1.3` · `pillow==13.0.0` |
 | 8 | 상태 응답의 `status` (`web/server.py:405-407`) | 엔진 단계가 실패해도 `done` 이었다 (8-1 의 7번) | **고침** (D `98da703`, R2) |
@@ -1228,6 +1235,6 @@ B 측정 (기준 촬영본, 통합 기록 11/24 저녁 · R10): 자세 보정 �
 | 10 | `web/static/index.html:325-326` | 화면이 "천장이 있는가" 를 진단 `messages` 의 문장(`"천장이 있음"`)으로 판단해 3D 위쪽을 자른다. 문장이 바뀌면 깨지고, 지금도 천장이 일부만 찍힌 경우(`room`: 덮음 27%, 문장 "천장이 일부만 찍힘")는 자르지 않는다. 상태 응답의 `metrics.before.has_ceiling` · `shadow_fix` 를 보는 편이 약속에 맞다 [추정: 화면에서 직접 확인하지 않음] | 열림 (A) |
 | 11 | `stages.s_input` (Stray 분기, `--resume`) | `--resume` 이면 `input_map/stray_meta.json` 이 있을 때 변환을, `build/mesh_raw.ply` 가 **있기만 하면** 형상 메쉬를 건너뛴다. 앞 실행이 변환 중에 멈췄다면 `stray.convert` 가 `stray_meta.json` 을 지운 채라 다시 변환하지만, 예전 `mesh_raw.ply` 는 남아 있어 새 키프레임 · 자세와 맞지 않는 메쉬를 그대로 쓸 수 있다 [추정: 그렇게 멈춰 본 적은 없음, 코드로만 봄]. 제안: 이번 실행에서 변환을 했으면 메쉬도 다시 만들기 (또는 `mesh_raw.ply` 가 `stray_meta.json` 보다 새것일 때만 건너뛰기). 서버는 `--resume` 을 쓰지 않아 웹 작업에는 닿지 않는다 | **메쉬는 고침** C `be8310e` (제안 두 가지 모두, `stages.py:53`, `:62-63`). **남은 것도 고침** C `13d1c4d` (통합 기록 R15): 메쉬를 다시 만들었으면 `convert` 도 건너뛰지 않는다 (`stages.py:73`, `:131`). 아래는 그 전 설명 — 메쉬를 다시 만들어도 `convert` 는 `build/report.json` 이 있으면 건너뛰었다 (`stages.py:128-129`). 그래서 USD · `visual.ply` · `transform.json` 이 예전 메쉬로 만든 것일 수 있다. 같은 입력 · 같은 코드면 메쉬가 같아(8-2 의 md5) 차이가 없고, 코드나 입력이 바뀐 뒤 `--resume` 을 쓸 때만 닿는다 [추정: 돌려 보지 않음, 코드로만 봄]. 제안: 이번 실행에서 메쉬를 다시 만들었으면 `convert` 도 건너뛰지 않기 |
 | 12 | `web/static/index.html:241-243` | 판정 `fail` 의 문구가 `"쓸 수 없음 — 실패한 단계를 볼 것"` 으로 고정돼 있다. `105591c` 부터는 실패한 단계 없이 `verdict` 만 `fail` 인 경우가 있다 (3-4). 이유는 `report` 단계 요약 · 진단 주의 · 결함 `path_blocked` 에 있다 (`C_TRACK.md` C11 ①) | 열림 (A) |
-| 13 | `web/server.py:405-415` (`worker`) · `index.html:240` | 서버가 `status` 를 `done` · `failed` 로 바꾼 뒤 `bundle.zip` 을 만들고 나서야 `finished` 를 쓴다 (D `9b2c95f`, 4-3). 그 사이에 화면이 상태를 받으면 조회를 멈추고 `job.finished - job.started` 를 적어 `"끝남 (NaN초)"` · `"실패 (NaN초)"` 가 된다. 입력 검사에 걸린 작업을 `#<작업 번호>` 로 열어도 `started` 가 없어 `"실패 (NaN초)"` 다 [추정: 코드로만 봄, 화면에서 보지 않음]. 제안: `finished` 를 `status` 와 함께 쓰고 `bundle.zip` 은 그 뒤에 (D), 또는 화면이 없는 값을 거르기 (A) | 열림 (D · A) |
-| 14 | `web/server.py:553` (`--keep` 도움말) | 도움말은 "-1 이면 지우지 않음" 인데, `_unzip/` 은 늘 지우고 (`tidy`, 통합 기록 R17 ②), 11/25 저녁부터는 `--keep` 과 상관없이 24시간 뒤 폴더째 지운다 (`purge`, 2-1). 모두 남기려면 `--keep -1 --ttl-hours 0` | 열림 (D) |
-| 15 | `tests/e2e.py:101` | 시험 서버를 기본값으로 띄워 `--min-free-gb 20` 이 걸린다. 임시 폴더가 있는 디스크의 여유가 20 GiB + 시험 파일 크기보다 작으면 `POST /api/jobs` 가 507 이라 e2e 가 실패한다 (디스크 문제를 시험 실패로 보임). 제한 시간 20분 · 청소 24시간도 같은 값이다 (시험에는 해가 없음) [추정: 코드로만 봄, B 노트북은 여유가 커서 `TESTS_OK`]. 제안: e2e 가 `--min-free-gb 0` 을 주기 | 열림 (B) |
+| 13 | `web/server.py:405-415` (`worker`) · `index.html:240` | 서버가 `status` 를 `done` · `failed` 로 바꾼 뒤 `bundle.zip` 을 만들고 나서야 `finished` 를 쓴다 (D `9b2c95f`, 4-3). 그 사이에 화면이 상태를 받으면 조회를 멈추고 `job.finished - job.started` 를 적어 `"끝남 (NaN초)"` · `"실패 (NaN초)"` 가 된다. 입력 검사에 걸린 작업을 `#<작업 번호>` 로 열어도 `started` 가 없어 `"실패 (NaN초)"` 다 [추정: 코드로만 봄, 화면에서 보지 않음]. 제안: `finished` 를 `status` 와 함께 쓰고 `bundle.zip` 은 그 뒤에 (D), 또는 화면이 없는 값을 거르기 (A) | **서버 쪽 고침** D `6ad7114` — `status` 와 `finished` 를 `bundle.zip` 뒤에 같이 씀 (`:418`, 4-3). 입력 검사에 걸린 작업은 `started` 가 없어 화면의 `"실패 (NaN초)"` 는 남을 수 있음 [추정] — 화면이 없는 값을 거르기 (A) |
+| 14 | `web/server.py:553` (`--keep` 도움말) | 도움말은 "-1 이면 지우지 않음" 인데, `_unzip/` 은 늘 지우고 (`tidy`, 통합 기록 R17 ②), 11/25 저녁부터는 `--keep` 과 상관없이 24시간 뒤 폴더째 지운다 (`purge`, 2-1). 모두 남기려면 `--keep -1 --ttl-hours 0` | **고침** D `6ad7114` — 도움말이 `_unzip` 과 `--ttl-hours` 를 적음 (`:559`), `S2S_KEEP` 을 `start.sh` 가 넘김 |
+| 15 | `tests/e2e.py:101` | 시험 서버를 기본값으로 띄워 `--min-free-gb 20` 이 걸린다. 임시 폴더가 있는 디스크의 여유가 20 GiB + 시험 파일 크기보다 작으면 `POST /api/jobs` 가 507 이라 e2e 가 실패한다 (디스크 문제를 시험 실패로 보임). 제한 시간 20분 · 청소 24시간도 같은 값이다 (시험에는 해가 없음) [추정: 코드로만 봄, B 노트북은 여유가 커서 `TESTS_OK`]. 제안: e2e 가 `--min-free-gb 0` 을 주기 | **고침** B `7877487` — e2e 가 서버를 `--min-free-gb 0` 으로 띄움 |
