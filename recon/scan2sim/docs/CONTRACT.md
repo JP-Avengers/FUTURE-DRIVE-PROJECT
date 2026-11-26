@@ -8,6 +8,7 @@
 **고침 11/25 저녁 (`35063bc`, main `5db0573` 을 합친 것):** D 의 `9b2c95f` (서버 보호 · 예시 파일 · `/api/health`) · `1e70ddb` (`sim/add_site.py`) · `bef9cda` (`bundle.zip` 맨 위를 폴더 하나로 · 배포 스크립트의 새 선택 사항)를 반영했다 (2장 · 4장 · 7장 · 8장). **`web/server.py` 와 `deploy/*.sh` 의 줄 번호는 이제 `35063bc` 기준이다.** `core.py` · `checks.py` · `stages.py` · `web/static/index.html` 은 `4823a6e` 뒤로 바뀌지 않아 줄 번호가 그대로다. B 의 `5db0573` (6-4 자동 고르기 · 6-5)은 그 커밋에서 고쳤다.
 **고침 11/26 (`647e3c7`, main `13d1c4d` 를 합친 것):** C 의 `13d1c4d` (R14 · R15 · R19 · R20 · 제자리 회전 가능 넓이)를 반영했다 (3-1 · 3-5 · 5-4 · 6-4 · 6-5 · 8-3 의 11번). 고친 곳의 `stages.py` · `checks.py` 줄 번호만 `647e3c7` 기준이다 — `13d1c4d` 가 `stages.py` 에 줄을 더해 다른 곳의 `stages.py:줄` 은 앞을 가리킬 수 있으니 함수 이름으로 찾을 것. D 의 `d03388f` (화면 Nav2 지도 숨기기 버튼)는 약속에 닿지 않는다.
 **고침 11/26 낮 (`6bdab12`, main `9706eee` 를 합친 것):** C 의 `ecaae53` (충돌 물체 삼각형 15만) · `29a05ba` (R16 판만 더하기) · `9706eee` (C12 · C13 닫음), D 의 `6ad7114` (R17 · R21 — 끝난 작업 표시 · `offset` 400 · `--keep` 도움말 · `S2S_KEEP`) · `6e88feb` (`sim/add_site.py` 가 묶음의 `scene_root_sim.usda` 를 받음)를 반영했다 (2-1 · 2-4 · 4장 · 5-4 · 8장). 고친 곳의 `web/server.py` · `stages.py` 줄 번호만 `6bdab12` 기준이다.
+**고침 11/26 오후 (`07f96f6`, main `1edee5e` 를 합친 것):** D 의 `1edee5e` (접속 코드 틀린 횟수 제한 · `autostart.sh`) · `482c589` (Isaac Sim 주행 확인 C8 · `add_site.py` 판정 문구)를 반영했다 (2-4 · 4장 · 4-1). `1edee5e` 가 `web/server.py` 의 `gate` 앞에 줄을 더해, 그 뒤의 `web/server.py:줄` 은 약 35줄 앞을 가리킬 수 있다 — 함수 이름으로 찾을 것.
 
 작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영 · B 의 Stray 깊이 규칙 · 자세 보정) · 고침 2026-11-25 (C · D 의 11/25 변경 반영) · 고침 2026-11-25 저녁 (D 의 서버 보호 · `bundle.zip` 구조) · 고침 2026-11-26 (C 의 `13d1c4d`) · 고침 2026-11-26 낮 (C · D 의 11/26 오전 변경)
 
@@ -454,7 +455,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 ## 4. 웹 API
 
-서버: `python -m scan2sim.web.server [--port 8000] [--host 127.0.0.1] [--jobs ~/scan2sim_jobs] [--code <접속 코드>] [--keep 5] [--samples <예시 파일 폴더>] [--timeout-min 20] [--max-wait 5] [--min-free-gb 20] [--ttl-hours 24] [--dev]` (`web/server.py:547-562`). `--keep` 은 2-1 의 작업 폴더 정리 (D `533bffe`). 그 뒤의 것은 D `9b2c95f`.
+서버: `python -m scan2sim.web.server [--port 8000] [--host 127.0.0.1] [--jobs ~/scan2sim_jobs] [--code <접속 코드>] [--keep 5] [--samples <예시 파일 폴더>] [--timeout-min 20] [--max-wait 5] [--min-free-gb 20] [--ttl-hours 24] [--code-tries 30] [--dev]` (`web/server.py:547-562`). `--keep` 은 2-1 의 작업 폴더 정리 (D `533bffe`). 그 뒤의 것은 D `9b2c95f`.
 
 | 선택 사항 | 기본 | 하는 일 (0 이면 그 검사를 끔) | 자세히 |
 |---|---|---|---|
@@ -463,6 +464,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 | `--max-wait` | 5 | 기다리는 작업(`queued`)이 이 수면 새 작업을 429 로 거절 | 같음 |
 | `--min-free-gb` | 20 | 받고 나면 작업 폴더 디스크 여유가 이 값(GiB) 아래가 되는 새 작업을 507 로 거절 | 같음 |
 | `--ttl-hours` | 24 | 끝난 지 이 시간이 지난 작업 폴더 · 그만큼 멈춘 올리다 만 작업을 통째로 지움 | 2-1 |
+| `--code-tries` | 30 | 같은 주소에서 10분 안에 접속 코드를 이만큼 틀리면 그 주소를 5분 동안 429 로 막음 (11/26 D `1edee5e`) | 4-1 |
 | `--dev` | 꺼짐 | `waitress` 가 있어도 Flask 내장 서버로 켬 | 아래 |
 
 - **요청을 받는 서버:** `waitress` 가 설치돼 있으면 그것으로 켠다 (`threads=16` · `max_request_body_size` = 4 GiB · `channel_timeout=300`, `web/server.py:574-582`). 없거나 `--dev` 면 Flask 내장 서버 `threaded=True` (`:584`). `recon/requirements.txt` 에 `waitress==3.0.2`. 처리는 어느 쪽이든 `worker` 스레드 하나가 차례로 한다.
@@ -472,8 +474,8 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 - `deploy/start.sh` 가 서버를 `--host 127.0.0.1 --port $S2S_PORT --jobs $S2S_JOBS --code <코드>` + 아래 선택 사항으로 켠다 (`deploy/start.sh:45`). 기본 포트 8000, 작업 폴더 `~/scan2sim_jobs` (`deploy/common.sh:8-11`).
   - 늘 넘김: `--min-free-gb $S2S_MIN_FREE_GB` (기본 20, `deploy/common.sh:14`). 켤 때 디스크 여유가 이보다 적으면 알려 준다 (`deploy/start.sh:36-38`).
   - 폴더가 있을 때만: `--samples $S2S_SAMPLES` (기본 `~/scan2sim_samples`, `deploy/common.sh:13`).
-  - 환경 변수를 줄 때만: `--timeout-min` · `--max-wait` · `--ttl-hours` (`S2S_TIMEOUT_MIN` · `S2S_MAX_WAIT` · `S2S_TTL_HOURS`, `deploy/start.sh:30-35`). 안 주면 서버 기본값.
-  - `--keep` 은 넘기지 않아 기본 5 다.
+  - 환경 변수를 줄 때만: `--timeout-min` · `--max-wait` · `--ttl-hours` · `--keep` · `--code-tries` (`S2S_TIMEOUT_MIN` · `S2S_MAX_WAIT` · `S2S_TTL_HOURS` · `S2S_KEEP` · `S2S_CODE_TRIES`, `deploy/start.sh`). 안 주면 서버 기본값. `S2S_KEEP` 은 11/26 D `6ad7114`, `S2S_CODE_TRIES` 는 D `1edee5e` 부터.
+  - **다시 켜진 뒤 알아서 켜기** (D `1edee5e`): `deploy/autostart.sh on|off|status` 가 사용자 crontab 에 `@reboot` 한 줄을 넣고 뺀다(sudo 없음, 다른 줄은 그대로). 켜지면 30초 뒤 남은 프로세스 번호 파일을 지우고 `start.sh` 를 부른다. `on` 할 때 준 `S2S_*` 값을 그 줄에 같이 적되 `S2S_CODE` 는 적지 않는다(코드는 `~/scan2sim_run/code` 그대로). 실제로 껐다 켜 보지는 않음(D 커밋 설명). 터널 주소는 다시 켜질 때마다 바뀐다.
 - **접속 코드를 늘 준다.**
   - 처음 켤 때 6자리 숫자를 만들어 `~/scan2sim_run/code` (권한 600)에 두고 계속 쓴다. `S2S_CODE=<코드>` 로 정할 수 있다 (`deploy/start.sh:19-21`).
   - 주소 · 코드는 `deploy/status.sh` 가 보여 준다. 11/25 (D `bef9cda`) 부터 코드가 든 링크 `<터널 주소>/?code=<코드>` 와 그 QR (터미널 + `~/scan2sim_run/qr.png`, `segno`, `S2S_QR=0` 이면 끔), `GET /api/health` 로 읽은 기다리는 작업 수 · 처리 중인지, 예시 파일 수, 디스크 여유와 기준도 보여 준다.
@@ -487,7 +489,10 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 
 - **접속 코드:** `--code` 를 주면 `/api/` 로 시작하는 모든 요청에 코드가 있어야 한다 (`web/server.py:241-244`). 새 경로 `/api/health` · `/api/samples…` 도 같다.
   - 머리말 `X-Code: <코드>` 또는 쿼리 `?code=<코드>`. 머리말이 있으면 머리말만 본다.
-  - 없거나 틀리면 `401` `{"error": "접속 코드가 맞지 않음"}`.
+  - 없거나 틀리면 `401` `{"error": "접속 코드가 맞지 않음"}`. 비교는 `hmac.compare_digest`.
+  - **틀린 횟수 제한** (11/26 D `1edee5e`, `web/server.py` `gate` · `client`): 같은 주소에서 10분 안에 틀린 코드를 `--code-tries`(기본 30)번 보내면 그 주소의 `/api/` 요청을 5분 동안 `429` `{"error": "접속 코드를 여러 번 틀림 — N분 뒤에 다시 해 볼 것"}` 로 막는다 — **막힌 동안은 맞는 코드도 429**. 코드를 아예 안 보낸 요청은 세지 않는다(화면이 처음에 코드 없이 `/api/info` 를 물음). `0` 이면 세지 않음.
+  - 주소: 이 컴퓨터(127.0.0.1 · ::1)에서 들어온 요청이면 터널이 적어 준 `CF-Connecting-IP` 를 쓰고, 없으면(이 컴퓨터의 브라우저) 127.0.0.1 로 따로 센다. **같은 와이파이의 사람들은 밖에서 한 주소라 함께 세고 함께 막힌다.**
+  - 화면과의 관계 [코드로 봄]: 화면은 코드를 저장하지 않고, 401 · 429 를 받으면 조회(`poll`)와 조각 다시 보내기를 멈춘다(오류 문장에 "접속 코드"가 들어 있어 다시 시도하지 않음). 그래서 화면이 틀린 코드로 자동으로 횟수를 쌓지는 않는다 — 사람이 틀린 코드로 누를 때마다 하나씩 센다.
   - `GET /` 와 `/static/…` 은 코드를 보지 않는다.
   - 화면은 `fetch` 에는 머리말을 (`index.html:149`), `<img>` · GLB 로더 · 내려받기 링크에는 `?code=` 를 붙인다 (`index.html:157`).
 - **오류 응답:** 400 · 401 · 409 · 429 · 507 은 JSON `{"error": "문장", …}`. 화면은 `error` 문장을 그대로 `"실패: <문장>"` 으로 보인다 (`index.html:154`, `:205`).
