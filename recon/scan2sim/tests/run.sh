@@ -31,6 +31,9 @@ step "시험 자료 (가상의 방)"
 step "GLB: 서버로 올려 끝까지 + 넣어 둔 결함 3개가 넣은 넓이에서 0.25 m 안에 잡히는지"
 run e2e_glb $PY -m scan2sim.tests.e2e "$D/room/room.glb" --truth "$D/room/room_truth.json" --json "$D/e2e_glb.json"
 
+step "접속 코드 틀린 횟수 제한 (엔진 없이, 몇 초)"
+run code_tries $PY -m scan2sim.tests.code_tries
+
 step "GLB: 같은 입력 두 번"
 run repeat_glb $PY -m scan2sim.tests.repeat "$D/room/room.glb" --json "$D/repeat_glb.json"
 

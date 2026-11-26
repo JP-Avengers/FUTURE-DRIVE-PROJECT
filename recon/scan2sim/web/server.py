@@ -28,6 +28,7 @@ API (모두 JSON)
 """
 import argparse
 import glob
+import hmac
 import io
 import json
 import os
@@ -54,7 +55,7 @@ ZIP_MAX_FILES, ZIP_MAX_BYTES = 100_000, 6 * 1024 ** 3          # stray.py 의 ZI
 SAMPLE_NAME = r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}"
 
 app = Flask(__name__, static_folder=os.path.join(HERE, "static"), static_url_path="/static")
-CFG = dict(jobs=os.path.expanduser("~/scan2sim_jobs"), code=None, keep=5, samples=None, timeout_min=20.0, max_wait=5, min_free_gb=20.0, ttl_hours=24.0)
+CFG = dict(jobs=os.path.expanduser("~/scan2sim_jobs"), code=None, keep=5, samples=None, timeout_min=20.0, max_wait=5, min_free_gb=20.0, ttl_hours=24.0, code_tries=30)
 JOBS, LOCK, Q = {}, threading.Lock(), queue.Queue()
 PREVIEW_LOCK = threading.Lock()
 BUNDLE_LOCK = threading.Lock()
@@ -238,10 +239,43 @@ def samples():
     return res
 
 
+TRY_WINDOW, TRY_LOCK_S = 600, 300                              # 틀린 접속 코드를 세는 구간 · 넘으면 막아 두는 시간 (초)
+TRIES, TRY_GUARD = {}, threading.Lock()                         # 주소 → {"t": [틀린 때…], "until": 풀리는 때}
+
+
+def client():
+    """요청을 보낸 쪽의 주소. 터널(cloudflared)은 이 컴퓨터에서 들어오므로 그때만 터널이 적어 준 주소를 믿음."""
+    ra = request.remote_addr or "?"
+    if ra in ("127.0.0.1", "::1"):
+        return request.headers.get("CF-Connecting-IP") or ra
+    return ra
+
+
 @app.before_request
 def gate():
-    if CFG["code"] and request.path.startswith("/api/") and request.headers.get("X-Code", request.args.get("code")) != CFG["code"]:
-        return jsonify(error="접속 코드가 맞지 않음"), 401
+    """접속 코드 검사. 같은 주소에서 틀린 코드를 TRY_WINDOW 안에 code_tries 번 보내면 TRY_LOCK_S 동안 그 주소의 요청을 429 로 막음
+    (6자리 코드를 차례로 넣어 보는 것을 늦춤). 코드를 안 보낸 요청은 세지 않음 — 화면이 처음 열릴 때 코드 없이 한 번 물어봄."""
+    if not (CFG["code"] and request.path.startswith("/api/")):
+        return None
+    got = request.headers.get("X-Code", request.args.get("code"))
+    n, who, now = CFG["code_tries"], client(), time.time()
+    if n > 0 and got:
+        with TRY_GUARD:
+            left = TRIES.get(who, {}).get("until", 0) - now
+        if left > 0:
+            return jsonify(error=f"접속 코드를 여러 번 틀림 — {int(left // 60) + 1}분 뒤에 다시 해 볼 것"), 429
+    if got is not None and hmac.compare_digest(str(got).encode(), str(CFG["code"]).encode()):
+        return None
+    if n > 0 and got:
+        with TRY_GUARD:
+            for k in [k for k, v in TRIES.items() if v["until"] < now and not any(t > now - TRY_WINDOW for t in v["t"])]:
+                del TRIES[k]                                    # 지난 기록을 치움 (주소가 끝없이 쌓이지 않게)
+            rec = TRIES.setdefault(who, {"t": [], "until": 0})
+            rec["t"] = [t for t in rec["t"] if t > now - TRY_WINDOW] + [now]
+            if len(rec["t"]) >= n:
+                rec["t"], rec["until"] = [], now + TRY_LOCK_S
+                print(f"접속 코드를 {n}번 틀린 주소를 {TRY_LOCK_S // 60}분 동안 막음", flush=True)
+    return jsonify(error="접속 코드가 맞지 않음"), 401
 
 
 @app.get("/")
@@ -562,10 +596,11 @@ def main():
     ap.add_argument("--max-wait", type=int, default=CFG["max_wait"], help="기다리는 작업이 이 수면 새 작업을 429 로 거절 (0 이면 제한 없음)")
     ap.add_argument("--min-free-gb", type=float, default=CFG["min_free_gb"], help="올릴 파일을 받고 나면 작업 폴더 디스크 여유가 이 값(GB) 아래가 되는 경우 507 로 거절 (0 이면 안 봄)")
     ap.add_argument("--ttl-hours", type=float, default=CFG["ttl_hours"], help="끝난 지 이 시간이 지난 작업 폴더와 그만큼 멈춰 있는 올리다 만 작업을 통째로 지움 (0 이면 지우지 않음)")
+    ap.add_argument("--code-tries", type=int, default=CFG["code_tries"], help="같은 주소에서 10분 안에 접속 코드를 이만큼 틀리면 그 주소를 5분 동안 429 로 막음 (0 이면 안 셈)")
     ap.add_argument("--dev", action="store_true", help="waitress 가 있어도 Flask 내장 서버로 켬")
     a = ap.parse_args()
     CFG.update(jobs=os.path.abspath(os.path.expanduser(a.jobs)), code=a.code, keep=a.keep, samples=os.path.abspath(os.path.expanduser(a.samples)) if a.samples else None,
-               timeout_min=a.timeout_min, max_wait=a.max_wait, min_free_gb=a.min_free_gb, ttl_hours=a.ttl_hours)
+               timeout_min=a.timeout_min, max_wait=a.max_wait, min_free_gb=a.min_free_gb, ttl_hours=a.ttl_hours, code_tries=a.code_tries)
     os.makedirs(CFG["jobs"], exist_ok=True)
     if CFG["samples"]:
         print(f"예시 파일 {len(samples())}개 ({CFG['samples']})", flush=True)
