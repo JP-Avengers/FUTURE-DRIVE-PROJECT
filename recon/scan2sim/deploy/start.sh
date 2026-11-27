@@ -35,6 +35,13 @@ if [ -n "${S2S_MAX_WAIT:-}" ]; then EXTRA+=(--max-wait "$S2S_MAX_WAIT"); fi
 if [ -n "${S2S_TTL_HOURS:-}" ]; then EXTRA+=(--ttl-hours "$S2S_TTL_HOURS"); fi
 if [ -n "${S2S_KEEP:-}" ]; then EXTRA+=(--keep "$S2S_KEEP"); fi
 if [ -n "${S2S_CODE_TRIES:-}" ]; then EXTRA+=(--code-tries "$S2S_CODE_TRIES"); fi
+# 끝난 작업을 언제 지우는지 — 서버는 켜질 때도 지우므로, 지우면 안 되는 결과가 있으면 여기서 알 수 있게 함
+[ -n "$S2S_FROM_FILE" ] && say "설정 파일   $S2S_RUN/settings.env → $S2S_FROM_FILE"
+T="${S2S_TTL_HOURS:-24}"; K="${S2S_KEEP:-5}"
+if [ "${T%.*}" -gt 0 ] 2>/dev/null; then KEEP_DIR="끝난 지 ${T}시간 넘은 작업 폴더를 통째로 지움 — **켜질 때도 지움**"; else KEEP_DIR="작업 폴더를 지우지 않음"; fi
+if [ "$K" -ge 0 ] 2>/dev/null; then KEEP_IN="올린 파일은 최근 ${K}건만 둠"; else KEEP_IN="올린 파일을 지우지 않음"; fi
+say "작업 보관   $KEEP_DIR · $KEEP_IN"
+if [ "${T%.*}" -gt 0 ] 2>/dev/null; then say "            남겨 둘 결과가 있으면 지금 끄고($DEPLOY_DIR/stop.sh) $S2S_RUN/settings.env 에 S2S_TTL_HOURS=0 · S2S_KEEP=-1 을 적은 뒤 다시 켤 것 — 켜지고 나면 이미 지워졌을 수 있음"; fi
 if [ "$(free_gb)" -lt "${S2S_MIN_FREE_GB%.*}" ]; then
     say "주의: 디스크 여유가 $(free_gb) GB 로 기준($S2S_MIN_FREE_GB GB)보다 적어 서버가 새 작업을 받지 않음 — 자리를 비우거나 S2S_MIN_FREE_GB 를 낮춰 다시 켤 것"
 fi

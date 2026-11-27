@@ -1,12 +1,24 @@
 # scan2sim 배포 스크립트들이 함께 쓰는 값 — 직접 실행하지 않고 다른 스크립트가 불러 씀.
 # 바꾸고 싶으면 실행할 때 환경 변수로 줌. 예: S2S_PORT=8010 bash start.sh
+# 켤 때마다 같은 값을 쓰려면 ~/scan2sim_run/settings.env 에 "S2S_이름=값" 줄로 적어 둠 — 실행할 때 따로 주지 않은 값은 거기서 읽음.
+#   예(시연 전까지 결과를 지우지 않기):  S2S_TTL_HOURS=0  /  S2S_KEEP=-1
 
 DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RECON_DIR="$(cd "$DEPLOY_DIR/../.." && pwd)"                 # <레포>/recon
 
+S2S_RUN="${S2S_RUN:-$HOME/scan2sim_run}"                      # 로그 · 프로세스 번호 · 접속 코드 · settings.env
+S2S_FROM_FILE=""                                              # settings.env 에서 읽은 것 (start.sh 가 보여 줌)
+if [ -f "$S2S_RUN/settings.env" ]; then
+    while IFS='=' read -r _k _v; do
+        case "$_k" in
+            S2S_CODE|S2S_RUN|S2S_CRONTAB) ;;                      # 코드는 code 파일에, 이 폴더 자신은 여기서 못 바꿈
+            *) if [ -z "${!_k+x}" ]; then export "$_k=$_v"; S2S_FROM_FILE+="$_k=$_v "; fi ;;
+        esac
+    done < <(grep -E '^S2S_[A-Z_]+=[^[:space:]]*$' "$S2S_RUN/settings.env")
+    unset _k _v
+fi
 S2S_ENV="${S2S_ENV:-$HOME/scan2sim_env}"                      # 파이썬 가상 환경
 S2S_JOBS="${S2S_JOBS:-$HOME/scan2sim_jobs}"                   # 올린 파일과 결과 (레포 밖)
-S2S_RUN="${S2S_RUN:-$HOME/scan2sim_run}"                      # 로그 · 프로세스 번호 · 접속 코드
 S2S_BIN="${S2S_BIN:-$HOME/.local/bin}"                        # cloudflared 를 두는 곳
 S2S_PORT="${S2S_PORT:-8000}"
 S2S_TUNNEL="${S2S_TUNNEL:-1}"                                 # 0 이면 터널 없이 이 컴퓨터에서만

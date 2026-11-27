@@ -15,6 +15,18 @@
 | `check.py` | 켜진 서버에 파일을 올려 끝까지 돌려 보고 결과 4종을 받아 봄(화면과 같은 순서). 마지막 줄 `CHECK_OK` / `CHECK_FAIL` |
 | `common.sh` | 위 스크립트가 함께 쓰는 값. 직접 실행하지 않음 |
 
+## 켤 때마다 같은 값으로 (`~/scan2sim_run/settings.env`)
+
+`start.sh`에 값을 안 주면 서버 기본값으로 켜짐 — 끝난 지 24시간 넘은 작업 폴더를 **켜질 때** 통째로 지움. 시연용으로 남겨 둔 결과가 있으면 값을 빼먹고 켠 한 번에 사라짐. 그래서 늘 쓸 값은 파일에 적어 둠:
+
+```bash
+mkdir -p ~/scan2sim_run && printf 'S2S_TTL_HOURS=0\nS2S_KEEP=-1\n' > ~/scan2sim_run/settings.env
+```
+
+- `S2S_이름=값` 줄만 읽음(따옴표 · 빈칸 없이). 실행할 때 따로 준 값이 파일보다 먼저임. `S2S_CODE` · `S2S_RUN`은 읽지 않음.
+- `start.sh`가 켤 때 "설정 파일 … → …"과 "작업 보관 …" 줄로 어떤 값으로 켜지는지 보여 줌.
+- `autostart.sh`로 넣은 줄도 `start.sh`를 부르므로 이 파일을 읽음.
+
 ## 다시 켜진 뒤 알아서 켜지게 (`autostart.sh`)
 
 ThinkPad가 꺼졌다 켜지면 서버와 터널도 꺼져 있음. 알아서 켜지게 하려면 한 번만:
