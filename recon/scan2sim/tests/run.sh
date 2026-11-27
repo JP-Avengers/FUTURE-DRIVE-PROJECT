@@ -3,7 +3,7 @@
 #
 #   cd recon
 #   bash scan2sim/tests/run.sh            # 전체 (약 5~8분): 가상의 방 GLB · 가상 Stray 촬영본, 같은 입력 두 번, 복원 정확도, Stray 경계 사례,
-#                                         #   되돌아온 자리 어긋남
+#                                         #   되돌아온 자리 어긋남, 보정 단계가 판만 더하는 길
 #   bash scan2sim/tests/run.sh --quick    # GLB + Stray 경계 사례 (약 1분)
 #
 # 시험 자료는 samples/ 의 스크립트로 저장소 밖 임시 폴더에 만든다(SCAN2SIM_TEST_DIR 로 바꿀 수 있음, 있으면 다시 만들지 않음).
@@ -42,6 +42,10 @@ step "Stray 경계 사례: 깨진 입력 · zip 이름 · frame 번호 짝짓기
 run stray_edge $PY -m scan2sim.tests.stray_edge --fixtures "$D/edge" --work "$D/stray_edge" --json "$D/stray_edge.json"
 
 if [ "$QUICK" = 0 ]; then
+    step "GLB: 바닥 구멍만 넣은 방 — 보정 단계가 판만 더하고(patch_only) 처음부터 다시 만든 것과 같은지 (서버 없이, 약 40초)"
+    # 기본 방은 두 겹 바닥이 있어 보정이 늘 처음부터 다시 만듦 — 이 방($D/room_hole)은 처음 한 번만 만듦 (C_TRACK C14)
+    run patch_only $PY -m scan2sim.tests.patch_only --room "$D/room_hole" --work "$D/patch_only" --json "$D/patch_only.json"
+
     step "Stray: 서버로 올려 끝까지 + 넣어 둔 결함 3개가 넣은 넓이에서 0.25 m 안에 잡히는지"
     # 11/24 C 의 0534d95 부터 Stray 도 GLB 와 같은 길이라 바닥 결함이 남음 (integration_log R8)
     run e2e_stray $PY -m scan2sim.tests.e2e "$D/room/synth_room_s0.zip" --truth "$D/room/stray_truth.json" --json "$D/e2e_stray.json"
