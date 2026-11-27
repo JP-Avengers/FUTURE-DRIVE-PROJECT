@@ -16,7 +16,8 @@ if alive "$S2S_RUN/server.pid"; then
 import json, sys, urllib.request
 r = urllib.request.Request(f"http://127.0.0.1:{sys.argv[1]}/api/health", headers={"X-Code": sys.argv[2]})
 h = json.load(urllib.request.urlopen(r, timeout=3))
-print(f"기다리는 작업 {h['queue_length']}건 · {'처리 중' if h['running'] else '쉬는 중'}")
+a = h.get("addr_header")
+print(f"기다리는 작업 {h['queue_length']}건 · {'처리 중' if h['running'] else '쉬는 중'} · 방문자 주소 " + (f"{a} 로 구분" if a else "구분 안 됨(터널로 온 요청이 아직 없거나 터널이 주소를 안 알려 줌)"))
 EOF
 )"
     if [ -n "$H" ]; then

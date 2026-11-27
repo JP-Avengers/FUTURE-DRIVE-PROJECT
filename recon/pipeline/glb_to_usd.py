@@ -674,6 +674,9 @@ def main():
             col = col.simplify_vertex_clustering(pre, contraction=o3d.geometry.SimplificationContraction.Average)
             col.remove_degenerate_triangles()
             col.remove_duplicated_triangles()
+            # 정점을 모으면 한 변에 세 면 넘게 붙는 자리(비다양체 변)가 생기고, quadric 은 그 둘레를 못 접어 목표 전에 멈춤:
+            # 복도 왕복 촬영본은 모은 뒤 257만 · 비다양체 변 72,847개 → 목표 10만 · 15만 모두 192,336 에서 멈췄음 (B 11.26). 그 변의 면을 먼저 지움
+            col.remove_non_manifold_edges()
             col.remove_unreferenced_vertices()
         if len(col.triangles) > cc["tris"]:
             col = col.simplify_quadric_decimation(target_number_of_triangles=cc["tris"])

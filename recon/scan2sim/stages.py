@@ -205,7 +205,10 @@ def _defects(ctx, ground, xy, where, lay, ok, hi, two=None, h2=None, blocked_xy=
             if c["samples"] * a1 >= 0.25:
                 glb, after = ctx.get("kind") == "glb", bool(ctx.get("corrected"))   # GLB · 아이폰 원본: 보정 단계가 둘레 바닥 색 판으로 덮음 (통합 기록 R9)
                 D.append(dict(type="no_visible_floor", title="보이는 바닥 없음 (재촬영 후보)", severity="warn", fixable=glb and not after, **c,
-                              basis=f"빈 바닥 표본 {c['samples']}개(약 {c['samples'] * a1:.1f} m²)에서 보이는 바닥 면을 찾지 못함. 충돌 바닥은 평평한 한 장이라 로봇은 지나가지만, "
+                              # 충돌 바닥(glb_to_usd floor_fp)은 바닥 정점이 아니라 메쉬 전체(벽 · 천장 · 책상 윗면)의 위에서 본 범위로 깔림 → 바닥이 안 찍혀도 빈 바닥.
+                              # 실제 촬영본 두 건에서 이 결함은 거의 다 그런 자리였음 (C_TRACK 2-14). 범위를 줄이지 않고 문구로 알림 (11/27 결정)
+                              basis=f"빈 바닥 표본 {c['samples']}개(약 {c['samples'] * a1:.1f} m²)에서 보이는 바닥 면을 찾지 못함 — 바닥이 찍히지 않았거나(멀리서 벽 · 천장 · 책상 윗면만 보인 자리) 메쉬에 구멍이 남. "
+                                    "충돌 바닥은 메쉬가 덮는 범위 전체(벽 · 천장 포함)에 평평한 한 장으로 깔려 로봇은 지나가지만, 바닥 가까이의 낮은 물체(의자 다리 등)가 찍히지 않았다면 지도에도 없어 실제 장소와 다를 수 있음. "
                                     "카메라에는 받침 바닥(FloorFill, 맵 전체 바닥의 중앙값 한 가지 색 · 스캔 바닥보다 2~5 cm 아래)이 무늬 없는 자리로 보임",
                               action=("보정 단계에서 덮지 않음 — 4 m² 보다 넓거나, 둘레가 바닥이 아니거나, 아래에 면이 보이는 자리 (이유는 보정 단계 메시지). 다시 찍을 후보" if glb and after else
                                       "둘레 바닥 색의 판(FloorPatch)으로 덮음 — 찍힌 바닥이 아니므로 다시 찍으면 더 정확. 아래로 꺼진 자리 · 둘레가 바닥이 아닌 자리 · 4 m² 보다 넓은 자리는 덮지 않음" if glb
@@ -319,7 +322,8 @@ def s_diagnose(ctx):
         if sk.any() and max(abs(np.percentile(dz[sk], 5)), abs(np.percentile(dz[sk], 95))) > 0.05:
             r.warn(f"보이는 바닥과 충돌 바닥의 높이 차가 5 cm 를 넘는 곳이 있음 (5~95%: {m['visible_minus_collision_cm']['p5']} ~ {m['visible_minus_collision_cm']['p95']} cm)")
         if (~ok).mean() > 0.10:
-            r.warn(f"빈 바닥의 {m['visible_floor_missing_pct']}% 에 보이는 바닥이 없음 (받침 바닥으로 메워짐)")
+            r.warn(f"빈 바닥의 {m['visible_floor_missing_pct']}% 에 보이는 바닥이 없음 (받침 바닥으로 메워짐). 바닥이 안 찍힌 자리도 벽 · 천장이 보였으면 평평한 충돌 바닥이 깔려 빈 바닥이 됨 — "
+                   "그 자리의 낮은 장애물은 지도에 없을 수 있음")
         from scipy import ndimage                              # 낮은 턱: 보이는 바닥이 충돌 바닥보다 3~12 cm 높은 자리 — 충돌에서는 평평하게 지나감
         n2, c2 = ctx["nav2"], ctx["nav2"]["cell"]
         ix = np.floor((xy[:, 0] - n2["origin"][0]) / c2).astype(int)

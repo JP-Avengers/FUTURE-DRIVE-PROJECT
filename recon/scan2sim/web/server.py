@@ -24,7 +24,7 @@ API (모두 JSON)
     GET  /api/jobs/<id>/preview.glb | map.png | report.md | bundle.zip
     GET  /api/samples                      → [{name, label, size}] 서버에 준비된 예시 파일 (--samples 폴더)
     POST /api/samples/<name>/jobs          → {id}                 예시 파일로 작업 만들기 (올리기 없이 바로 줄에 들어감)
-    GET  /api/health                       → {ok, queue_length, running, free_gb}
+    GET  /api/health                       → {ok, queue_length, running, free_gb, addr_header}
 """
 import argparse
 import glob
@@ -241,13 +241,22 @@ def samples():
 
 TRY_WINDOW, TRY_LOCK_S = 600, 300                              # 틀린 접속 코드를 세는 구간 · 넘으면 막아 두는 시간 (초)
 TRIES, TRY_GUARD = {}, threading.Lock()                         # 주소 → {"t": [틀린 때…], "until": 풀리는 때}
+ADDR_HEADERS = ("CF-Connecting-IP",)                           # 터널(cloudflared)이 방문자 주소를 적어 주는 헤더. X-Forwarded-For 는 안 봄 — waitress 3 이 믿는 프록시를 정하지 않으면 지움
+VIA = {"header": None}                                          # 지금까지 온 요청에서 방문자 주소를 읽은 헤더 — /api/health 의 addr_header
 
 
 def client():
-    """요청을 보낸 쪽의 주소. 터널(cloudflared)은 이 컴퓨터에서 들어오므로 그때만 터널이 적어 준 주소를 믿음."""
+    """요청을 보낸 쪽의 주소. 터널(cloudflared)은 이 컴퓨터에서 들어오므로 그때만 터널이 적어 준 주소를 믿음.
+    터널이 주소를 안 적어 주면 터널로 온 사람 모두와 이 컴퓨터 화면이 한 주소(127.0.0.1)로 세어짐 — 그런지는 addr_header 로 봄."""
     ra = request.remote_addr or "?"
     if ra in ("127.0.0.1", "::1"):
-        return request.headers.get("CF-Connecting-IP") or ra
+        for h in ADDR_HEADERS:
+            v = (request.headers.get(h) or "").split(",")[-1].strip()
+            if v:
+                if VIA["header"] != h:
+                    VIA["header"] = h
+                    print(f"방문자 주소를 {h} 헤더에서 읽음 — 접속 코드 틀린 횟수를 주소별로 셈", flush=True)   # 주소 값은 찍지 않음
+                return v
     return ra
 
 
@@ -292,7 +301,8 @@ def info():
 def health():
     with LOCK:
         running = any(o["status"] == "running" for o in JOBS.values())
-    return jsonify(ok=True, queue_length=waiting(), running=running, free_gb=round(free_bytes() / 1024 ** 3, 1))
+    # addr_header: 터널이 방문자 주소를 적어 준 헤더 이름. null 이면 아직 터널로 온 요청이 없거나 터널이 주소를 안 적어 줌(그러면 모두 한 주소로 셈)
+    return jsonify(ok=True, queue_length=waiting(), running=running, free_gb=round(free_bytes() / 1024 ** 3, 1), addr_header=VIA["header"])
 
 
 @app.get("/api/samples")
