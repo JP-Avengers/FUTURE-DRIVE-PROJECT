@@ -9,8 +9,9 @@
 **고침 11/26 (`647e3c7`, main `13d1c4d` 를 합친 것):** C 의 `13d1c4d` (R14 · R15 · R19 · R20 · 제자리 회전 가능 넓이)를 반영했다 (3-1 · 3-5 · 5-4 · 6-4 · 6-5 · 8-3 의 11번). 고친 곳의 `stages.py` · `checks.py` 줄 번호만 `647e3c7` 기준이다 — `13d1c4d` 가 `stages.py` 에 줄을 더해 다른 곳의 `stages.py:줄` 은 앞을 가리킬 수 있으니 함수 이름으로 찾을 것. D 의 `d03388f` (화면 Nav2 지도 숨기기 버튼)는 약속에 닿지 않는다.
 **고침 11/26 낮 (`6bdab12`, main `9706eee` 를 합친 것):** C 의 `ecaae53` (충돌 물체 삼각형 15만) · `29a05ba` (R16 판만 더하기) · `9706eee` (C12 · C13 닫음), D 의 `6ad7114` (R17 · R21 — 끝난 작업 표시 · `offset` 400 · `--keep` 도움말 · `S2S_KEEP`) · `6e88feb` (`sim/add_site.py` 가 묶음의 `scene_root_sim.usda` 를 받음)를 반영했다 (2-1 · 2-4 · 4장 · 5-4 · 8장). 고친 곳의 `web/server.py` · `stages.py` 줄 번호만 `6bdab12` 기준이다.
 **고침 11/26 오후 (`07f96f6`, main `1edee5e` 를 합친 것):** D 의 `1edee5e` (접속 코드 틀린 횟수 제한 · `autostart.sh`) · `482c589` (Isaac Sim 주행 확인 C8 · `add_site.py` 판정 문구)를 반영했다 (2-4 · 4장 · 4-1). `1edee5e` 가 `web/server.py` 의 `gate` 앞에 줄을 더해, 그 뒤의 `web/server.py:줄` 은 약 35줄 앞을 가리킬 수 있다 — 함수 이름으로 찾을 것.
+**고침 11/28 (main `b072be6` 을 합친 것):** C 의 `ddc3686` (큰 촬영본의 충돌 줄이기 고침) · `b9b3e7b` (`no_visible_floor` 문구 — 충돌 바닥 범위), D 의 `b93e0c2` · `2e479e9` (`/api/health` 의 `addr_header`, `X-Forwarded-For` 안 봄) · `1b241ad` (`settings.env`) 를 반영했고 (1장 4번 · 4장 · 4-1 · 4-2 · 5-4 · 7장), B 의 새 시험 `tests/patch_only.py` 를 적었다.
 
-작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영 · B 의 Stray 깊이 규칙 · 자세 보정) · 고침 2026-11-25 (C · D 의 11/25 변경 반영) · 고침 2026-11-25 저녁 (D 의 서버 보호 · `bundle.zip` 구조) · 고침 2026-11-26 (C 의 `13d1c4d`) · 고침 2026-11-26 낮 (C · D 의 11/26 오전 변경)
+작성 2026-11-23 · B · 고침 2026-11-24 (C · D 의 11/24 변경 반영 · B 의 Stray 깊이 규칙 · 자세 보정) · 고침 2026-11-25 (C · D 의 11/25 변경 반영) · 고침 2026-11-25 저녁 (D 의 서버 보호 · `bundle.zip` 구조) · 고침 2026-11-26 (C 의 `13d1c4d`) · 고침 2026-11-26 낮 (C · D 의 11/26 오전 변경) · 고침 2026-11-28 (C · D 의 11/27 변경 · B 의 시험 patch_only)
 
 - 이 문서는 **지금 코드가 하는 일**을 적는다. 계획(`docs/implementation.md` 5장)과 다른 곳과 버그로 보이는 것은 8장에 모았다.
 - 근거 표시: 코드 위치는 `파일:줄`. 경로는 `recon/scan2sim/` 기준이고, `pipeline/` · `tools/` · `configs/` 는 `recon/` 아래다. 코드를 읽지 않고 짐작한 것은 **[추정]** 이라고 적었다.
@@ -32,9 +33,10 @@
 4. `tests/` 의 시험이 이 약속을 검사한다. 시험이 깨지면 바꾼 사람이 그날 안에 고친다.
    - `tests/e2e.py`: 서버를 띄워 API 로 올리고 상태 · 결함 필드 · 결과 파일 4개를 검사.
      검사하는 키는 `tests/e2e.py:35-38` (`JOB_KEYS` · `DONE_KEYS` · `STAGE_KEYS` · `DEFECT_KEYS`).
-     서버는 `--port` · `--jobs` · `--code` 만 주고 띄운다 (`tests/e2e.py:101`). 그래서 서버 보호의 기본값(4장 — 제한 시간 20분 · 디스크 여유 20 GB 등)이 시험에도 걸린다 (8-3 의 15번).
+     서버는 `--port` · `--jobs` · `--code` · `--min-free-gb 0` 을 주고 띄운다 (B `7877487` — 디스크가 작은 PC 에서도 돌게). 그 밖의 서버 보호 기본값(4장 — 제한 시간 20분 등)은 시험에도 걸린다 (8-3 의 15번). 11/26 부터 `offset` 이 숫자가 아니면 400 도 본다 (D `6ad7114`).
    - `tests/repeat.py`: 같은 입력을 두 번 돌려 결함 목록이 같은지 검사.
-   - `tests/run.sh`: 가상의 방 GLB · 가상 Stray 촬영본으로 위 둘을 돌리고, 넣어 둔 결함 3개가 제자리(0.5 m 안)에 잡히는지 본다 (`--truth`). Stray 도 11/24 부터 견준다 (`d019a22`).
+   - `tests/run.sh`: 가상의 방 GLB · 가상 Stray 촬영본으로 위 둘을 돌리고, 넣어 둔 결함 3개가 제자리(0.5 m 안)에 잡히는지 본다 (`--truth`). Stray 도 11/24 부터 견준다 (`d019a22`). 그 밖에 `stray_edge` · `quality_stray` · `revisit`(B), `code_tries`(D `1edee5e` — 접속 코드 틀린 횟수 제한 · `addr_header`), `patch_only`(B 11/28, 아래).
+   - `tests/patch_only.py` (11/28 B, `C_TRACK.md` C14): 바닥 구멍만 넣은 가상의 방(`samples/make_room.py --defects no_visible_floor`)으로 엔진을 돌려 보정 단계가 판만 더하는지(`patch_only` 참 · 보정 뒤 `no_visible_floor` 0 · `FloorPatch`)와, 같은 보정 설정을 처음부터 다시 만든 빌드와 메쉬 USD 의 Mesh prim 경로 · prim 마다 쓴 속성의 값 · `floor_patch.ply` 가 같은지 본다(prim 순서는 안 봄). 기본 방은 두 겹 바닥이 있어 이 길을 안 탄다.
    - 이 문서의 필드 표를 고치면 위 키 목록도 같이 고친다.
 5. 이 약속을 쓰는 다른 도구: D 의 `deploy/check.py`. 화면과 같은 순서로 올리고, 상태 `done` · `has_bundle` · `report.md` · `preview.glb` · `bundle.zip` 을 다 받으면 `CHECK_OK` (`deploy/check.py:86`). `verdict` 는 보지 않는다 — `done` 이어도 `verdict` 가 `fail` 일 수 있다 (3-4).
 
@@ -475,7 +477,8 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
   - 늘 넘김: `--min-free-gb $S2S_MIN_FREE_GB` (기본 20, `deploy/common.sh:14`). 켤 때 디스크 여유가 이보다 적으면 알려 준다 (`deploy/start.sh:36-38`).
   - 폴더가 있을 때만: `--samples $S2S_SAMPLES` (기본 `~/scan2sim_samples`, `deploy/common.sh:13`).
   - 환경 변수를 줄 때만: `--timeout-min` · `--max-wait` · `--ttl-hours` · `--keep` · `--code-tries` (`S2S_TIMEOUT_MIN` · `S2S_MAX_WAIT` · `S2S_TTL_HOURS` · `S2S_KEEP` · `S2S_CODE_TRIES`, `deploy/start.sh`). 안 주면 서버 기본값. `S2S_KEEP` 은 11/26 D `6ad7114`, `S2S_CODE_TRIES` 는 D `1edee5e` 부터.
-  - **다시 켜진 뒤 알아서 켜기** (D `1edee5e`): `deploy/autostart.sh on|off|status` 가 사용자 crontab 에 `@reboot` 한 줄을 넣고 뺀다(sudo 없음, 다른 줄은 그대로). 켜지면 30초 뒤 남은 프로세스 번호 파일을 지우고 `start.sh` 를 부른다. `on` 할 때 준 `S2S_*` 값을 그 줄에 같이 적되 `S2S_CODE` 는 적지 않는다(코드는 `~/scan2sim_run/code` 그대로). 실제로 껐다 켜 보지는 않음(D 커밋 설명). 터널 주소는 다시 켜질 때마다 바뀐다.
+  - **켤 때마다 쓸 값 — `~/scan2sim_run/settings.env`** (11/27 D `1b241ad`): `S2S_이름=값` 줄을 `deploy/common.sh` 가 읽는다. 실행할 때 준 환경 변수가 먼저고, `S2S_CODE` · `S2S_RUN` · `S2S_CRONTAB` 은 읽지 않는다. `start.sh` 가 켤 때 "설정 파일 …" · "작업 보관 …" 줄로 쓰는 값과 지우는 규칙을 보이고, 폴더를 지우는 값(`S2S_TTL_HOURS` > 0)이면 남길 결과가 있을 때 할 일을 알려 준다. 까닭: 서버는 켜질 때도 청소하므로 `S2S_TTL_HOURS=0 S2S_KEEP=-1` 을 빼먹고 켜면 시연용으로 남긴 결과가 그 한 번에 지워짐(11/27 ThinkPad 점검에서 나옴). 시연용 ThinkPad 는 이 파일에 두 값을 적어 둔다 (`docs/demo_day.md`).
+  - **다시 켜진 뒤 알아서 켜기** (D `1edee5e`): `deploy/autostart.sh on|off|status` 가 사용자 crontab 에 `@reboot` 한 줄을 넣고 뺀다(sudo 없음, 다른 줄은 그대로). 켜지면 30초 뒤 남은 프로세스 번호 파일을 지우고 `start.sh` 를 부른다. `on` 할 때 준 `S2S_*` 값을 그 줄에 같이 적되 `S2S_CODE` 는 적지 않는다(코드는 `~/scan2sim_run/code` 그대로). [D 확인 11/27] ThinkPad 를 껐다 켜니 부팅 31초 뒤 서버 · 35초 뒤 터널 주소 · 설정 그대로(자동 로그인이라 로그인 없이 켜지는지는 못 가림 · 절전 막기는 cron 에서 안 붙음). 터널 주소는 다시 켜질 때마다 바뀐다.
 - **접속 코드를 늘 준다.**
   - 처음 켤 때 6자리 숫자를 만들어 `~/scan2sim_run/code` (권한 600)에 두고 계속 쓴다. `S2S_CODE=<코드>` 로 정할 수 있다 (`deploy/start.sh:19-21`).
   - 주소 · 코드는 `deploy/status.sh` 가 보여 준다. 11/25 (D `bef9cda`) 부터 코드가 든 링크 `<터널 주소>/?code=<코드>` 와 그 QR (터미널 + `~/scan2sim_run/qr.png`, `segno`, `S2S_QR=0` 이면 끔), `GET /api/health` 로 읽은 기다리는 작업 수 · 처리 중인지, 예시 파일 수, 디스크 여유와 기준도 보여 준다.
@@ -491,7 +494,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
   - 머리말 `X-Code: <코드>` 또는 쿼리 `?code=<코드>`. 머리말이 있으면 머리말만 본다.
   - 없거나 틀리면 `401` `{"error": "접속 코드가 맞지 않음"}`. 비교는 `hmac.compare_digest`.
   - **틀린 횟수 제한** (11/26 D `1edee5e`, `web/server.py` `gate` · `client`): 같은 주소에서 10분 안에 틀린 코드를 `--code-tries`(기본 30)번 보내면 그 주소의 `/api/` 요청을 5분 동안 `429` `{"error": "접속 코드를 여러 번 틀림 — N분 뒤에 다시 해 볼 것"}` 로 막는다 — **막힌 동안은 맞는 코드도 429**. 코드를 아예 안 보낸 요청은 세지 않는다(화면이 처음에 코드 없이 `/api/info` 를 물음). `0` 이면 세지 않음.
-  - 주소: 이 컴퓨터(127.0.0.1 · ::1)에서 들어온 요청이면 터널이 적어 준 `CF-Connecting-IP` 를 쓰고, 없으면(이 컴퓨터의 브라우저) 127.0.0.1 로 따로 센다. **같은 와이파이의 사람들은 밖에서 한 주소라 함께 세고 함께 막힌다.**
+  - 주소: 이 컴퓨터(127.0.0.1 · ::1)에서 들어온 요청이면 터널이 적어 준 `CF-Connecting-IP` 를 쓰고(쉼표가 있으면 맨 끝 값), 없으면(이 컴퓨터의 브라우저) 127.0.0.1 로 따로 센다. `X-Forwarded-For` 는 보지 않는다 — waitress 3 이 믿는 프록시를 정하지 않으면 지우고, 보낸 쪽이 지어낼 수 있어서 (11/27 D `2e479e9`). 어느 헤더로 셌는지는 `/api/health` 의 `addr_header`. [D 확인 11/27] 실제 터널(ThinkPad)에서 `CF-Connecting-IP` 가 붙어 와 주소별로 셈. **같은 와이파이의 사람들은 밖에서 한 주소라 함께 세고 함께 막힌다.**
   - 화면과의 관계 [코드로 봄]: 화면은 코드를 저장하지 않고, 401 · 429 를 받으면 조회(`poll`)와 조각 다시 보내기를 멈춘다(오류 문장에 "접속 코드"가 들어 있어 다시 시도하지 않음). 그래서 화면이 틀린 코드로 자동으로 횟수를 쌓지는 않는다 — 사람이 틀린 코드로 누를 때마다 하나씩 센다.
   - `GET /` 와 `/static/…` 은 코드를 보지 않는다.
   - 화면은 `fetch` 에는 머리말을 (`index.html:149`), `<img>` · GLB 로더 · 내려받기 링크에는 `?code=` 를 붙인다 (`index.html:157`).
@@ -508,7 +511,7 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 |---|---|---|---|
 | `GET /` | — | `index.html` | — |
 | `GET /api/info` | — | `{"ok": true, "stages": [{"name", "label"} ×8], "accept": [".zip", ".glb"], "max_bytes": 4294967296, "samples": <예시 파일 수>}` (`:252-254`) | 401 |
-| `GET /api/health` | — | `{"ok": true, "queue_length": <기다리는 작업 수>, "running": 참거짓, "free_gb": <작업 폴더 디스크 여유, GiB, 소수 1자리>}` (`:257-261`, D `9b2c95f`). `queue_length` 는 `queued` 만 센다 — 처리 중인 것을 세는 `queue_ahead` (4-3)와 다르다 | 401 |
+| `GET /api/health` | — | `{"ok": true, "queue_length": <기다리는 작업 수>, "running": 참거짓, "free_gb": <작업 폴더 디스크 여유, GiB, 소수 1자리>, "addr_header": <헤더 이름 또는 null>}` (`health`, D `9b2c95f` · `addr_header` 는 11/27 D `b93e0c2`). `queue_length` 는 `queued` 만 센다 — 처리 중인 것을 세는 `queue_ahead` (4-3)와 다르다. `addr_header` = 터널이 방문자 주소를 적어 준 헤더의 **이름**(지금은 `"CF-Connecting-IP"` 하나만 봄, 주소 값은 돌려주지 않음). `null` 이면 터널로 온 요청이 아직 없거나 터널이 주소를 안 적어 준 것 — 그러면 접속 코드 틀린 횟수를 터널로 온 모두와 이 컴퓨터 화면이 한 주소로 센다 (4-1). `deploy/status.sh` 가 "방문자 주소 … 로 구분" / "구분 안 됨" 으로 보인다. 화면은 이 칸을 쓰지 않는다 | 401 |
 | `GET /api/samples` | — | **JSON 배열** `[{"name": 파일 이름, "label": 이름표, "size": 바이트}, …]` (`:264-266`, `samples` `:224-238`). 아래 "예시 파일" | 401 |
 | `POST /api/samples/<name>/jobs` | 본문 없음. `<name>` = 목록의 `name` | `{"id": "<12자리>"}` (`:269-291`). 올리기 없이 입력 검사 → 줄에 넣음. 상태는 바로 `queued` | 404 (목록에 없는 이름, HTML) · 429 · 507 · 400 `{"error": <입력 검사 문장>, "id": …}` (작업은 `failed` 로 남음) · 401 |
 | `POST /api/jobs` | JSON `{"name": 파일 이름, "size": 바이트}` (`Content-Type` 은 안 봄) | `{"id": "<12자리>"}` (`:294-315`) | 400 `{"error": "name · size 를 읽을 수 없음"}` (`size` 가 정수로 안 바뀜) · 400 `{"error": "받는 파일은 .zip · .glb 임"}` (확장자, 대소문자 무시) · 400 `{"error": "파일 크기가 0 이거나 4 GB 를 넘음"}` · **429 · 507** (아래) · 401 |
@@ -791,6 +794,8 @@ python -m scan2sim <입력> --out <출력 폴더> [--force] [--resume]
 - `diagnose` metrics 의 `low_bumps.runs_over_0p6m` 은 **다른 방법**(지도에서 이은 영역의 상자 대각선)으로 센 값이다 (`stages.py:321-329`). 결함 목록의 `low_bump` 개수와 다를 수 있다.
 - `low_bump` 의 `basis` 문장은 11/24 에 "충돌 바닥은 평평해서" → "충돌 바닥에는 이 솟음이 없어" 로 바뀌었다 (C `3ea14ff`). 문장은 약속이 아니다.
 - `no_visible_floor` 의 `basis` · `action` 은 R9 로 바뀌었다. GLB · Stray 보정 전은 "둘레 바닥 색의 판(FloorPatch)으로 덮음 …", 보정 뒤 남은 것은 "보정 단계에서 덮지 않음 — …", 맵 폴더는 전과 같이 "고치지 않음 — …" (`stages.py:202-204`).
+- **`no_visible_floor` 는 대부분 "바닥이 안 찍힌 빈 바닥"이다** (11/27 C `b9b3e7b`, `C_TRACK.md` 2-14). 충돌 바닥(`glb_to_usd` 의 `floor_fp`)은 바닥 정점이 아니라 **메쉬 전체(벽 · 천장 · 책상 윗면)를 위에서 본 범위**로 깔린다. 그래서 바닥이 찍히지 않고 벽 · 천장만 보인 자리도 Nav2 지도에서 빈 바닥이 되고, 진단은 그 자리를 보이는 바닥 없음으로 짚는다. [C 측정] 충돌 바닥 범위 ↔ 바닥이 찍힌 범위: 방 `6bc1ae021f` 102.3 ↔ 81.8 m², 복도 왕복 `922acd4755` 324.5 ↔ 259.5 m². 보이는 바닥 없음 6.4 · 6.3% 중 바닥이 찍힌 범위 안은 0.9 · 0.5% 뿐.
+  - 범위는 그대로 두고 문구로 알린다(사용자 11/27 결정 — Isaac Sim 은 같은 충돌을 써서 주행에 지장 없고, 동결 전에 수치 · D 의 주행 결과를 흔들지 않음). 결함 `basis` 에 "바닥이 찍히지 않았거나(멀리서 벽 · 천장 · 책상 윗면만 보인 자리) 메쉬에 구멍이 남 … 바닥 가까이의 낮은 물체(의자 다리 등)가 찍히지 않았다면 지도에도 없어 실제 장소와 다를 수 있음", 진단의 10% 주의에 "바닥이 안 찍힌 자리도 벽 · 천장이 보였으면 평평한 충돌 바닥이 깔려 빈 바닥이 됨 — 그 자리의 낮은 장애물은 지도에 없을 수 있음" 이 붙는다. 판정 · 수치 · 필드는 그대로. 문장은 약속이 아니다.
 
 **걸어간 길과 판정 "쓸 수 없음"** (C `105591c`, `stages.s_diagnose` `stages.py:336-360`, 수치 `drivable` 은 3-5)
 
@@ -1158,7 +1163,7 @@ B 측정 (기준 촬영본, 통합 기록 11/24 저녁 · R10): 자세 보정 �
 | 보이는 바닥 구멍 덮기 (R9) | 구멍 하나 4 m² 까지. 바닥 아래에서 맞은 칸 10% 이하 · 둘레 띠의 보이는 바닥 50% 이상 | `stages.py:397` (`_patch_mask` 인자) |
 | 걸어간 길 (Stray) | 막힌 길 10% 초과 또는 이어진 길 80% 미만이면 판정 `fail`. 막힌 길 2% 초과 · 빈 바닥 가장 큰 덩어리 60% 미만은 주의. 막힘 봐주기 0.15 m | `stages.py:351-357` · `checks.py:48` |
 | Stray zip | 파일 10만 개 · 풀면 6 GB | `stray.ZIP_MAX_FILES` · `ZIP_MAX_BYTES` |
-| 충돌 메쉬 물체 삼각형 (GLB · Stray) | 15만 (11/26 C `ecaae53`, 전 10만 — 통합 기록 R22). 스캔 바닥은 줄이기 전에 빼고 평평한 바닥 한 장을 따로 깔아 바닥은 이 수에 안 듦. 목표의 5배를 넘으면 먼저 3 cm 정점 묶기 | `detect.config_glb` (`collision.tris`) · `pipeline/glb_to_usd.py` 충돌 단계 |
+| 충돌 메쉬 물체 삼각형 (GLB · Stray) | 15만 (11/26 C `ecaae53`, 전 10만 — 통합 기록 R22). 스캔 바닥은 줄이기 전에 빼고 평평한 바닥 한 장을 따로 깔아 바닥은 이 수에 안 듦. 목표의 5배를 넘으면 먼저 3 cm 정점 묶기 + 묶기로 생긴 비다양체 변의 면을 지움(11/27 C `ddc3686` — 그 전에는 인문대 2층이 192,336 에서 멈추고 모양이 틀어졌음: 95% 25.5 cm → 고친 뒤 1.44 cm, C 측정) | `detect.config_glb` (`collision.tris`) · `pipeline/glb_to_usd.py` 충돌 단계 |
 | 제자리 회전 가능 넓이 | 5 m² 미만이면 주의 (판정은 그대로) | `stages.py:363` |
 | 엔진 쪽 실패 기준 (참고) | GLB · Stray 범위 1 m 미만 · 300 m 초과, 바닥 2 m² 미만 · Nav2 도구 없음 · 빈 바닥 4 m² 미만 · 진단 표본 50개 미만 | `stages.py:78-81`, `:154-156`, `:168-169`, `:259-260` |
 

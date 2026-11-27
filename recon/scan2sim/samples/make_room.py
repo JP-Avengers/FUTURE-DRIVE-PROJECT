@@ -1,14 +1,16 @@
 """시험용 가짜 실내 방 GLB — 결함을 정해 둔 자리에 일부러 넣어, scan2sim 진단이 그 자리를 짚는지 확인하는 데 씀.
 
     cd recon
-    python scan2sim/samples/make_room.py --out ~/webapp_runs/samples [--seed 0] [--no-defects]
+    python scan2sim/samples/make_room.py --out ~/webapp_runs/samples [--seed 0] [--no-defects | --defects no_visible_floor,low_bump]
     python -m scan2sim ~/webapp_runs/samples/room.glb --out ~/webapp_runs/samples/run_glb
 
 방 (씬 좌표 = Z 위, m. 방 가운데가 원점, 바닥 z 0)
     안쪽 8 × 6 m · 천장 2.8 m · 벽 두께 0.1 m · 북쪽 벽(y = +3)에 문 구멍 (x 2.6~3.5, 높이 2.0)
     바닥 = 0.5 m 타일 (정점 색, 타일마다 색이 조금씩 다름) · 가구 상자 4개 (탁자 · 소파 · 수납장 · 화분)
 
-넣는 결함 (--no-defects 면 셋 다 뺌)
+넣는 결함 (--no-defects 면 셋 다 뺌, --defects 로 몇 개만 고를 수 있음 — 예: no_visible_floor 만 넣으면 보정 단계가 판만 더하는 길을 탐)
+    결함을 빼도 나머지 형상(정점 자리 · 삼각형)은 같은 --seed 에서 같음 (결함 상자는 다른 것을 다 만든 뒤 맨 끝에 더함).
+    색은 다를 수 있음 — 바닥 구멍이 있으면 구멍 안 타일이 난수를 덜 써서 그 뒤(천장 · 벽 · 가구)의 색 흔들림이 밀림
     double_floor      x −2.5~−1.5 · y 1.1~2.1 에 바닥 위 1.0~1.5 cm 로 뜬 얇은 판 (스캔이 바닥을 두 번 찍어 어긋난 층을 흉내).
                       glb_to_usd 는 바닥 ±5 cm 의 위 향한 면(판 윗면)만 충돌에서 빼므로, 아래를 향한 판 밑면(1.0 cm)이
                       평평한 충돌 바닥(0 cm) 위 1 cm 에 남아 '충돌 바닥 두 겹'이 됨
@@ -98,12 +100,27 @@ def inside(rect, p):
     return (p[:, 0] > x0) & (p[:, 0] < x1) & (p[:, 1] > y0) & (p[:, 1] < y1)
 
 
+def pick_defects(defects=True):
+    """종류 이름(문자열) 또는 그 목록 = 그것만 (DEFECTS 차례대로) · 그 밖에는 참이면 셋 다 · 거짓이면 없음 (예전 build(defects=…) 처럼)
+    → 넣을 결함 dict 목록 (사본). 모르는 이름은 ValueError"""
+    if isinstance(defects, str):
+        names = [defects]
+    elif isinstance(defects, (list, tuple, set, frozenset)):
+        names = list(defects)
+    else:
+        return [dict(d) for d in DEFECTS] if defects else []
+    unknown = sorted(set(names) - {d["type"] for d in DEFECTS})
+    if unknown:
+        raise ValueError(f"모르는 결함 종류 {unknown} — {[d['type'] for d in DEFECTS]} 중에서")
+    return [dict(d) for d in DEFECTS if d["type"] in names]
+
+
 def build(seed=0, defects=True, bump_h=None):
-    """→ (정점 (N,3) 씬 좌표, 삼각형 (M,3), 정점 색 (N,3) 0~1, 넣은 결함 목록). bump_h = 턱 높이 (m, 없으면 4.5 cm)"""
+    """→ (정점 (N,3) 씬 좌표, 삼각형 (M,3), 정점 색 (N,3) 0~1, 넣은 결함 목록). defects = pick_defects 의 인자. bump_h = 턱 높이 (m, 없으면 4.5 cm)"""
     rng = np.random.default_rng(seed)
     b = Builder(rng)
     X, Y, H, T = ROOM["x"] / 2, ROOM["y"] / 2, ROOM["h"], ROOM["wall"]
-    D = [dict(d) for d in DEFECTS] if defects else []
+    D = pick_defects(defects)
     for d in D:
         if d["type"] == "low_bump" and bump_h is not None and abs(bump_h - d["z1"]) > 1e-9:
             d["z1"] = bump_h
@@ -165,14 +182,28 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", required=True, help="room.glb · room_truth.json 을 쓸 폴더 (레포 밖)")
     ap.add_argument("--seed", type=int, default=0, help="색 흔들림 난수 (결함 자리는 고정)")
-    ap.add_argument("--no-defects", action="store_true", help="결함 없는 깨끗한 방")
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--no-defects", action="store_true", help="결함 없는 깨끗한 방")
+    g.add_argument("--defects", help=f"넣을 결함만 쉼표로 (예: no_visible_floor). 종류: {', '.join(d['type'] for d in DEFECTS)}")
     ap.add_argument("--bump-cm", type=float, default=4.5, help="낮은 턱 높이 (cm, 3~12). 5 cm 를 넘기면 GLB 충돌에도 남음")
     a = ap.parse_args()
     if not 3 < a.bump_cm < 12:
         ap.error("--bump-cm 은 3~12 cm 사이 (진단의 '낮은 턱' 범위)")
+    if a.no_defects:
+        which = False
+    elif a.defects is None:
+        which = True
+    else:
+        which = [s.strip() for s in a.defects.split(",") if s.strip()]
+        if not which:
+            ap.error("--defects 에 종류를 하나 이상 (결함을 모두 빼려면 --no-defects)")
+    try:
+        pick_defects(which)
+    except ValueError as e:
+        ap.error(str(e))
     out = os.path.abspath(os.path.expanduser(a.out))
     os.makedirs(out, exist_ok=True)
-    V, F, C, D = build(a.seed, not a.no_defects, a.bump_cm / 100)
+    V, F, C, D = build(a.seed, which, a.bump_cm / 100)
     Vg = write_glb(os.path.join(out, "room.glb"), V, F, C)
     T = expected_transform(V)                                   # V (만든 좌표) = Y_UP_TO_Z_UP @ glTF 정점 이므로 범위 가운데는 V 로 잼
     Ti = np.linalg.inv(T)
@@ -185,7 +216,7 @@ def main():
         defects.append(dict(type=d["type"], center_input=np.round(ci, 4).tolist(), center_scene_expected=np.round(cs_exp, 4).tolist(),
                             size_m=[round(x1 - x0, 3), round(y1 - y0, 3)], height_m=[d["z0"], d["z1"]], note=d["note"]))
     truth = dict(
-        file="room.glb", seed=a.seed, defects_injected=not a.no_defects,
+        file="room.glb", seed=a.seed, defects_injected=bool(defects), defect_types=[d["type"] for d in defects],
         room=dict(inner_m=[ROOM["x"], ROOM["y"]], ceiling_m=ROOM["h"], wall_m=ROOM["wall"], door=DOOR,
                   furniture=[dict(name=n, rect_scene=[x0, x1, y0, y1], height_m=h) for n, x0, x1, y0, y1, h, _ in FURNITURE]),
         coords=("center_input = glTF 좌표 (Y 위, m) 의 결함 가운데 바닥 점. center_scene_expected = 씬 좌표 (Z 위, 바닥 z 0) 예상값 — "
