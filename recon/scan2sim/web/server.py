@@ -241,7 +241,7 @@ def samples():
 
 TRY_WINDOW, TRY_LOCK_S = 600, 300                              # 틀린 접속 코드를 세는 구간 · 넘으면 막아 두는 시간 (초)
 TRIES, TRY_GUARD = {}, threading.Lock()                         # 주소 → {"t": [틀린 때…], "until": 풀리는 때}
-ADDR_HEADERS = ("CF-Connecting-IP", "X-Forwarded-For")          # 터널이 방문자 주소를 적어 주는 헤더 (앞의 것부터 봄)
+ADDR_HEADERS = ("CF-Connecting-IP",)                           # 터널(cloudflared)이 방문자 주소를 적어 주는 헤더. X-Forwarded-For 는 안 봄 — waitress 3 이 믿는 프록시를 정하지 않으면 지움
 VIA = {"header": None}                                          # 지금까지 온 요청에서 방문자 주소를 읽은 헤더 — /api/health 의 addr_header
 
 
@@ -251,7 +251,7 @@ def client():
     ra = request.remote_addr or "?"
     if ra in ("127.0.0.1", "::1"):
         for h in ADDR_HEADERS:
-            v = (request.headers.get(h) or "").split(",")[-1].strip()    # 여러 개면 맨 끝 — 가장 가까운 프록시가 붙인 것(앞쪽은 보낸 쪽이 지어낼 수 있음)
+            v = (request.headers.get(h) or "").split(",")[-1].strip()
             if v:
                 if VIA["header"] != h:
                     VIA["header"] = h

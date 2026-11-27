@@ -3,7 +3,7 @@
     cd recon
     python -m scan2sim.tests.code_tries
 
-검사 항목: health 의 addr_header · X-Forwarded-For 로도 구분 · 코드 없이 401(세지 않음) · 틀린 코드 3번째에 막힘 · 막힌 주소는 맞는 코드도 429 · 터널이 적어 준 다른 주소는 따로 셈 · 0 이면 안 셈
+검사 항목: health 의 addr_header · X-Forwarded-For 로는 구분하지 않음 · 코드 없이 401(세지 않음) · 틀린 코드 3번째에 막힘 · 막힌 주소는 맞는 코드도 429 · 터널이 적어 준 다른 주소는 따로 셈 · 0 이면 안 셈
 종료 코드: 0 = 통과 · 1 = 실패
 """
 import json
@@ -100,17 +100,17 @@ def main():
         log.close()
     p, port, log = serve(2)
     if not p:
-        print("서버가 뜨지 않음 (X-Forwarded-For)")
+        print("서버가 뜨지 않음 (addr_header null)")
         return 1
     try:
         st, r = get_path(port, "/api/health", "246810")
         add("터널로 온 요청이 없으면 addr_header 는 null", st == 200 and r.get("addr_header") is None, f"{r.get('addr_header')}")
-        get_path(port, "/api/info", "000000", "198.51.100.4, 10.0.0.1")
-        get_path(port, "/api/info", "000001", "198.51.100.99, 10.0.0.1")
-        s1, _r = get_path(port, "/api/info", "246810", "198.51.100.4, 10.0.0.1")
-        s2, _r = get_path(port, "/api/info", "246810", "198.51.100.5")
-        st, r = get_path(port, "/api/health", "246810")
-        add("CF 헤더가 없으면 X-Forwarded-For 의 맨 끝 주소로 셈 (앞쪽을 바꿔도 같은 주소)", (s1, s2) == (429, 200) and r.get("addr_header") == "X-Forwarded-For", f"HTTP {s1} {s2} · {r.get('addr_header')}")
+        # X-Forwarded-For 는 방문자 주소로 쓰지 않음 (waitress 3 이 지우고, 보낸 쪽이 지어낼 수 있음) — 그것만 달라도 같은 주소로 셈
+        get_path(port, "/api/info", "000000", "198.51.100.4")
+        get_path(port, "/api/info", "000001", "198.51.100.5")
+        s1, _r = get_path(port, "/api/info", "246810", "198.51.100.6")
+        st, r = get_path(port, "/api/health", "246810", "198.51.100.7")
+        add("X-Forwarded-For 만 바꿔서는 다른 주소로 세지 않음", s1 == 429 and r.get("addr_header") is None, f"HTTP {s1} · {r.get('addr_header')}")
     finally:
         e2e.stop_server(p)
         log.close()
